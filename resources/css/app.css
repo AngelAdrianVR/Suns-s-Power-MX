@@ -5,3 +5,47 @@
 [x-cloak] {
     display: none;
 }
+
+/* Estilos de la barra de scroll personalizada */
+
+/* Para navegadores WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 3px; /* Hacemos la barra más delgada */
+  height: 3px;
+}
+
+/* El "track" o contenedor de la barra se hace transparente */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* El "thumb" o la barrita que se mueve, por defecto es transparente */
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  /* Quitamos el borde redondeado para que sea una barra simple */
+  border-radius: 0px;
+}
+
+/* Al pasar el cursor sobre CUALQUIER parte de la página (body)... */
+body:hover::-webkit-scrollbar-thumb {
+  /* ...la barrita se hace visible con un color gris claro */
+  background-color: #c2c2c2;
+}
+
+/* Opcional: Oscurecer un poco la barra al pasar el cursor sobre ella */
+body:hover::-webkit-scrollbar-thumb:hover {
+  background-color: #b6b4b4;
+}
+
+
+/* Para Firefox */
+body {
+  /* 'thin' para hacerla delgada y colores transparentes por defecto */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* Al pasar el cursor sobre el body, se muestra la barra gris sobre un fondo transparente */
+body:hover {
+  scrollbar-color: #cccccc transparent;
+}

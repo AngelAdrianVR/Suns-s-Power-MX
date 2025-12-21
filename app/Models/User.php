@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -29,6 +30,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'is_active',
     ];
 
     /**
@@ -63,5 +65,31 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    // --- Relaciones ---
+
+    // Tareas asignadas AL usuario
+    public function assignedTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'assigned_to');
+    }
+
+    // Tareas creadas POR el usuario
+    public function createdTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'created_by');
+    }
+
+    // Ventas realizadas
+    public function sales(): HasMany
+    {
+        return $this->hasMany(ServiceOrder::class, 'sales_rep_id');
+    }
+
+    // Instalaciones/Mantenimientos asignados como técnico
+    public function technicalServices(): HasMany
+    {
+        return $this->hasMany(ServiceOrder::class, 'technician_id');
     }
 }
