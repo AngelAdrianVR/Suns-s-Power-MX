@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('maintenance_schedules', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->default(1)->constrained();
             $table->foreignId('client_id')->constrained();
             $table->foreignId('service_order_id')->constrained(); // Instalación original
             $table->foreignId('technician_id')->nullable()->constrained('users');

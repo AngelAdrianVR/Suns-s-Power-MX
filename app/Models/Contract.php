@@ -16,6 +16,7 @@ class Contract extends Model
         'content_json',
         'signed_url',
         'status',
+        'branch_id',
     ];
 
     protected $casts = [

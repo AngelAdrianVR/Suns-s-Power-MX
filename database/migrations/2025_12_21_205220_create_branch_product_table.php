@@ -17,8 +17,8 @@ return new class extends Migration
             $table->foreignId('product_id')->constrained()->onDelete('cascade');
             
             // Datos específicos por sucursal
-            $table->integer('current_stock')->default(0);
-            $table->integer('min_stock_alert')->default(1);
+            $table->float('current_stock')->unsigned()->default(0);
+            $table->float('min_stock_alert')->unsigned()->default(1);
             $table->string('location_in_warehouse')->nullable(); // Ej: "Pasillo 3, Estante B"
             
             $table->timestamps();
