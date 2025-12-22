@@ -6,6 +6,10 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 
+// 1. Importar fuentes (Opcional, pero recomendado para que se vea bien)
+import 'vfonts/Lato.css';      // Fuente general
+import 'vfonts/FiraCode.css'; // Fuente monoespaciada (útil para IDs o código)
+
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
@@ -18,6 +22,6 @@ createInertiaApp({
             .mount(el);
     },
     progress: {
-        color: '#4B5563',
+        color: '#1a6bb0',
     },
 });

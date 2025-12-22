@@ -57,7 +57,7 @@ class RoleSeeder extends Seeder
         $roleTecnico = Role::create(['name' => 'Técnico']);
         $roleTecnico->givePermissionTo([
             'Ver ordenes servicio',
-            'Finalizar instalacion', // Importante para cerrar orden
+            // 'Finalizar instalacion', // Importante para cerrar orden
             'Ver tablero tareas'
         ]);
 
