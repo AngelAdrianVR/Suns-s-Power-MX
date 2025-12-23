@@ -14,14 +14,18 @@ return new class extends Migration
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('branch_id')->default(1)->constrained();
+            // Relación con la Orden de Servicio (Puede ser null si es una tarea administrativa general)
+            $table->foreignId('service_order_id')->nullable()->constrained()->onDelete('cascade');
+
             $table->string('title');
             $table->text('description')->nullable();
             
             // Relaciones
-            $table->foreignId('assigned_to')->constrained('users')->onDelete('cascade'); // (Quién debe hacerlo)
             $table->foreignId('created_by')->constrained('users')->onDelete('cascade'); // (Quién lo asignó)
-            
+            // Fecha de inicio para poder hacer rangos (Gantt)
+            $table->dateTime('start_date')->nullable();
             $table->dateTime('due_date')->nullable();
+            
             $table->enum('status', ['Pendiente', 'En Proceso', 'Completado', 'Detenido'])->default('Pendiente');
             $table->enum('priority', ['Baja', 'Media', 'Alta'])->default('Media');
             

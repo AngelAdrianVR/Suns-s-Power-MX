@@ -64,6 +64,23 @@ class ServiceOrder extends Model
         return $this->hasMany(Payment::class);
     }
 
+    // Una orden de servicio tiene muchas tareas (instalación, configuración, etc.)
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
+
+    // Opcional: Calcular progreso basado en tareas completadas
+    public function getProgressAttribute()
+    {
+        $totalTasks = $this->tasks()->count();
+        if ($totalTasks === 0) return 0;
+        
+        $completedTasks = $this->tasks()->where('status', 'Completado')->count();
+        
+        return round(($completedTasks / $totalTasks) * 100);
+    }
+
     // Documentos asociados (Evidencias de instalación, fotos)
     public function documents(): MorphMany
     {

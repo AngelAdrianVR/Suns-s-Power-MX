@@ -35,6 +35,19 @@ class Product extends Model implements HasMedia
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'product_supplier')
+                    ->withPivot('supplier_sku', 'purchase_price', 'currency', 'delivery_days', 'is_preferred')
+                    ->withTimestamps();
+    }
+
+    // Helper para obtener el mejor precio disponible
+    public function getBestSupplierAttribute()
+    {
+        return $this->suppliers()->orderByPivot('purchase_price', 'asc')->first();
+    }
+
     // Definir colección de imágenes para Spatie (Opcional)
     public function registerMediaCollections(): void
     {

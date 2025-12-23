@@ -19,7 +19,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             
             // Precios con precisión decimal (10 dígitos, 2 decimales)
-            $table->decimal('purchase_price', 10, 2)->default(0); // Precio de compra
+            $table->decimal('purchase_price', 10, 2)->default(0); // Precio de compra promedio o base (los reales se registran por proveedor)
             $table->decimal('sale_price', 10, 2)->default(0); // Precio de venta
             
             $table->timestamps();

@@ -13,8 +13,8 @@ class Task extends Model
     protected $fillable = [
         'title',
         'branch_id',
+        'service_order_id',
         'description',
-        'assigned_to',
         'created_by',
         'due_date',
         'status',
@@ -27,13 +27,19 @@ class Task extends Model
 
     // --- Relaciones ---
 
-    public function assignee(): BelongsTo
+    public function assignees()
     {
-        return $this->belongsTo(User::class, 'assigned_to');
+        return $this->belongsToMany(User::class, 'task_user')
+                    ->withPivot('is_completed', 'assigned_at');
     }
 
-    public function creator(): BelongsTo
+    public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function serviceOrder() // a qué orden de servicio pertenece la tarea
+    {
+        return $this->belongsTo(ServiceOrder::class);
     }
 }
