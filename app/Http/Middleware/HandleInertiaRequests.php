@@ -37,7 +37,13 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            //
+            'auth' => [
+                'user' => $request->user(),
+            ],
+            // Inyectamos las últimas notificaciones si el usuario está autenticado
+            'notifications' => $request->user() 
+                ? $request->user()->notifications()->latest()->take(20)->get() 
+                : [],
         ];
     }
 }

@@ -3,6 +3,9 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,6 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         //
     })
-    ->withExceptions(function (Exceptions $exceptions): void {
-        //
+    ->withExceptions(function (Exceptions $exceptions) {
+        // lógica para el error 404
+        $exceptions->renderable(function (NotFoundHttpException $e, Request $request) {
+            return Inertia::render('404Error', [ // Nombre del componente a renderizar
+                'status' => $e->getStatusCode(),
+            ])->toResponse($request)->setStatusCode($e->getStatusCode());
+        });
     })->create();

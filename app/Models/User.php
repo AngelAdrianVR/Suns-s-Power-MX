@@ -11,11 +11,14 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Jetstream\HasProfilePhoto;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
 {
     use HasApiTokens;
     use HasRoles;
+    use InteractsWithMedia;
 
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory;
@@ -32,6 +35,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'branch_id',
         'is_active',
     ];
 
@@ -101,5 +105,10 @@ class User extends Authenticatable
     public function technicalServices(): HasMany
     {
         return $this->hasMany(ServiceOrder::class, 'technician_id');
+    }
+
+    public function tasks()
+    {
+        return $this->belongsToMany(Task::class, 'task_user');
     }
 }
