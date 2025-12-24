@@ -75,9 +75,9 @@ class SupplierController extends Controller
 
         $validated['branch_id'] = $branchId;
 
-        Supplier::create($validated);
+       $supplier = Supplier::create($validated);
 
-        return redirect()->route('suppliers.index')->with('success', 'Proveedor registrado exitosamente.');
+        return redirect()->route('suppliers.show', $supplier->id)->with('success', 'Proveedor registrado exitosamente.');
     }
 
     public function show(Supplier $supplier)
@@ -176,7 +176,7 @@ class SupplierController extends Controller
 
         $supplier->update($validated);
 
-        return redirect()->route('suppliers.index')->with('success', 'Proveedor actualizado correctamente.');
+        return redirect()->route('suppliers.show', $supplier)->with('success', 'Proveedor actualizado correctamente.');
     }
 
     public function destroy(Supplier $supplier)

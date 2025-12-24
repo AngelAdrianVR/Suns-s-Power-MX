@@ -67,6 +67,12 @@ Route::resource('ordenes-servicio', ServiceOrderController::class)->names('servi
 // ---------------------------- Rutas de ordenes de compras --------------------------------
 Route::resource('ordenes-compras', PurchaseOrderController::class)->names('purchases')
     ->parameters(['ordenes_compras' => 'purchaseOrder'])->middleware('auth');
+    // Ruta adicional para cambio rápido de status (ej. recibir o cancelar desde el index)
+Route::patch('/ordenes-compras/{purchaseOrder}/status', [PurchaseOrderController::class, 'changeStatus'])
+    ->name('purchases.status')
+    ->middleware('auth');
+    // Ruta para recuperar los productos asignados al proveedor en la creación de orden de compra
+Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class, 'fetchAssignedProducts'])->name('suppliers.products.assigned');
 
 
 // ---------------------------- Rutas de proveedores --------------------------------
