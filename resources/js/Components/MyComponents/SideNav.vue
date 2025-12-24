@@ -165,16 +165,16 @@ export default {
                     show: hasPermission('Ver compras') || hasPermission('Ver proveedores') || true,
                     children: [
                         {
-                            label: 'Órdenes',
-                            route: 'purchases.index',
-                            active: current('purchases.*'),
-                            show: hasPermission('Ver compras') || true
-                        },
-                        {
                             label: 'Proveedores',
                             route: 'suppliers.index',
                             active: current('suppliers.*'),
                             show: hasPermission('Ver proveedores') || true
+                        },
+                        {
+                            label: 'Órdenes',
+                            route: 'purchases.index',
+                            active: current('purchases.*'),
+                            show: hasPermission('Ver compras') || true
                         }
                     ]
                 },

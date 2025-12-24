@@ -21,6 +21,7 @@ return new class extends Migration
             // Precios con precisión decimal (10 dígitos, 2 decimales)
             $table->decimal('purchase_price', 10, 2)->default(0); // Precio de compra promedio o base (los reales se registran por proveedor)
             $table->decimal('sale_price', 10, 2)->default(0); // Precio de venta
+            $table->string('image_path')->nullable(); // Ruta de la imagen del producto (opcional si usas Spatie Media Library)
             
             $table->timestamps();
         });

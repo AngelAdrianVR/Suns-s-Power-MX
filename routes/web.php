@@ -27,6 +27,9 @@ Route::get('/inicio', function () {
     ]);
 });
 
+// ---------------------------- RUTA PARA CAMBIAR SUCURSAL DESDE APPLAYOUT (BRANCH CONTEXT) --------------------------------
+Route::post('/branch/switch', [App\Http\Controllers\BranchContextController::class, 'switch'])->name('branch.switch')->middleware('auth');
+
 
 // --- RUTA PÚBLICA PARA SOLICITAR RESTABLECIMIENTO (NOTIFICACIÓN) ---
 Route::post('/solicitar-restablecimiento', [NotificationController::class, 'requestPasswordReset'])
@@ -50,6 +53,8 @@ Route::middleware([
 
 
 // ---------------------------- Rutas de productos --------------------------------
+Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
+Route::post('/products/{product}/adjust-stock', [ProductController::class, 'adjustStock'])->name('products.adjust_stock');
 Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 
@@ -67,6 +72,15 @@ Route::resource('ordenes-compras', PurchaseOrderController::class)->names('purch
 // ---------------------------- Rutas de proveedores --------------------------------
 Route::resource('proveedores', SupplierController::class)->names('suppliers')
     ->parameters(['proveedores' => 'supplier'])->middleware('auth');
+    // --- RUTA PARA CARGA ASÍNCRONA DE PRODUCTOS EN SHOW ---
+Route::get('/proveedores/{supplier}/fetch-available', [SupplierController::class, 'fetchAvailableProducts'])
+    ->name('suppliers.products.fetch');
+// Rutas Específicas para la asignación de productos (UI Show)
+Route::post('/proveedores/{supplier}/products', [SupplierController::class, 'assignProduct'])
+    ->name('suppliers.products.assign');
+
+Route::delete('/proveedores/{supplier}/products/{product}', [SupplierController::class, 'detachProduct'])
+    ->name('suppliers.products.detach');
 
 
 // ---------------------------- Rutas de Clientes --------------------------------

@@ -54,7 +54,7 @@ const goBack = () => {
             
             <!-- Ilustración SVG del Panel Solar Roto -->
             <div class="mb-8 relative inline-block">
-                <img class="w-72" src="@/../../public/images/404.png" alt="">
+                <img class="w-72" draggable="false" src="@/../../public/images/404.png" alt="">
                 
                 
                 <!-- Etiqueta 404 -->

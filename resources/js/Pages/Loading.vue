@@ -46,7 +46,7 @@ onMounted(() => {
                      <!-- <img src="/images/sun-icon.png" alt="Sol" class="w-12 h-12 object-contain" /> -->
                      
                      <!-- Placeholder SVG de un sol estilizado -->
-                    <img src="@/../../public/images/isologo-suns-power-mx.png" class="w-full h-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=Solar+ERP&background=0D8ABC&color=fff&rounded=true&font-size=0.4'" alt="Logo" />
+                    <img src="@/../../public/images/isologo-suns-power-mx.png" draggable="false" class="w-full h-full object-cover" onerror="this.src='https://ui-avatars.com/api/?name=Solar+ERP&background=0D8ABC&color=fff&rounded=true&font-size=0.4'" alt="Logo" />
                 </div>
             </div>
 

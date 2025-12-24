@@ -6,13 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 
 class Supplier extends Model
 {
-    // Directorio global de proveedores
     protected $fillable = [
+        'branch_id', // campo para multi-tenancy
         'company_name',
         'contact_name',
         'email',
         'phone',
     ];
+
+    /**
+     * Relación: Un proveedor pertenece a una sucursal.
+     */
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
 
     public function purchaseOrders()
     {
