@@ -242,9 +242,9 @@ const rowProps = (row) => {
                             :on-update:page="handlePageChange"
                         />
                     </div>
-                    <div v-else class="p-10 flex justify-center">
+                    <!-- <div v-else class="p-10 flex justify-center">
                         <n-empty description="No se encontraron proveedores" />
-                    </div>
+                    </div> -->
                 </div>
 
                 <!-- CARDS (Móvil) -->

@@ -25,6 +25,7 @@ const availableProducts = ref([]); // Se llenará asíncronamente
 const isLoadingProducts = ref(false);
 const showEditorModal = ref(false); // Controla la visibilidad del componente de edición
 const productsLoaded = ref(false); // Flag para no recargar si ya se cargaron
+const isEditing = ref(false); // Flag para saber si estamos editando o agregando
 
 // Filtros y formularios
 const searchQuery = ref('');
@@ -82,7 +83,9 @@ const filteredAvailable = computed(() => {
 
 // --- ACCIONES DE ASIGNACIÓN ---
 
+// Abre modal para AGREGAR uno nuevo de la lista de disponibles
 const openConfigModal = (product) => {
+    isEditing.value = false;
     selectedProduct.value = product;
     assignForm.product_id = product.id;
     assignForm.purchase_price = product.purchase_price || 0; 
@@ -92,19 +95,43 @@ const openConfigModal = (product) => {
     showConfigModal.value = true;
 };
 
+// Abre modal para EDITAR uno ya asignado
+const openEditModal = (product) => {
+    isEditing.value = true;
+    selectedProduct.value = product;
+    assignForm.product_id = product.id;
+    // Precargamos los datos pivot existentes
+    assignForm.purchase_price = parseFloat(product.purchase_price); 
+    assignForm.supplier_sku = product.supplier_sku;
+    assignForm.currency = product.currency;
+    assignForm.delivery_days = product.delivery_days;
+    showConfigModal.value = true;
+};
+
 const submitAssignment = () => {
     assignForm.post(route('suppliers.products.assign', props.supplier.id), {
         preserveScroll: true,
+        // IMPORTANTE: preserveState mantiene el modal grande abierto tras la recarga de Inertia
+        preserveState: true, 
         onSuccess: () => {
             showConfigModal.value = false;
+            
+            const message = isEditing.value 
+                ? `Datos de ${selectedProduct.value.name} actualizados.`
+                : `Se agregó ${selectedProduct.value.name} correctamente.`;
+
             notification.success({
-                title: 'Producto Agregado',
-                content: `Se agregó ${selectedProduct.value.name} correctamente.`,
+                title: isEditing.value ? 'Producto Actualizado' : 'Producto Agregado',
+                content: message,
                 duration: 2500
             });
             
-            // Actualizar localmente la lista disponible (quitar el asignado)
-            availableProducts.value = availableProducts.value.filter(p => p.id !== selectedProduct.value.id);
+            if (!isEditing.value) {
+                // Si estamos agregando, lo quitamos de la lista local de disponibles
+                availableProducts.value = availableProducts.value.filter(p => p.id !== selectedProduct.value.id);
+            }
+            // Nota: Si es edición, 'assigned_products' (prop) se actualiza automáticamente 
+            // gracias a que Inertia recarga los props con la respuesta del servidor.
             
             selectedProduct.value = null;
             assignForm.reset();
@@ -124,10 +151,11 @@ const detachProduct = (product) => {
         onPositiveClick: () => {
             router.delete(route('suppliers.products.detach', { supplier: props.supplier.id, product: product.id }), {
                 preserveScroll: true,
+                preserveState: true, // Mantiene el modal abierto
                 onSuccess: () => {
                     notification.success({ title: 'Desvinculado', content: 'Producto removido.' });
                     // Opcional: Si quieres que vuelva a aparecer en disponibles, tendrías que recargar o agregarlo manualmente al array
-                    // Por simplicidad, seteamos productsLoaded = false para forzar recarga si vuelve a abrir el editor
+                    // Por simplicidad, seteamos productsLoaded = false para forzar recarga si vuelve a abrir el editor en el futuro
                     productsLoaded.value = false; 
                 }
             });
@@ -336,7 +364,7 @@ const formatCurrency = (amount, currency) => {
                                     </div>
                                 </div>
 
-                                <!-- COLUMNA DERECHA: ASIGNADOS (Read-Only en el editor, con opción de quitar) -->
+                                <!-- COLUMNA DERECHA: ASIGNADOS -->
                                 <div class="bg-blue-50/30 rounded-2xl border border-blue-100 flex flex-col overflow-hidden h-full">
                                     <div class="p-4 bg-white/50 border-b border-blue-100">
                                         <h4 class="font-bold text-blue-800 text-sm mb-2 flex justify-between">
@@ -360,9 +388,15 @@ const formatCurrency = (amount, currency) => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <n-button circle size="tiny" type="error" quaternary @click="detachProduct(product)">
-                                                <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                            </n-button>
+                                            <!-- Botones de Acción: Editar y Eliminar -->
+                                            <div class="flex items-center gap-1">
+                                                <n-button circle size="tiny" type="info" secondary @click="openEditModal(product)">
+                                                    <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                                </n-button>
+                                                <n-button circle size="tiny" type="error" quaternary @click="detachProduct(product)">
+                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                </n-button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -378,7 +412,7 @@ const formatCurrency = (amount, currency) => {
 
                 <!-- MODAL PEQUEÑO: CONFIGURACIÓN DE PIVOTE -->
                 <n-modal v-model:show="showConfigModal">
-                    <n-card style="width: 400px" title="Configurar Producto" :bordered="false" size="huge" role="dialog" aria-modal="true">
+                    <n-card style="width: 400px" :title="isEditing ? 'Actualizar Producto' : 'Agregar Producto'" :bordered="false" size="huge" role="dialog" aria-modal="true">
                         <n-form :model="assignForm" label-placement="top" class="p-3">
                             <n-form-item label="Precio de Compra" required>
                                 <n-input-number v-model:value="assignForm.purchase_price" :min="0" :precision="2" class="w-full">
@@ -394,7 +428,9 @@ const formatCurrency = (amount, currency) => {
                             
                             <div class="flex justify-end gap-2 mt-4">
                                 <n-button @click="showConfigModal = false">Cancelar</n-button>
-                                <n-button type="primary" @click="submitAssignment" :loading="assignForm.processing">Agregar</n-button>
+                                <n-button type="primary" @click="submitAssignment" :loading="assignForm.processing">
+                                    {{ isEditing ? 'Actualizar' : 'Agregar' }}
+                                </n-button>
                             </div>
                         </n-form>
                     </n-card>
