@@ -72,6 +72,15 @@ Route::resource('ordenes-compras', PurchaseOrderController::class)->names('purch
 // ---------------------------- Rutas de proveedores --------------------------------
 Route::resource('proveedores', SupplierController::class)->names('suppliers')
     ->parameters(['proveedores' => 'supplier'])->middleware('auth');
+    // --- RUTA PARA CARGA ASÍNCRONA DE PRODUCTOS EN SHOW ---
+Route::get('/proveedores/{supplier}/fetch-available', [SupplierController::class, 'fetchAvailableProducts'])
+    ->name('suppliers.products.fetch');
+// Rutas Específicas para la asignación de productos (UI Show)
+Route::post('/proveedores/{supplier}/products', [SupplierController::class, 'assignProduct'])
+    ->name('suppliers.products.assign');
+
+Route::delete('/proveedores/{supplier}/products/{product}', [SupplierController::class, 'detachProduct'])
+    ->name('suppliers.products.detach');
 
 
 // ---------------------------- Rutas de Clientes --------------------------------
