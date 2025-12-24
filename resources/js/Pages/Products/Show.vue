@@ -1,13 +1,15 @@
 <script>
-import { defineComponent, h } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { defineComponent, h, ref } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin
+    NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
+    NTimeline, NTimelineItem, NCollapse, NCollapseItem, NModal, NForm, NFormItem, NInput, NInputNumber, createDiscreteApi
 } from 'naive-ui';
 import { 
-    ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline
+    ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
+    TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline
 } from '@vicons/ionicons5';
 
 export default defineComponent({
@@ -15,13 +17,75 @@ export default defineComponent({
     components: {
         AppLayout, Head, Link,
         NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
-        ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline
+        NTimeline, NTimelineItem, NCollapse, NCollapseItem, NModal, NForm, NFormItem, NInput, NInputNumber,
+        ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
+        TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline
     },
     props: {
         product: {
             type: Object,
             required: true
+        },
+        stock_history: {
+            type: Array,
+            default: () => []
         }
+    },
+    setup(props) {
+        // Lógica de Notificaciones de Naive UI
+        const { notification } = createDiscreteApi(['notification']);
+
+        // --- Lógica del Modal de Ajuste ---
+        const showAdjustmentModal = ref(false);
+        const adjustmentFormRef = ref(null);
+        
+        // Formulario solo para el ajuste
+        const adjustmentForm = useForm({
+            current_stock: props.product.stock, 
+            adjustment_note: '', 
+        });
+
+        const adjustmentRules = {
+            current_stock: { required: true, type: 'number', message: 'Ingresa la cantidad real', trigger: 'blur' },
+            adjustment_note: { required: true, message: 'La nota es obligatoria para auditoría', trigger: 'blur' }
+        };
+
+        const openAdjustmentModal = () => {
+            adjustmentForm.current_stock = props.product.stock;
+            adjustmentForm.adjustment_note = '';
+            showAdjustmentModal.value = true;
+        };
+
+        const submitAdjustment = () => {
+            adjustmentFormRef.value?.validate((errors) => {
+                if (!errors) {
+                    // CAMBIO: Ahora apuntamos a la ruta específica de ajuste
+                    adjustmentForm.post(route('products.adjust_stock', props.product.id), {
+                        preserveScroll: true,
+                        onSuccess: () => {
+                            showAdjustmentModal.value = false;
+                            notification.success({
+                                title: 'Inventario Ajustado',
+                                content: 'El stock se ha actualizado y registrado en el historial.',
+                                duration: 3000
+                            });
+                        },
+                        onError: () => {
+                            notification.error({ title: 'Error', content: 'No se pudo procesar el ajuste.' });
+                        }
+                    });
+                }
+            });
+        };
+
+        return {
+            showAdjustmentModal,
+            adjustmentForm,
+            adjustmentRules,
+            adjustmentFormRef,
+            openAdjustmentModal,
+            submitAdjustment
+        };
     },
     data() {
         return {
@@ -45,17 +109,11 @@ export default defineComponent({
     },
     methods: {
         goBack() {
-            // Navegar hacia atrás conservando estado si es posible
-            // if (window.history.length > 1) {
-            //     window.history.back();
-            // } else {
-                router.visit(route('products.index'));
-            // }
+            router.visit(route('products.index'));
         },
         goToEdit() {
             router.visit(route('products.edit', this.product.id));
         },
-        // --- Lógica del Buscador ---
         async handleSearch(query) {
             if (!query) {
                 this.searchOptions = [];
@@ -63,7 +121,6 @@ export default defineComponent({
             }
             this.loadingSearch = true;
             try {
-                // Asegúrate de tener la ruta 'products.search' definida en web.php
                 const response = await axios.get(route('products.search'), { params: { query } });
                 this.searchOptions = response.data;
             } catch (error) {
@@ -73,37 +130,34 @@ export default defineComponent({
             }
         },
         handleSelectProduct(id) {
-            // Navegar al nuevo producto
             router.visit(route('products.show', id));
         },
-        // Renderizado personalizado para las opciones del Select (Imagen + Texto)
         renderProductOption(option) {
-            // Protección contra renders vacíos
             if (!option) return null;
-            
-            // Aseguramos que la URL sea válida o undefined para activar el fallback correctamente
             const imageUrl = option.image_url && option.image_url.length > 0 ? option.image_url : undefined;
 
             return h('div', { class: 'flex items-center gap-3 p-1' }, [
-                // Imagen
                 h(NAvatar, {
                     src: imageUrl,
                     shape: 'square',
                     size: 40,
-                    // Agregamos block y dimensiones fijas por si acaso
                     class: 'flex-shrink-0 bg-gray-100 rounded-lg border border-gray-100 block',
                     style: { width: '40px', height: '40px' }, 
                     objectFit: 'cover',
-                    fallbackSrc: '' // Truco para forzar el slot default si falla
+                    fallbackSrc: ''
                 }, { 
                     default: () => h(NIcon, { class: 'text-gray-300' }, { default: () => h(CubeOutline) }) 
                 }),
-                // Textos
                 h('div', { class: 'flex flex-col text-left' }, [
                     h('span', { class: 'font-semibold text-gray-800 text-sm leading-tight' }, option.name),
                     h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, option.sku)
                 ])
             ]);
+        },
+        getTimelineType(type) {
+            if (type === 'Entrada') return 'success';
+            if (type === 'Salida') return 'error';
+            return 'info';
         }
     }
 });
@@ -111,10 +165,10 @@ export default defineComponent({
 
 <template>
     <AppLayout :title="product.name">
-        <div class="py-8 min-h-screen bg-gray-50/50">
+        <div class="py-8 min-h-screen">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
                 
-                <!-- Header de Navegación y Búsqueda -->
+                <!-- Header de Navegación -->
                 <div class="mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
                     <n-button text @click="goBack" class="hover:text-gray-900 text-gray-500 transition-colors self-start md:self-auto">
                         <template #icon>
@@ -123,7 +177,6 @@ export default defineComponent({
                         Volver
                     </n-button>
                     
-                    <!-- Buscador Rápido -->
                     <div class="w-full md:w-96">
                         <n-select
                             v-model:value="searchQuery"
@@ -148,40 +201,67 @@ export default defineComponent({
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                     
-                    <!-- Columna Izquierda: Imagen -->
-                    <div class="md:col-span-1">
-                        <div class="sticky top-24">
-                            <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
-                                <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
-                                    <img 
-                                        v-if="product.image_url" 
-                                        :src="product.image_url" 
-                                        class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                        alt="Producto"
-                                    />
-                                    <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                                        <n-icon size="64"><CubeOutline /></n-icon>
-                                        <span class="text-sm mt-2 font-medium">Sin imagen</span>
-                                    </div>
-                                    
-                                    <!-- Badge de Stock en Imagen -->
-                                    <div class="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold shadow-sm backdrop-blur-md"
-                                         :class="stockStatus.color">
-                                        {{ stockStatus.text }}
+                    <!-- Columna Izquierda: Imagen y Stock -->
+                    <div class="md:col-span-1 space-y-6">
+                        <!-- Imagen -->
+                        <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
+                            <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
+                                <img 
+                                    v-if="product.image_url" 
+                                    :src="product.image_url" 
+                                    class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    alt="Producto"
+                                />
+                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                    <n-icon size="64"><CubeOutline /></n-icon>
+                                    <span class="text-sm mt-2 font-medium">Sin imagen</span>
+                                </div>
+                                <div class="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold shadow-sm backdrop-blur-md"
+                                     :class="stockStatus.color">
+                                    {{ stockStatus.text }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tarjeta de Inventario (Sucursal) -->
+                        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                                    <n-icon class="text-indigo-500"><LocationOutline /></n-icon>
+                                    Inventario
+                                </h3>
+                                <!-- Botón Ajuste Rápido -->
+                                <n-button size="small" secondary circle type="info" @click="openAdjustmentModal">
+                                    <template #icon><n-icon><ClipboardOutline /></n-icon></template>
+                                </n-button>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
+                                    <span class="text-xs text-gray-400 font-semibold uppercase">Actual</span>
+                                    <div class="text-2xl font-bold text-gray-800">{{ product.stock }}</div>
+                                </div>
+                                <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
+                                    <span class="text-xs text-gray-400 font-semibold uppercase">Mínimo permitido</span>
+                                    <div class="text-lg font-bold text-gray-600">{{ product.min_stock }}</div>
+                                </div>
+                                <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                                    <span class="text-xs text-gray-400 font-semibold uppercase block mb-1">Ubicación</span>
+                                    <div class="text-sm font-medium text-gray-800 truncate" :title="product.location">
+                                        {{ product.location }}
                                     </div>
                                 </div>
                             </div>
-                            <!-- Botón editar móvil -->
                             <n-button type="warning" block secondary class="mt-4" @click="goToEdit">
                                 Editar Producto
                             </n-button>
                         </div>
                     </div>
 
-                    <!-- Columna Derecha: Información -->
+                    <!-- Columna Derecha: Información e Historial -->
                     <div class="md:col-span-2 space-y-6">
                         
-                        <!-- Tarjeta Principal -->
+                        <!-- Tarjeta Info Principal -->
                         <div class="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100">
                             <div class="flex flex-col gap-1 mb-4">
                                 <div class="flex items-center gap-2">
@@ -218,58 +298,122 @@ export default defineComponent({
                             </div>
                         </div>
 
-                        <!-- Tarjeta de Inventario (Sucursal) -->
-                        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
-                            <div class="absolute top-0 right-0 p-4 opacity-5">
-                                <n-icon size="120"><CubeOutline /></n-icon>
-                            </div>
-                            
-                            <h3 class="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                                <n-icon class="text-indigo-500"><LocationOutline /></n-icon>
-                                Disponibilidad en Sucursal
+                        <!-- Sección de Historial de Movimientos -->
+                        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-xl text-gray-800 mb-6 flex items-center gap-2">
+                                <n-icon class="text-orange-500"><SwapHorizontalOutline /></n-icon>
+                                Historial de Movimientos
                             </h3>
 
-                            <n-grid x-gap="12" :cols="2">
-                                <n-gi>
-                                    <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                                        <span class="text-xs text-gray-400 font-semibold uppercase tracking-wider">Stock Actual</span>
-                                        <div class="text-2xl font-bold text-gray-800 mt-1">
-                                            {{ product.stock }} <span class="text-sm font-normal text-gray-400">unidades</span>
-                                        </div>
-                                    </div>
-                                </n-gi>
-                                <n-gi>
-                                    <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                                        <span class="text-xs text-gray-400 font-semibold uppercase tracking-wider">Ubicación</span>
-                                        <div class="text-lg font-bold text-gray-800 mt-1 truncate" :title="product.location">
-                                            {{ product.location }}
-                                        </div>
-                                    </div>
-                                </n-gi>
-                            </n-grid>
-
-                            <div v-if="product.stock <= product.min_stock" class="mt-4 flex items-start gap-3 bg-amber-50 p-3 rounded-xl text-amber-700 text-sm">
-                                <n-icon class="mt-0.5"><AlertCircleOutline /></n-icon>
-                                <span>
-                                    <strong>Stock Bajo:</strong> Quedan pocas unidades en esta sucursal. Considera realizar un resurtido pronto.
-                                </span>
+                            <div v-if="stock_history.length === 0" class="text-center py-8 text-gray-400">
+                                <n-icon size="40" class="mb-2 opacity-50"><TimeOutline /></n-icon>
+                                <p>No hay movimientos registrados en esta sucursal.</p>
                             </div>
+
+                            <!-- Historial Agrupado -->
+                            <n-collapse v-else display-directive="show" class="max-h-96 overflow-auto" :default-expanded-names="[stock_history[0].group_label]">
+                                <n-collapse-item 
+                                    v-for="(group, index) in stock_history" 
+                                    :key="index" 
+                                    :title="group.group_label" 
+                                    :name="group.group_label"
+                                >
+                                    <n-timeline>
+                                        <n-timeline-item
+                                            v-for="movement in group.movements"
+                                            :key="movement.id"
+                                            :type="getTimelineType(movement.type)"
+                                            :title="movement.reference_text"
+                                            :time="movement.date"
+                                        >
+                                            <div class="flex flex-col gap-1 text-sm">
+                                                <div class="flex items-center gap-2 font-medium">
+                                                    <span :class="{
+                                                        'text-green-600': movement.type === 'Entrada',
+                                                        'text-red-600': movement.type === 'Salida',
+                                                        'text-blue-600': movement.type === 'Ajuste'
+                                                    }">
+                                                        {{ movement.type === 'Entrada' ? '+' : (movement.type === 'Salida' ? '-' : '') }}{{ movement.quantity }} uni.
+                                                    </span>
+                                                    <span class="text-gray-400 font-normal">&rarr; Stock final: {{ movement.stock_after }} uni.</span>
+                                                </div>
+                                                <div class="text-gray-500 text-xs">
+                                                    Por: {{ movement.user_name }}
+                                                </div>
+                                                <div v-if="movement.notes" class="text-gray-400 text-xs italic bg-gray-50 p-1 rounded mt-1">
+                                                    "{{ movement.notes }}"
+                                                </div>
+                                            </div>
+                                        </n-timeline-item>
+                                    </n-timeline>
+                                </n-collapse-item>
+                            </n-collapse>
                         </div>
 
                     </div>
                 </div>
 
+                <!-- Modal de Ajuste de Inventario -->
+                <n-modal v-model:show="showAdjustmentModal">
+                    <n-card
+                        style="width: 500px"
+                        title="Ajuste Rápido de Inventario"
+                        :bordered="false"
+                        size="huge"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <template #header-extra>
+                            <n-icon size="24" class="text-indigo-500"><ClipboardOutline /></n-icon>
+                        </template>
+                        
+                        <p class="text-gray-500 text-sm mb-6">
+                            Estás por realizar un ajuste manual al inventario físico de esta sucursal. 
+                            Esta acción quedará registrada en el historial.
+                        </p>
+
+                        <n-form
+                            ref="adjustmentFormRef"
+                            :model="adjustmentForm"
+                            :rules="adjustmentRules"
+                        >
+                            <n-form-item label="Nuevo Stock Real (Físico)" path="current_stock">
+                                <n-input-number 
+                                    v-model:value="adjustmentForm.current_stock" 
+                                    :min="0"
+                                    class="w-full text-center font-bold"
+                                    size="large"
+                                />
+                            </n-form-item>
+
+                            <n-form-item label="Motivo del Ajuste (Nota)" path="adjustment_note">
+                                <n-input 
+                                    v-model:value="adjustmentForm.adjustment_note" 
+                                    type="textarea" 
+                                    placeholder="Ej. Conteo cíclico, merma por daño, regalo a cliente..."
+                                    :rows="3"
+                                />
+                            </n-form-item>
+                        </n-form>
+
+                        <template #footer>
+                            <div class="flex justify-end gap-3">
+                                <n-button @click="showAdjustmentModal = false" :disabled="adjustmentForm.processing">
+                                    Cancelar
+                                </n-button>
+                                <n-button 
+                                    type="primary" 
+                                    @click="submitAdjustment" 
+                                    :loading="adjustmentForm.processing"
+                                >
+                                    Guardar Ajuste
+                                </n-button>
+                            </div>
+                        </template>
+                    </n-card>
+                </n-modal>
+
             </div>
         </div>
     </AppLayout>
 </template>
-
-<style scoped>
-/* Transiciones suaves similares a iOS */
-.n-card, .bg-white {
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-:deep(.n-base-selection) {
-    border-radius: 12px; /* Redondear select */
-}
-</style>

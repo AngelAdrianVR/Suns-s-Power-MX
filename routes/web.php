@@ -54,6 +54,7 @@ Route::middleware([
 
 // ---------------------------- Rutas de productos --------------------------------
 Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
+Route::post('/products/{product}/adjust-stock', [ProductController::class, 'adjustStock'])->name('products.adjust_stock');
 Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 

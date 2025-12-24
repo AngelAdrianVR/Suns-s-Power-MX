@@ -6,7 +6,7 @@ import {
     NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi 
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, LocationOutline
+    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, LocationOutline, AlertCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -28,7 +28,8 @@ const form = useForm({
     purchase_price: 0,
     sale_price: 0,
     initial_stock: 0,
-    location: '', // Valor por defecto
+    min_stock_alert: 5, // Nuevo campo por defecto
+    location: '', 
     description: '',
     image: null,
 });
@@ -228,7 +229,7 @@ const submit = () => {
                                     </span>
                                 </template>
                                 
-                                <p class="text-xs text-indigo-600 mb-4">
+                                <p class="text-xs text-indigo-600 mb-2">
                                     Este stock se asignará a tu sucursal actual.
                                 </p>
 
@@ -247,6 +248,27 @@ const submit = () => {
                                                 button-placement="both"
                                                 class="w-full text-center"
                                             />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <!-- NUEVO CAMPO: Alerta de Stock Mínimo -->
+                                    <n-grid-item>
+                                        <n-form-item 
+                                            label="Alerta de Stock Mínimo" 
+                                            path="min_stock_alert"
+                                            :validation-status="form.errors.min_stock_alert ? 'error' : undefined"
+                                            :feedback="form.errors.min_stock_alert"
+                                        >
+                                            <n-input-number 
+                                                v-model:value="form.min_stock_alert" 
+                                                :min="1"
+                                                :precision="0"
+                                                placeholder="Ej. 5"
+                                            >
+                                                <template #prefix>
+                                                    <n-icon :component="AlertCircleOutline" />
+                                                </template>
+                                            </n-input-number>
                                         </n-form-item>
                                     </n-grid-item>
                                     

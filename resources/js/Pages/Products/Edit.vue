@@ -6,7 +6,7 @@ import {
     NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi, NAvatar 
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, CloudUploadOutline, LocationOutline
+    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, CloudUploadOutline, LocationOutline, AlertCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -30,7 +30,8 @@ const form = useForm({
     purchase_price: Number(props.product.purchase_price),
     sale_price: Number(props.product.sale_price),
     current_stock: Number(props.product.current_stock),
-    location: props.product.location, // Cargamos la ubicación actual
+    min_stock_alert: Number(props.product.min_stock_alert ?? 5), // Cargamos el valor o default 5
+    location: props.product.location, 
     description: props.product.description,
     image: null,
 });
@@ -40,7 +41,8 @@ const rules = {
     sku: { required: true, message: 'El SKU es obligatorio', trigger: 'blur' },
     category_id: { required: true, type: 'number', message: 'Selecciona una categoría', trigger: ['blur', 'change'] },
     sale_price: { required: true, type: 'number', message: 'Define un precio de venta', trigger: 'blur' },
-    current_stock: { required: true, type: 'number', message: 'Ingresa el stock actual', trigger: 'blur' }
+    current_stock: { required: true, type: 'number', message: 'Ingresa el stock actual', trigger: 'blur' },
+    min_stock_alert: { required: true, type: 'number', message: 'Define el mínimo para alertas', trigger: 'blur' }
 };
 
 const handleUploadChange = (data) => {
@@ -247,6 +249,27 @@ const submit = () => {
                                                 button-placement="both"
                                                 class="w-full text-center"
                                             />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <!-- Agregado: Alerta de Stock Mínimo -->
+                                    <n-grid-item>
+                                        <n-form-item 
+                                            label="Alerta de Stock Mínimo" 
+                                            path="min_stock_alert"
+                                            :validation-status="form.errors.min_stock_alert ? 'error' : undefined"
+                                            :feedback="form.errors.min_stock_alert"
+                                        >
+                                            <n-input-number 
+                                                v-model:value="form.min_stock_alert" 
+                                                :min="1"
+                                                :precision="0"
+                                                placeholder="Ej. 5"
+                                            >
+                                                <template #prefix>
+                                                    <n-icon :component="AlertCircleOutline" />
+                                                </template>
+                                            </n-input-number>
                                         </n-form-item>
                                     </n-grid-item>
 

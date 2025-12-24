@@ -116,14 +116,26 @@ const createColumns = () => [
     {
         title: 'Stock',
         key: 'stock',
-        width: 120,
+        width: 140, // Aumenté un poco el ancho para el ícono
         render(row) {
             let type = 'success';
-            if (row.stock <= 0) type = 'error';
-            else if (row.stock <= row.min_stock) type = 'warning';
+            let showIcon = false;
 
+            if (row.stock <= 0) {
+                type = 'error';
+                showIcon = true;
+            } 
+            else if (row.stock <= row.min_stock) {
+                type = 'warning';
+                showIcon = true;
+            }
+
+            // Renderizamos un Tag que contiene opcionalmente el ícono
             return h(NTag, { type: type, size: 'small', bordered: false, round: true }, { 
-                default: () => `${row.stock} uni.` 
+                default: () => h('div', { class: 'flex items-center gap-1' }, [
+                    showIcon ? h(NIcon, { component: AlertCircleOutline, class: 'text-xs' }) : null,
+                    h('span', `${row.stock} uni.`)
+                ])
             });
         }
     },
@@ -300,22 +312,31 @@ const rowProps = (row) => {
                         <!-- Info -->
                         <div class="flex-grow min-w-0">
                             <div class="flex justify-between items-start">
-                                <div>
-                                    <h3 class="text-lg font-bold text-gray-800 leading-tight truncate pr-6">{{ product.name }}</h3>
+                                <!-- Nombre del producto: eliminada clase 'truncate', agregada 'break-words' y pr-20 para espacio de botones -->
+                                <div class="pr-20"> 
+                                    <h3 class="text-lg font-bold text-gray-800 leading-tight break-words">{{ product.name }}</h3>
                                     <p class="text-xs text-gray-400 font-mono mt-0.5">{{ product.sku }}</p>
                                 </div>
+                                
+                                <!-- Botones de Acción (Móvil): Editar y Eliminar -->
                                 <div class="flex gap-1 absolute top-4 right-4 md:static">
                                     <button 
                                         @click.stop="goToEdit(product.id)"
-                                        class="text-amber-500 hover:bg-amber-50 p-1.5 rounded-full transition"
+                                        class="text-amber-500 hover:bg-amber-50 p-2 rounded-full transition"
                                     >
                                         <n-icon size="20"><CreateOutline /></n-icon>
+                                    </button>
+                                    <button 
+                                        @click.stop="confirmDelete(product)"
+                                        class="text-red-500 hover:bg-red-50 p-2 rounded-full transition"
+                                    >
+                                        <n-icon size="20"><TrashOutline /></n-icon>
                                     </button>
                                 </div>
                             </div>
                             
                             <!-- Datos de Stock y Ubicación (Mobile) -->
-                            <div class="mt-3 flex items-center gap-3">
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
                                 <div class="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-xs text-gray-600">
                                     <n-icon :component="LocationOutline" class="text-blue-500"/>
                                     <span class="truncate max-w-[80px]">{{ product.location || 'N/A' }}</span>

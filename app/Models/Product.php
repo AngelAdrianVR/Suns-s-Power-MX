@@ -41,6 +41,14 @@ class Product extends Model implements HasMedia
                     ->withTimestamps();
     }
 
+    /**
+     * Historial de movimientos de inventario
+     */
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
     public function purchaseOrderItems(): HasMany
     {
         return $this->hasMany(PurchaseOrderItem::class);

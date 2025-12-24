@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\InventoryService; // Importar el servicio
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class ProductController extends Controller
 {
@@ -82,6 +84,7 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'image' => 'nullable|image|max:5120',
             'initial_stock' => 'nullable|integer|min:0',
+            'min_stock_alert' => 'nullable|integer|min:0', // Validamos el nuevo campo
             'location' => 'nullable|string|max:255', 
         ]);
 
@@ -100,28 +103,40 @@ class ProductController extends Controller
 
         // Gestión de Stock Inicial y Ubicación
         $initialStock = $request->input('initial_stock', 0);
+        $minStock = $request->input('min_stock_alert', 5);
         $location = $request->input('location', 'Recepción'); 
         
-        // MODIFICADO: Usamos la sesión actual
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
         if ($branchId) {
+            // 1. Crear la relación inicial en la tabla pivote con stock 0
+            // Usamos attach con 0 porque InventoryService se encargará de sumar (y crear historial)
             $product->branches()->attach($branchId, [
-                'current_stock' => $initialStock,
-                'min_stock_alert' => 5, // Default
+                'current_stock' => 0, 
+                'min_stock_alert' => $minStock,
                 'location_in_warehouse' => $location
             ]);
+
+            // 2. Si hay stock inicial, usar el Servicio para registrar el movimiento
+            if ($initialStock > 0) {
+                InventoryService::addStock(
+                    product: $product,
+                    branchId: $branchId,
+                    quantity: $initialStock,
+                    reason: 'initial_inventory',
+                    notes: 'Inventario inicial al crear producto'
+                );
+            }
         }
 
         return redirect()->route('products.index')->with('success', 'Producto creado exitosamente.');
     }
 
     /**
-     * Muestra el detalle del producto.
+     * Muestra el detalle del producto con historial.
      */
     public function show(Product $product)
     {
-        // MODIFICADO: Contexto dinámico
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         // Cargar relaciones necesarias
@@ -130,6 +145,37 @@ class ProductController extends Controller
         }]);
 
         $branchData = $product->branches->first()?->pivot;
+
+        // --- LOGICA DE HISTORIAL ---
+        $movements = $product->stockMovements()
+            ->where('branch_id', $branchId)
+            ->with(['user:id,name', 'reference']) // Eager loading
+            ->latest()
+            ->get()
+            ->groupBy(function ($movement) {
+                return $movement->created_at->format('Y-m');
+            });
+
+        // Formatear para el timeline
+        $history = $movements->map(function ($items, $key) {
+            $dateObj = Carbon::createFromFormat('Y-m', $key);
+            
+            return [
+                'group_label' => ucfirst($dateObj->translatedFormat('F Y')), 
+                'movements' => $items->map(function($m) {
+                    return [
+                        'id' => $m->id,
+                        'date' => $m->created_at->format('d/m/Y H:i'),
+                        'type' => $m->type, // 'entry', 'exit', 'adjustment'
+                        'quantity' => $m->quantity,
+                        'stock_after' => $m->stock_after,
+                        'user_name' => $m->user?->name ?? 'Sistema',
+                        'notes' => $m->notes,
+                        'reference_text' => $this->getReferenceLabel($m->reference), 
+                    ];
+                })
+            ];
+        })->values();
 
         return Inertia::render('Products/Show', [
             'product' => [
@@ -141,22 +187,31 @@ class ProductController extends Controller
                 'purchase_price' => $product->purchase_price, 
                 'category' => $product->category ? $product->category->name : 'Sin Categoría',
                 'image_url' => $product->getFirstMediaUrl('product_images'),
-                // Datos de sucursal
                 'stock' => $branchData ? $branchData->current_stock : 0,
                 'location' => $branchData ? $branchData->location_in_warehouse : 'No asignado',
                 'min_stock' => $branchData ? $branchData->min_stock_alert : 1,
-            ]
+            ],
+            'stock_history' => $history // Pasamos el historial a la vista
         ]);
+    }
+
+    // Helper privado
+    private function getReferenceLabel($reference)
+    {
+        if (!$reference) return 'Ajuste Manual';
+        return match (class_basename($reference)) {
+            'PurchaseOrder' => 'Orden Compra #' . $reference->id,
+            'ServiceOrder' => 'Instalación #' . $reference->id,
+            'Ticket' => 'Ticket #' . $reference->id,
+            default => class_basename($reference) . ' #' . $reference->id,
+        };
     }
 
     public function edit(Product $product)
     {
-        // MODIFICADO: Contexto dinámico
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        
         $categories = Category::select('id', 'name')->orderBy('name')->get();
 
-        // Cargar media y datos de la sucursal actual
         $product->load(['media', 'branches' => function ($q) use ($branchId) {
             $q->where('branches.id', $branchId);
         }]);
@@ -173,20 +228,17 @@ class ProductController extends Controller
                 'purchase_price' => $product->purchase_price,
                 'sale_price' => $product->sale_price,
                 'image_url' => $product->getFirstMediaUrl('product_images'),
-                // Stock y ubicación actual en la sucursal del usuario
                 'current_stock' => $branchData ? $branchData->current_stock : 0,
                 'location' => $branchData ? $branchData->location_in_warehouse : '',
+                'min_stock_alert' => $branchData ? $branchData->min_stock_alert : 5, // Agregado también en edit para consistencia
             ],
             'categories' => $categories
         ]);
     }
 
-    /**
-     * Actualiza el producto en la base de datos.
-     */
     public function update(Request $request, Product $product)
     {
-        // Validación
+        // ... (Validaciones existentes)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:100|unique:products,sku,' . $product->id,
@@ -195,11 +247,12 @@ class ProductController extends Controller
             'sale_price' => 'required|numeric|min:0',
             'description' => 'nullable|string',
             'image' => 'nullable|image|max:5120',
+            // Ojo: Si permites editar stock aquí directamente, considera usar InventoryService::adjustStock
+            // Por simplicidad en este update, mantenemos la lógica básica pero agregamos min_stock
             'current_stock' => 'nullable|integer|min:0',
             'location' => 'nullable|string|max:255',
         ]);
 
-        // Actualizar datos básicos
         $product->update([
             'name' => $validated['name'],
             'sku' => $validated['sku'],
@@ -209,23 +262,21 @@ class ProductController extends Controller
             'description' => $validated['description'],
         ]);
 
-        // Gestionar imagen
         if ($request->hasFile('image')) {
             $product->clearMediaCollection('product_images');
             $product->addMediaFromRequest('image')->toMediaCollection('product_images');
         }
 
-        // Actualizar stock y ubicación de la sucursal actual
-        $newStock = $request->input('current_stock');
-        $location = $request->input('location');
-        
-        // MODIFICADO: Contexto dinámico
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
         if ($branchId) {
-            // Preparamos los datos a sincronizar
-            $pivotData = [];
+            $newStock = $request->input('current_stock');
+            $location = $request->input('location');
             
+            // Nota: Idealmente, usarías InventoryService::adjustStock($product, $branchId, $newStock, 'Ajuste manual desde edición')
+            // para que quede registro.
+            
+            $pivotData = [];
             if (!is_null($newStock)) $pivotData['current_stock'] = $newStock;
             if (!is_null($location)) $pivotData['location_in_warehouse'] = $location;
 
@@ -239,15 +290,13 @@ class ProductController extends Controller
         return redirect()->route('products.index')->with('success', 'Producto actualizado correctamente.');
     }
 
+    // ... (Métodos destroy y search se mantienen igual)
     public function destroy(Product $product)
     {
         $product->delete();
         return redirect()->back()->with('success', 'Producto eliminado.');
     }
 
-    /**
-     * API para buscar productos (Dropdown en Show).
-     */
     public function search(Request $request)
     {
         $query = $request->input('query');
@@ -256,7 +305,6 @@ class ProductController extends Controller
             return response()->json([]);
         }
 
-        // Buscamos por nombre o SKU
         $products = Product::where('name', 'like', "%{$query}%")
             ->orWhere('sku', 'like', "%{$query}%")
             ->limit(10)
@@ -272,5 +320,34 @@ class ProductController extends Controller
             });
 
         return response()->json($products);
+    }
+
+    /**
+     * MÉTODO DEDICADO: Ajuste de Inventario Rápido
+     * Resuelve el conflicto de validación al no requerir datos del producto (nombre, sku).
+     */
+    public function adjustStock(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'current_stock' => 'required|numeric|min:0',
+            'adjustment_note' => 'required|string|max:500', // Nota obligatoria para auditoría
+        ]);
+
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        if (!$branchId) {
+            return back()->withErrors(['error' => 'No se ha detectado una sucursal activa.']);
+        }
+
+        // Llamamos al servicio para calcular la diferencia y registrar el movimiento
+        // El servicio detectará si es entrada o salida automáticamente
+        InventoryService::adjustStock(
+            product: $product,
+            branchId: $branchId,
+            newRealStock: $validated['current_stock'],
+            notes: $validated['adjustment_note']
+        );
+
+        return back()->with('success', 'Inventario ajustado y registrado en el historial.');
     }
 }
