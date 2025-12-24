@@ -6,12 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use App\Models\Traits\BelongsToBranch; // trait para manejo de sucursales hecho por mi
+use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
 
 class Client extends Model 
 {
     use HasFactory;
-    use BelongsToBranch; // Usar el trait para manejo de sucursales
+    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
 
     protected $fillable = [
         'name',

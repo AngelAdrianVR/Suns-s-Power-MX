@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+            // Agregamos nuestro middleware de contexto de sucursal aquí
+            // para que se ejecute en todas las rutas web después de iniciar sesión
+            \App\Http\Middleware\EnsureBranchContext::class,
         ]);
 
         //

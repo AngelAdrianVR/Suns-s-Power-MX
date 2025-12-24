@@ -254,5 +254,7 @@ return [
         'week_salary' => 'salario semanal',
         'birthdate' => 'fecha de cumpleaños',
         'join_date' => 'fecha de ingreso',
+        'purchase_price' => 'precio de compra',
+        'sale_price' => 'precio de venta',
     ],
 ];
