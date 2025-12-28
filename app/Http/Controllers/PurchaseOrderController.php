@@ -6,7 +6,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
 use App\Models\Product;
-use App\Services\InventoryService; // Tu servicio de inventario
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +29,7 @@ class PurchaseOrderController extends Controller
         $orders = PurchaseOrder::query()
             ->where('branch_id', $branchId)
             ->with(['supplier:id,company_name,contact_name,email', 'requestor:id,name'])
-            ->withCount('items') // Para saber cuántos productos trae
+            ->withCount('items')
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
@@ -47,14 +47,16 @@ class PurchaseOrderController extends Controller
             ->through(function ($order) {
                 return [
                     'id' => $order->id,
-                    'supplier' => $order->supplier, // Objeto completo (id, nombre, etc)
+                    'supplier' => $order->supplier,
                     'requested_by' => $order->requestor ? $order->requestor->name : 'Sistema',
                     'status' => $order->status,
                     'total_cost' => $order->total_cost,
                     'expected_date' => $order->expected_date ? $order->expected_date->format('Y-m-d') : null,
+                    'received_date' => $order->received_date ? $order->received_date->format('Y-m-d') : null, // <--- Agregado
                     'created_at' => $order->created_at->format('Y-m-d'),
                     'items_count' => $order->items_count,
                     'notes' => $order->notes,
+                    'currency' => $order->currency,
                 ];
             });
 
@@ -71,7 +73,6 @@ class PurchaseOrderController extends Controller
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
-        // Cargamos proveedores de la sucursal para el select
         $suppliers = Supplier::where('branch_id', $branchId)
             ->select('id', 'company_name')
             ->orderBy('company_name')
@@ -83,7 +84,32 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Almacena una nueva orden de compra en la base de datos.
+     * API: Obtiene los productos asignados a un proveedor.
+     */
+    public function getSupplierProducts(Supplier $supplier)
+    {
+        return response()->json(
+            $supplier->products()
+                ->with('media') 
+                ->select('products.id', 'products.name', 'products.sku') 
+                ->get()
+                ->map(function ($product) {
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'sku' => $product->sku,
+                        'image_url' => $product->getFirstMediaUrl() ?: null,
+                        'purchase_price' => $product->pivot->purchase_price,
+                        'currency' => $product->pivot->currency,
+                        'supplier_sku' => $product->pivot->supplier_sku,
+                        'delivery_days' => $product->pivot->delivery_days,
+                    ];
+                })
+        );
+    }
+
+    /**
+     * Almacena una nueva orden de compra.
      */
     public function store(Request $request)
     {
@@ -93,6 +119,7 @@ class PurchaseOrderController extends Controller
             'supplier_id' => 'required|exists:suppliers,id',
             'expected_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'currency' => 'required|string|in:MXN,USD',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
@@ -100,20 +127,19 @@ class PurchaseOrderController extends Controller
         ]);
 
         DB::transaction(function () use ($validated, $branchId) {
-            // 1. Crear Orden
             $order = PurchaseOrder::create([
                 'branch_id' => $branchId,
                 'supplier_id' => $validated['supplier_id'],
                 'requested_by' => Auth::id(),
-                'status' => 'Borrador', // Inicialmente Borrador o Solicitada
+                'status' => 'Borrador',
                 'expected_date' => $validated['expected_date'],
                 'notes' => $validated['notes'],
-                'total_cost' => 0, // Se calcula abajo
+                'currency' => $validated['currency'],
+                'total_cost' => 0,
             ]);
 
             $totalCost = 0;
 
-            // 2. Crear Items
             foreach ($validated['items'] as $item) {
                 $subtotal = $item['quantity'] * $item['unit_cost'];
                 $totalCost += $subtotal;
@@ -126,7 +152,6 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
-            // 3. Actualizar total
             $order->update(['total_cost' => $totalCost]);
         });
 
@@ -140,10 +165,46 @@ class PurchaseOrderController extends Controller
     {
         $this->authorizeAction($purchaseOrder);
 
-        $purchaseOrder->load(['supplier', 'items.product', 'requestor']);
+        // Cargamos relaciones necesarias
+        $purchaseOrder->load(['supplier', 'items.product.media', 'requestor']);
+
+        // Transformamos los items para facilitar el acceso a la imagen en el Vue
+        $items = $purchaseOrder->items->map(function ($item) {
+            $product = $item->product;
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'quantity' => $item->quantity,
+                'unit_cost' => $item->unit_cost,
+                'subtotal' => $item->quantity * $item->unit_cost,
+                'product' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    // Obtenemos la URL de la imagen de Spatie
+                    'image_url' => $product->getFirstMediaUrl('product_images') ?: $product->getFirstMediaUrl() ?: null,
+                ]
+            ];
+        });
+
+        // Reemplazamos la colección de items con la transformada o la pasamos aparte
+        // Para no romper la estructura del modelo, crearemos una estructura limpia para Inertia
+        $orderData = [
+            'id' => $purchaseOrder->id,
+            'status' => $purchaseOrder->status,
+            'created_at' => $purchaseOrder->created_at,
+            'expected_date' => $purchaseOrder->expected_date,
+            'received_date' => $purchaseOrder->received_date,
+            'notes' => $purchaseOrder->notes,
+            'currency' => $purchaseOrder->currency,
+            'total_cost' => $purchaseOrder->total_cost,
+            'supplier' => $purchaseOrder->supplier,
+            'requestor' => $purchaseOrder->requestor,
+            'items' => $items, // Usamos los items procesados
+        ];
 
         return Inertia::render('Purchases/Show', [
-            'order' => $purchaseOrder
+            'order' => $orderData
         ]);
     }
 
@@ -154,9 +215,8 @@ class PurchaseOrderController extends Controller
     {
         $this->authorizeAction($purchaseOrder);
 
-        // No permitir editar si ya fue recibida o cancelada
         if (in_array($purchaseOrder->status, ['Recibida', 'Cancelada'])) {
-            return back()->with('error', 'No se puede editar una orden que ya ha sido procesada o cancelada.');
+            return back()->with('error', 'No se puede editar una orden procesada o cancelada.');
         }
 
         $purchaseOrder->load('items');
@@ -176,34 +236,52 @@ class PurchaseOrderController extends Controller
     {
         $this->authorizeAction($purchaseOrder);
 
-        // Si intentan editar una orden cerrada
         if (in_array($purchaseOrder->status, ['Recibida', 'Cancelada'])) {
             return back()->with('error', 'Orden bloqueada por su estado actual.');
         }
 
-        // Validación básica
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
             'expected_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'currency' => 'required|string|in:MXN,USD',
             'items' => 'required|array|min:1',
-            // ... validaciones de items igual que store
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
 
-        // Lógica de actualización (Sync items, recalcular total) similar a Store
-        // ... (Implementación abreviada por espacio, pero esencialmente es borrar items viejos y crear nuevos o updatear)
+        DB::transaction(function () use ($purchaseOrder, $validated) {
+            $purchaseOrder->update([
+                'supplier_id' => $validated['supplier_id'],
+                'expected_date' => $validated['expected_date'],
+                'notes' => $validated['notes'],
+                'currency' => $validated['currency'],
+            ]);
 
-        // NOTA: Si el usuario quiere cambiar STATUS a Recibida mediante UPDATE, 
-        // recomendamos usar el método dedicado `changeStatus` abajo.
-        
-        $purchaseOrder->update($validated);
+            $purchaseOrder->items()->delete();
+
+            $totalCost = 0;
+            foreach ($validated['items'] as $item) {
+                $subtotal = $item['quantity'] * $item['unit_cost'];
+                $totalCost += $subtotal;
+
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $purchaseOrder->id,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_cost' => $item['unit_cost'],
+                ]);
+            }
+            
+            $purchaseOrder->update(['total_cost' => $totalCost]);
+        });
 
         return redirect()->route('purchases.index')->with('success', 'Orden actualizada.');
     }
 
     /**
-     * Método dedicado para cambiar el estado (Index Actions).
-     * Ruta: PATCH /ordenes-compras/{id}/status
+     * CAMBIO DE ESTADO (Manejo de Stock).
      */
     public function changeStatus(Request $request, PurchaseOrder $purchaseOrder)
     {
@@ -216,37 +294,40 @@ class PurchaseOrderController extends Controller
         $newStatus = $request->status;
         $oldStatus = $purchaseOrder->status;
 
-        // Validaciones de flujo
         if ($oldStatus === 'Recibida') {
-            return back()->with('error', 'Esta orden ya fue recibida y el inventario afectado. No se puede revertir automáticamente.');
+            return back()->with('error', 'Esta orden ya fue recibida.');
         }
 
         if ($oldStatus === 'Cancelada' && $newStatus === 'Recibida') {
-            return back()->with('error', 'No puedes recibir una orden cancelada directamente. Cambiala a Borrador primero.');
+            return back()->with('error', 'No puedes recibir una orden cancelada directamente.');
         }
 
         DB::transaction(function () use ($purchaseOrder, $newStatus, $oldStatus) {
             
-            // LOGICA CRITICA: RECIBIR MERCANCÍA
+            // --- MOVIMIENTO DE STOCK (ENTRADA) ---
             if ($newStatus === 'Recibida' && $oldStatus !== 'Recibida') {
                 $purchaseOrder->load('items.product');
                 
+                // 1. Asignar fecha de recepción
+                $purchaseOrder->received_date = now(); // <--- ACTUALIZACIÓN AQUÍ
+                
+                // 2. Aumentar Stock
                 foreach ($purchaseOrder->items as $item) {
-                    // Usamos el servicio inyectado
                     InventoryService::addStock(
                         product: $item->product,
                         branchId: $purchaseOrder->branch_id,
                         quantity: $item->quantity,
                         reason: 'Compra',
-                        reference: $purchaseOrder, // Relación polimórfica
+                        reference: $purchaseOrder,
                         notes: "Recepción de Orden de Compra #{$purchaseOrder->id}"
                     );
                 }
-            }
-
-            // LOGICA: CANCELAR
-            if ($newStatus === 'Cancelada') {
-                // Si hubiera lógica de liberar presupuesto, iría aquí.
+            } else {
+                // Si cambiamos a otro estado y tenía fecha, la limpiamos?
+                // Depende de la lógica, por seguridad la limpiamos si se regresa a borrador
+                if ($newStatus === 'Borrador') {
+                    $purchaseOrder->received_date = null;
+                }
             }
 
             $purchaseOrder->status = $newStatus;
@@ -256,23 +337,62 @@ class PurchaseOrderController extends Controller
         return back()->with('success', "Estado actualizado a: {$newStatus}");
     }
 
-    /**
-     * Elimina la orden (solo si es Borrador).
-     */
     public function destroy(PurchaseOrder $purchaseOrder)
     {
         $this->authorizeAction($purchaseOrder);
 
         if ($purchaseOrder->status !== 'Borrador') {
-            return back()->with('error', 'Solo se pueden eliminar órdenes en estado Borrador. Intenta cancelarla.');
+            return back()->with('error', 'Solo se pueden eliminar órdenes en estado Borrador.');
         }
 
-        $purchaseOrder->delete(); // Cascade eliminará los items
+        $purchaseOrder->delete(); 
 
         return redirect()->route('purchases.index')->with('success', 'Orden eliminada.');
     }
 
-    // Helper de seguridad Multi-tenant
+    /**
+     * Muestra la vista de impresión moderna.
+     */
+    public function printOrder(PurchaseOrder $purchaseOrder)
+    {
+        $this->authorizeAction($purchaseOrder);
+
+        $purchaseOrder->load(['supplier', 'items.product.media', 'requestor']);
+
+        // Misma transformación para asegurar imágenes
+        $items = $purchaseOrder->items->map(function ($item) {
+            $product = $item->product;
+            return [
+                'quantity' => $item->quantity,
+                'unit_cost' => $item->unit_cost,
+                'subtotal' => $item->quantity * $item->unit_cost,
+                'product_name' => $product->name,
+                'product_sku' => $product->sku,
+                'product_image' => $product->getFirstMediaUrl('product_images') ?: $product->getFirstMediaUrl() ?: null,
+            ];
+        });
+
+        return Inertia::render('Purchases/Print', [
+            'order' => [
+                'id' => $purchaseOrder->id,
+                'created_at' => $purchaseOrder->created_at->format('d/m/Y'),
+                'expected_date' => $purchaseOrder->expected_date ? $purchaseOrder->expected_date->format('d/m/Y') : 'N/A',
+                'status' => $purchaseOrder->status,
+                'currency' => $purchaseOrder->currency,
+                'total_cost' => $purchaseOrder->total_cost,
+                'notes' => $purchaseOrder->notes,
+                'supplier' => $purchaseOrder->supplier,
+                'items' => $items,
+                'company_info' => [
+                    // Puedes personalizar esto o sacarlo de una configuración global
+                    'name' => config('app.name'), 
+                    'address' => 'Calle Principal #123, Ciudad',
+                    'phone' => '(555) 123-4567'
+                ]
+            ]
+        ]);
+    }
+
     private function authorizeAction($order)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;

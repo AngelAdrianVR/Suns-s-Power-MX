@@ -16,10 +16,11 @@ return new class extends Migration
             $table->foreignId('branch_id')->default(1)->constrained();
             $table->foreignId('supplier_id')->constrained()->onDelete('restrict');
             $table->foreignId('requested_by')->constrained('users');
-            
+            $table->string('currency')->default('MXN'); // MXN o USD
             $table->enum('status', ['Borrador', 'Solicitada', 'Recibida', 'Cancelada'])->default('Borrador');
             $table->decimal('total_cost', 12, 2)->default(0);
-            $table->date('expected_date')->nullable();
+            $table->date('expected_date')->nullable(); // fecha esperada de recepción
+            $table->date('received_date')->nullable(); // fecha de recepción
             $table->text('notes')->nullable();
             $table->timestamps();
         });

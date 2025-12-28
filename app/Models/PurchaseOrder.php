@@ -18,13 +18,16 @@ class PurchaseOrder extends Model
         'branch_id',
         'requested_by',
         'status',
+        'currency',
         'total_cost',
         'expected_date',
+        'received_date', // fecha de recepción
         'notes',
     ];
 
     protected $casts = [
         'expected_date' => 'date',
+        'received_date' => 'date',
     ];
 
     public function supplier(): BelongsTo

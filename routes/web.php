@@ -61,18 +61,15 @@ Route::resource('productos', ProductController::class)->names('products')
 
 // ---------------------------- Rutas de ordenes de servicio --------------------------------
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
-    ->parameters(['ordenes_servicio' => 'serviceOrder'])->middleware('auth');
+    ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
 
 
 // ---------------------------- Rutas de ordenes de compras --------------------------------
-Route::resource('ordenes-compras', PurchaseOrderController::class)->names('purchases')
-    ->parameters(['ordenes_compras' => 'purchaseOrder'])->middleware('auth');
-    // Ruta adicional para cambio rápido de status (ej. recibir o cancelar desde el index)
-Route::patch('/ordenes-compras/{purchaseOrder}/status', [PurchaseOrderController::class, 'changeStatus'])
-    ->name('purchases.status')
-    ->middleware('auth');
-    // Ruta para recuperar los productos asignados al proveedor en la creación de orden de compra
-Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class, 'fetchAssignedProducts'])->name('suppliers.products.assigned');
+Route::resource('ordenes-compra', PurchaseOrderController::class)->names('purchases')
+    ->parameters(['ordenes-compra' => 'purchaseOrder'])->middleware('auth');
+// Ruta adicional para cambio rápido de status (ej. recibir o cancelar desde el index)
+Route::patch('/ordenes-compras/{purchaseOrder}/status', [PurchaseOrderController::class, 'changeStatus'])->name('purchases.status')->middleware('auth');
+Route::get('/purchases/{purchaseOrder}/print', [PurchaseOrderController::class, 'printOrder'])->name('purchases.print');
 
 
 // ---------------------------- Rutas de proveedores --------------------------------
@@ -82,11 +79,11 @@ Route::resource('proveedores', SupplierController::class)->names('suppliers')
 Route::get('/proveedores/{supplier}/fetch-available', [SupplierController::class, 'fetchAvailableProducts'])
     ->name('suppliers.products.fetch');
 // Rutas Específicas para la asignación de productos (UI Show)
-Route::post('/proveedores/{supplier}/products', [SupplierController::class, 'assignProduct'])
-    ->name('suppliers.products.assign');
-
-Route::delete('/proveedores/{supplier}/products/{product}', [SupplierController::class, 'detachProduct'])
-    ->name('suppliers.products.detach');
+Route::post('/proveedores/{supplier}/products', [SupplierController::class, 'assignProduct'])->name('suppliers.products.assign');
+Route::delete('/proveedores/{supplier}/products/{product}', [SupplierController::class, 'detachProduct'])->name('suppliers.products.detach');
+Route::get('/suppliers/{supplier}/assigned-products', [PurchaseOrderController::class, 'getSupplierProducts'])->name('suppliers.products.assigned');
+// Ruta para recuperar los productos asignados al proveedor en la creación de orden de compra
+Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class, 'fetchAssignedProducts'])->name('suppliers.products.assigned');
 
 
 // ---------------------------- Rutas de Clientes --------------------------------
