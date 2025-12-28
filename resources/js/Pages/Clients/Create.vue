@@ -83,7 +83,6 @@ const submit = () => {
                     <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                         Registrar Nuevo Cliente
                     </h2>
-                    <p class="text-xs text-gray-500 mt-0.5">Alta de expediente para servicios solares</p>
                 </div>
             </div>
         </template>
