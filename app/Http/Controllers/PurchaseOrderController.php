@@ -359,7 +359,7 @@ class PurchaseOrderController extends Controller
 
         $purchaseOrder->load(['supplier', 'items.product.media', 'requestor']);
 
-        // Misma transformación para asegurar imágenes
+        // Transformación de items
         $items = $purchaseOrder->items->map(function ($item) {
             $product = $item->product;
             return [
@@ -381,14 +381,9 @@ class PurchaseOrderController extends Controller
                 'currency' => $purchaseOrder->currency,
                 'total_cost' => $purchaseOrder->total_cost,
                 'notes' => $purchaseOrder->notes,
-                'supplier' => $purchaseOrder->supplier,
+                'supplier' => $purchaseOrder->supplier, // Toda la info del proveedor se pasa aquí
                 'items' => $items,
-                'company_info' => [
-                    // Puedes personalizar esto o sacarlo de una configuración global
-                    'name' => config('app.name'), 
-                    'address' => 'Calle Principal #123, Ciudad',
-                    'phone' => '(555) 123-4567'
-                ]
+                // 'company_info' eliminado según solicitud
             ]
         ]);
     }

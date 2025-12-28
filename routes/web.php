@@ -7,6 +7,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\TaskController;
 use App\Http\Controllers\UserController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -62,6 +63,10 @@ Route::resource('productos', ProductController::class)->names('products')
 // ---------------------------- Rutas de ordenes de servicio --------------------------------
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
     ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
+
+
+// ---------------------------- Rutas de Tareas --------------------------------
+Route::resource('tareas', TaskController::class)->only(['store', 'update', 'destroy'])->names('tasks')->middleware('auth');
 
 
 // ---------------------------- Rutas de ordenes de compras --------------------------------
