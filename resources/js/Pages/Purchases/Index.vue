@@ -152,7 +152,7 @@ const createColumns = () => [
         title: 'Folio',
         key: 'id',
         width: 80,
-        render: (row) => h('span', { class: 'font-mono text-gray-500 font-bold' }, `OC-0${row.id}`)
+        render: (row) => h('span', { class: 'font-mono text-gray-500 font-bold' }, `OC-${String(row.id).padStart(4, '0')}`)
     },
     {
         title: 'Proveedor',
@@ -330,7 +330,7 @@ const rowProps = (row) => ({
                             <!-- Encabezado Tarjeta -->
                             <div class="flex justify-between items-start mb-3">
                                 <div class="flex flex-col">
-                                    <span class="font-mono text-gray-400 text-xs font-bold tracking-wider">OC-0{{ order.id }}</span>
+                                    <span class="font-mono text-gray-400 text-xs font-bold tracking-wider">OC-{{ String(order.id).padStart(4, '0') }}</span>
                                     <span class="font-bold text-gray-800 text-lg leading-tight">{{ order.supplier?.company_name || 'Sin Proveedor' }}</span>
                                 </div>
                                 <n-tag :type="getStatusStyles(order.status).type" round size="small" :bordered="false">
