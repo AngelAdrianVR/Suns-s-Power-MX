@@ -8,7 +8,7 @@ import {
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     CartOutline, CalendarOutline, CloseCircleOutline, CheckmarkCircleOutline,
-    EllipsisVertical
+    EllipsisVertical, TimeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -42,7 +42,7 @@ const goToShow = (id) => {
 // Cambiar Estado (Recibir, Cancelar, etc)
 const updateStatus = (order, newStatus) => {
     let confirmTitle = 'Actualizar Estado';
-    let confirmContent = `¿Cambiar el estado de la orden #${order.id} a "${newStatus}"?`;
+    let confirmContent = `¿Cambiar el estado de la orden OC-0${order.id} a "${newStatus}"?`;
     let confirmType = 'info';
 
     if (newStatus === 'Recibida') {
@@ -65,7 +65,7 @@ const updateStatus = (order, newStatus) => {
             router.patch(route('purchases.status', order.id), { status: newStatus }, {
                 preserveScroll: true,
                 onSuccess: () => {
-                    notification.success({ title: 'Estado Actualizado', content: `Orden #${order.id} ahora está ${newStatus}` });
+                    notification.success({ title: 'Estado Actualizado', content: `Orden OC-0${order.id} ahora está ${newStatus}` });
                 },
                 onError: () => {
                     notification.error({ title: 'Error', content: 'No se pudo actualizar el estado.' });
@@ -78,7 +78,7 @@ const updateStatus = (order, newStatus) => {
 const confirmDelete = (order) => {
     dialog.warning({
         title: 'Eliminar Borrador',
-        content: `¿Eliminar permanentemente la orden #${order.id}?`,
+        content: `¿Eliminar permanentemente la orden OC-0${order.id}?`,
         positiveText: 'Sí, eliminar',
         negativeText: 'Cancelar',
         onPositiveClick: () => {
@@ -94,16 +94,35 @@ const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
 
-// Renderizado de Estado (Tags con color)
-const renderStatus = (status) => {
-    const styles = {
-        'Borrador': { type: 'default', icon: CreateOutline },
-        'Solicitada': { type: 'info', icon: CartOutline },
-        'Recibida': { type: 'success', icon: CheckmarkCircleOutline },
-        'Cancelada': { type: 'error', icon: CloseCircleOutline },
-    };
-    const style = styles[status] || styles['Borrador'];
+// Formato de Fecha (ej: 26 dic 2025)
+const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; 
     
+    // SOLUCIÓN: Forzamos UTC
+    return new Intl.DateTimeFormat('es-MX', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric',
+        timeZone: 'UTC'
+    }).format(date);
+};
+
+// Configuración de Estilos de Estado (Reutilizable para tabla y móvil)
+const getStatusStyles = (status) => {
+    const styles = {
+        'Borrador': { type: 'default', icon: CreateOutline, class: 'bg-gray-100 text-gray-600' },
+        'Solicitada': { type: 'info', icon: CartOutline, class: 'bg-blue-100 text-blue-600' },
+        'Recibida': { type: 'success', icon: CheckmarkCircleOutline, class: 'bg-green-100 text-green-600' },
+        'Cancelada': { type: 'error', icon: CloseCircleOutline, class: 'bg-red-100 text-red-600' },
+    };
+    return styles[status] || styles['Borrador'];
+};
+
+// Renderizado de Estado (Tags con color para Tabla)
+const renderStatus = (status) => {
+    const style = getStatusStyles(status);
     return h(NTag, { type: style.type, bordered: false, round: true, size: 'small' }, {
         default: () => h('div', { class: 'flex items-center gap-1' }, [
             h(NIcon, { component: style.icon }),
@@ -112,13 +131,28 @@ const renderStatus = (status) => {
     });
 };
 
-// --- COLUMNAS ---
+// Opciones del Dropdown (Reutilizable)
+const getDropdownOptions = (row) => {
+    const dropdownOptions = [];
+    
+    if (row.status === 'Borrador') {
+        dropdownOptions.push({ label: 'Solicitar (Enviar)', key: 'Solicitada' });
+        dropdownOptions.push({ label: 'Eliminar', key: 'delete', props: { style: 'color: red' } });
+    }
+    if (['Borrador', 'Solicitada'].includes(row.status)) {
+        dropdownOptions.push({ label: 'Recibir Mercancía', key: 'Recibida' });
+        dropdownOptions.push({ label: 'Cancelar Orden', key: 'Cancelada', props: { style: 'color: red' } });
+    }
+    return dropdownOptions;
+};
+
+// --- COLUMNAS TABLA ---
 const createColumns = () => [
     {
         title: 'Folio',
         key: 'id',
         width: 80,
-        render: (row) => h('span', { class: 'font-mono text-gray-500 font-bold' }, `#${row.id}`)
+        render: (row) => h('span', { class: 'font-mono text-gray-500 font-bold' }, `OC-0${row.id}`)
     },
     {
         title: 'Proveedor',
@@ -133,17 +167,28 @@ const createColumns = () => [
     {
         title: 'Estado',
         key: 'status',
-        width: 120,
+        width: 110,
         render: (row) => renderStatus(row.status)
     },
     {
-        title: 'Fecha Estimada',
-        key: 'expected_date',
+        title: 'Creada',
+        key: 'created_at',
+        width: 110,
         render(row) {
-            if (!row.expected_date) return h('span', { class: 'text-gray-300' }, '-');
-            return h('div', { class: 'flex items-center gap-1 text-xs text-gray-600' }, [
-                h(NIcon, { component: CalendarOutline }),
-                h('span', row.expected_date)
+            return h('div', { class: 'flex items-center gap-1 text-xs text-gray-500' }, [
+                h('span', formatDate(row.created_at))
+            ]);
+        }
+    },
+    {
+        title: 'Recepción', // Agregado
+        key: 'received_date',
+        width: 110,
+        render(row) {
+            if (!row.received_date) return h('span', { class: 'text-gray-300 text-xs' }, '-');
+            return h('div', { class: 'flex items-center gap-1 text-xs text-green-600 font-medium' }, [
+                h(NIcon, { component: CheckmarkCircleOutline }),
+                h('span', formatDate(row.received_date))
             ]);
         }
     },
@@ -151,16 +196,16 @@ const createColumns = () => [
         title: 'Total',
         key: 'total_cost',
         align: 'right',
-        render: (row) => h('span', { class: 'font-bold text-gray-800' }, formatCurrency(row.total_cost))
+        render: (row) => h('span', { class: 'font-bold text-gray-800' }, formatCurrency(row.total_cost) + ' ' + row.currency)
     },
     {
         title: '',
         key: 'actions',
-        width: 160, // Más espacio para botones
+        width: 140,
         render(row) {
             const buttons = [];
 
-            // 1. Ver Detalle (Siempre visible)
+            // 1. Ver Detalle
             buttons.push(
                 h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'info',
@@ -169,7 +214,7 @@ const createColumns = () => [
                 }, { icon: () => h(NIcon, { component: EyeOutline }) })
             );
 
-            // 2. Editar (Solo si no está recibida/cancelada)
+            // 2. Editar
             if (!['Recibida', 'Cancelada'].includes(row.status)) {
                 buttons.push(
                     h(NButton, {
@@ -180,17 +225,8 @@ const createColumns = () => [
                 );
             }
 
-            // 3. Dropdown de Acciones Rápidas (Cambio de Estado)
-            const dropdownOptions = [];
-            
-            if (row.status === 'Borrador') {
-                dropdownOptions.push({ label: 'Solicitar (Enviar)', key: 'Solicitada' });
-                dropdownOptions.push({ label: 'Eliminar', key: 'delete', props: { style: 'color: red' } });
-            }
-            if (['Borrador', 'Solicitada'].includes(row.status)) {
-                dropdownOptions.push({ label: 'Recibir Mercancía', key: 'Recibida' });
-                dropdownOptions.push({ label: 'Cancelar Orden', key: 'Cancelada', props: { style: 'color: red' } });
-            }
+            // 3. Dropdown
+            const dropdownOptions = getDropdownOptions(row);
 
             if (dropdownOptions.length > 0) {
                 buttons.push(
@@ -238,8 +274,8 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Administra tus adquisiciones y recepciones de stock</p>
                 </div>
-                <Link :href="route('purchases.create')">
-                    <n-button type="primary" round size="large" class="shadow-md">
+                <Link :href="route('purchases.create')" class="w-full md:w-auto">
+                    <n-button type="primary" round size="large" class="shadow-md w-full md:w-auto">
                         <template #icon><n-icon><AddOutline /></n-icon></template>
                         Nueva Orden
                     </n-button>
@@ -248,44 +284,136 @@ const rowProps = (row) => ({
         </template>
 
         <div class="py-8 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 px-4">
                 
                 <!-- Filtros -->
-                <div class="mb-6 px-4 sm:px-0 flex justify-between items-center">
+                <div class="mb-6 flex justify-between items-center">
                     <n-input 
                         v-model:value="search" 
                         type="text" 
                         placeholder="Buscar por folio o proveedor..." 
-                        class="max-w-md shadow-sm rounded-full"
+                        class="w-full md:max-w-md shadow-sm rounded-full"
                         clearable round size="large"
                     >
                         <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
                     </n-input>
                 </div>
 
-                <!-- Tabla -->
-                <div class="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
-                    <n-data-table
-                        :columns="columns"
-                        :data="orders.data"
-                        :pagination="false"
-                        :bordered="false"
-                        single-column
-                        :row-props="rowProps"
-                    />
+                <!-- CONTENEDOR PRINCIPAL -->
+                <div class="backdrop-blur-xl rounded-3xl overflow-hidden">
                     
-                    <!-- Paginación -->
-                    <div class="p-4 flex justify-end border-t border-gray-100" v-if="orders.total > 0">
+                    <!-- VISTA ESCRITORIO (TABLA) - Oculta en pantallas pequeñas -->
+                    <div class="hidden md:block">
+                        <n-data-table
+                            :columns="columns"
+                            :data="orders.data"
+                            :pagination="false"
+                            :bordered="false"
+                            single-column
+                            :row-props="rowProps"
+                        />
+                    </div>
+
+                    <!-- VISTA MÓVIL (TARJETAS) - Visible solo en pantallas pequeñas -->
+                    <div class="md:hidden p-4 space-y-4 bg-gray-50/50">
+                        <div v-if="orders.data.length === 0" class="flex flex-col items-center justify-center p-8 text-gray-400">
+                            <n-icon size="48" :component="CartOutline" />
+                            <span class="mt-2 text-sm">No hay órdenes encontradas</span>
+                        </div>
+
+                        <div 
+                            v-for="order in orders.data" 
+                            :key="order.id"
+                            class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 active:scale-[0.99] transition-transform duration-200"
+                            @click="goToShow(order.id)"
+                        >
+                            <!-- Encabezado Tarjeta -->
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex flex-col">
+                                    <span class="font-mono text-gray-400 text-xs font-bold tracking-wider">OC-0{{ order.id }}</span>
+                                    <span class="font-bold text-gray-800 text-lg leading-tight">{{ order.supplier?.company_name || 'Sin Proveedor' }}</span>
+                                </div>
+                                <n-tag :type="getStatusStyles(order.status).type" round size="small" :bordered="false">
+                                    <template #icon><n-icon :component="getStatusStyles(order.status).icon" /></template>
+                                    {{ order.status }}
+                                </n-tag>
+                            </div>
+
+                            <!-- Información Detalles (Grid actualizado) -->
+                            <div class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
+                                <!-- Creada -->
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-gray-400 mb-0.5">Creada</span>
+                                    <div class="flex items-center gap-1 text-gray-600">
+                                        <n-icon :component="TimeOutline" class="text-gray-400"/>
+                                        <span>{{ formatDate(order.created_at) }}</span>
+                                    </div>
+                                </div>
+                                <!-- Total -->
+                                <div class="flex flex-col text-right">
+                                    <span class="text-xs text-gray-400 mb-0.5">Total</span>
+                                    <span class="font-bold text-gray-800 text-base">{{ formatCurrency(order.total_cost) }}</span>
+                                </div>
+                                <!-- Entrega Estimada -->
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-gray-400 mb-0.5">Entrega Est.</span>
+                                    <div class="flex items-center gap-1 text-gray-600">
+                                        <n-icon :component="CalendarOutline" class="text-gray-400"/>
+                                        <span>{{ order.expected_date ? formatDate(order.expected_date) : 'Pendiente' }}</span>
+                                    </div>
+                                </div>
+                                <!-- Recepción -->
+                                <div class="flex flex-col text-right">
+                                    <span class="text-xs text-gray-400 mb-0.5">Recepción</span>
+                                    <div class="flex items-center justify-end gap-1" :class="order.received_date ? 'text-green-600 font-medium' : 'text-gray-300'">
+                                        <n-icon v-if="order.received_date" :component="CheckmarkCircleOutline"/>
+                                        <span>{{ order.received_date ? formatDate(order.received_date) : '-' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Acciones (Footer de Tarjeta) -->
+                            <div class="flex items-center justify-between pt-3 border-t border-gray-100 mt-2">
+                                <div class="flex gap-2">
+                                    <n-button circle size="small" quaternary type="info" @click.stop="goToShow(order.id)">
+                                        <template #icon><n-icon :component="EyeOutline" /></template>
+                                    </n-button>
+                                    <n-button 
+                                        v-if="!['Recibida', 'Cancelada'].includes(order.status)"
+                                        circle size="small" quaternary type="warning" @click.stop="goToEdit(order.id)"
+                                    >
+                                        <template #icon><n-icon :component="CreateOutline" /></template>
+                                    </n-button>
+                                </div>
+
+                                <!-- Dropdown de acciones extra -->
+                                <n-dropdown 
+                                    v-if="getDropdownOptions(order).length > 0"
+                                    trigger="click" 
+                                    :options="getDropdownOptions(order)"
+                                    @select="(key) => {
+                                        if (key === 'delete') confirmDelete(order);
+                                        else updateStatus(order, key);
+                                    }"
+                                >
+                                    <n-button size="small" secondary round @click.stop>
+                                        Acciones
+                                        <template #icon><n-icon :component="EllipsisVertical" /></template>
+                                    </n-button>
+                                </n-dropdown>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Paginación (Compartida) -->
+                    <div class="p-4 flex justify-center md:justify-end border-t border-gray-100 bg-white" v-if="orders.total > 0">
                         <n-pagination
                             :page="orders.current_page"
                             :page-count="orders.last_page"
                             :on-update:page="handlePageChange"
+                            size="medium"
                         />
                     </div>
-                    <!-- <div v-else class="p-10 flex justify-center flex-col items-center text-gray-400 gap-2">
-                        <n-icon size="48"><CartOutline /></n-icon>
-                        <span>No hay órdenes de compra registradas</span>
-                    </div> -->
                 </div>
                 
             </div>
