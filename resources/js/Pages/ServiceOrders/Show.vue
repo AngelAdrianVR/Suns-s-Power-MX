@@ -1,29 +1,34 @@
 <script setup>
-import { ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NDescriptions, NDescriptionsItem, 
     NTabs, NTabPane, NIcon, NThing, NAvatar, NProgress, NStatistic, NNumberAnimation,
-    createDiscreteApi, NEmpty
+    createDiscreteApi, NEmpty, NPopselect, NModal, NForm, NFormItem, NInput, NSelect, NInputNumber,
+    NPopconfirm
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
-    DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline
+    DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
+    AddOutline, RemoveCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     order: Object,
     diagram_data: Array,
     stats: Object,
-    assignable_users: Array // <--- NUEVA PROP RECIBIDA DEL CONTROLLER
+    assignable_users: Array,
+    available_products: Array
 });
 
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
 
-// Utilidades de formato
+// --- ESTADO Y UTILIDADES ---
+const showProductModal = ref(false);
+
 const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 const formatDate = (dateString) => {
     if(!dateString) return 'Sin definir';
@@ -31,25 +36,75 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// CÁLCULO DE PROGRESO CORREGIDO
+const generalProgress = computed(() => {
+    if (!props.stats || props.stats.total_tasks === 0) return 0;
+    return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
+});
+
+// --- ESTATUS DE ORDEN ---
+const orderStatusOptions = [
+    { label: 'Cotización', value: 'Cotización' },
+    { label: 'Aceptado', value: 'Aceptado' },
+    { label: 'En Proceso', value: 'En Proceso' },
+    { label: 'Instalado', value: 'Instalado' },
+    { label: 'Facturado', value: 'Facturado' },
+    { label: 'Cancelado', value: 'Cancelado' }
+];
+
 const getStatusType = (status) => {
     const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Instalado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
     return map[status] || 'default';
 };
 
-// Acciones
-const confirmDelete = () => {
-    dialog.warning({
-        title: 'Eliminar Orden',
-        content: '¿Estás seguro? Esta acción eliminará todo el historial de tareas y evidencias asociadas.',
-        positiveText: 'Sí, Eliminar',
-        negativeText: 'Cancelar',
-        onPositiveClick: () => {
-            router.delete(route('service-orders.destroy', props.order.id));
-        }
+const handleStatusUpdate = (newStatus) => {
+    router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
+        preserveScroll: true,
+        onSuccess: () => notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}` })
     });
 };
 
-const goToEdit = () => router.visit(route('service-orders.edit', props.order.id));
+// --- GESTIÓN DE PRODUCTOS ---
+const productForm = useForm({
+    product_id: null,
+    quantity: 1
+});
+
+const productOptions = computed(() => {
+    return props.available_products.map(p => ({
+        label: `${p.name} (${p.sku}) - ${formatCurrency(p.sale_price)}`,
+        value: p.id
+    }));
+});
+
+const addProduct = () => {
+    productForm.post(route('service-orders.add-items', props.order.id), {
+        onSuccess: () => { 
+            showProductModal.value = false; 
+            productForm.reset();
+            notification.success({ title: 'Producto Agregado' }); 
+        },
+        preserveScroll: true
+    });
+};
+
+const removeProduct = (itemId) => {
+    router.delete(route('service-orders.remove-item', itemId), {
+        preserveScroll: true,
+        onSuccess: () => notification.success({title: 'Producto removido'})
+    });
+};
+
+// --- ACCIONES GENERALES ---
+const confirmDelete = () => {
+    dialog.warning({
+        title: 'Eliminar Orden',
+        content: '¿Estás seguro? Esta acción eliminará todo el historial.',
+        positiveText: 'Sí, Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => router.delete(route('service-orders.destroy', props.order.id))
+    });
+};
 
 </script>
 
@@ -67,10 +122,19 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                         <h2 class="font-bold text-xl text-gray-800 leading-tight flex items-center gap-2">
                             Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                         </h2>
+                        <!-- SELECTOR DE ESTATUS -->
                         <div class="flex items-center gap-2 mt-1">
-                            <n-tag :type="getStatusType(order.status)" round size="small" :bordered="false">
-                                {{ order.status }}
-                            </n-tag>
+                            <n-popselect 
+                                :options="orderStatusOptions" 
+                                :value="order.status" 
+                                @update:value="handleStatusUpdate"
+                                trigger="click"
+                            >
+                                <n-tag :type="getStatusType(order.status)" round size="small" class="cursor-pointer hover:opacity-80">
+                                    {{ order.status }} <n-icon class="ml-1"><CreateOutline /></n-icon>
+                                </n-tag>
+                            </n-popselect>
+                            
                             <span class="text-xs text-gray-400 border-l pl-2 ml-2 border-gray-300">
                                 Creado {{ formatDate(order.created_at) }}
                             </span>
@@ -79,7 +143,7 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                 </div>
 
                 <div class="flex gap-2">
-                    <n-button quaternary type="warning" @click="goToEdit">
+                    <n-button quaternary type="warning" @click="() => router.visit(route('service-orders.edit', order.id))">
                         <template #icon><n-icon><CreateOutline /></n-icon></template>
                         Editar
                     </n-button>
@@ -94,28 +158,23 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
                 
-                <!-- Sección Superior: Resumen y Progreso -->
+                <!-- KPI Cards -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    
-                    <!-- KPI Cards -->
                     <n-card size="small" class="rounded-2xl shadow-sm md:col-span-3">
                         <n-grid cols="2 md:4" item-responsive responsive="screen">
-                            <!-- Cliente -->
                             <n-grid-item>
                                 <div class="p-2">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Cliente</div>
                                     <div class="font-bold text-gray-800 text-base truncate">{{ order.client?.name }}</div>
-                                    <div @click="$inertia.visit(route('clients.show', order.client.id))" class="text-xs text-indigo-500 cursor-pointer hover:underline">Ver Expediente</div>
                                 </div>
                             </n-grid-item>
-                            
-                            <!-- Avance -->
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Progreso General</div>
                                     <div class="flex items-center gap-2">
-                                        <n-progress type="circle" :percentage="order.progress" :size="40" :stroke-width="8" status="success">
-                                            <span class="text-[10px]">{{ order.progress }}%</span>
+                                        <!-- PROGRESO ARREGLADO -->
+                                        <n-progress type="circle" :percentage="generalProgress" :size="40" :stroke-width="8" status="success">
+                                            <span class="text-[10px]">{{ generalProgress }}%</span>
                                         </n-progress>
                                         <div class="text-xs text-gray-500">
                                             {{ stats.completed_tasks }} / {{ stats.total_tasks }} Tareas
@@ -123,27 +182,20 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                                     </div>
                                 </div>
                             </n-grid-item>
-
-                            <!-- Financiero -->
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
                                     <n-statistic :value="order.total_amount">
                                         <template #prefix>$</template>
                                     </n-statistic>
-                                    <div v-if="stats.pending_balance > 0" class="text-xs text-red-500 font-bold mt-1">
-                                        Resta: {{ formatCurrency(stats.pending_balance) }}
-                                    </div>
-                                    <div v-else class="text-xs text-emerald-500 font-bold mt-1">Pagado</div>
                                 </div>
                             </n-grid-item>
-
-                            <!-- Técnico -->
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Técnico Líder</div>
+                                    <!-- AVATAR ARREGLADO -->
                                     <div v-if="order.technician" class="flex items-center gap-2 mt-1">
-                                        <n-avatar round size="small" :src="order.technician.profile_photo_path" />
+                                        <n-avatar round size="small" :src="order.technician.profile_photo_path" :fallback-src="'https://ui-avatars.com/api/?name='+order.technician.name" />
                                         <span class="text-sm font-medium">{{ order.technician.name }}</span>
                                     </div>
                                     <div v-else class="text-sm text-amber-500 italic">Sin asignar</div>
@@ -151,8 +203,7 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                             </n-grid-item>
                         </n-grid>
                     </n-card>
-
-                    <!-- Mapa / Dirección -->
+                    <!-- Mapa FIXED -->
                     <n-card size="small" class="rounded-2xl shadow-sm bg-blue-50/30 border-blue-100">
                         <div class="flex flex-col h-full justify-between">
                             <div>
@@ -162,58 +213,92 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                                 <p class="text-sm text-gray-600 line-clamp-3">{{ order.installation_address }}</p>
                             </div>
                             <a 
-                                :href="`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.installation_address)}`" 
+                                :href="`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.installation_address)}`" 
                                 target="_blank"
                                 class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
                             >
-                                Abrir en Google Maps <n-icon size="10" class="-rotate-45"><ArrowBackOutline/></n-icon>
+                                Cómo llegar <n-icon size="10" class="-rotate-45"><ArrowBackOutline/></n-icon>
                             </a>
                         </div>
                     </n-card>
                 </div>
 
-                <!-- Contenido Principal con Pestañas -->
+                <!-- Contenido Principal -->
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4">
                         
-                        <!-- TAB 1: DIAGRAMA PMS (Lo más importante) -->
+                        <!-- TAB 1: DIAGRAMA PMS (Funcionalidad Completa) -->
                         <n-tab-pane name="gantt" tab="Cronograma y Tareas">
                             <div class="py-4 space-y-6">
-                                <div class="flex justify-between items-center px-2">
-                                    <p class="text-gray-500 text-sm">Visualización gráfica de la ejecución del proyecto.</p>
-                                </div>
-                                
-                                <!-- CORRECCIÓN: PASAMOS LAS PROPS FALTANTES -->
+                                <!-- Componente GANTT actualizado con todas las funciones -->
                                 <TaskGanttChart 
                                     :tasks="diagram_data" 
                                     :order-id="order.id"
                                     :assignable-users="assignable_users"
                                 />
-
-                                <!-- Lista Simple de Tareas (Fallback o detalle) -->
-                                <div class="mt-8">
-                                    <h3 class="font-bold text-gray-800 mb-4 px-2">Listado Detallado</h3>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div v-for="task in order.tasks" :key="task.id" class="border rounded-xl p-3 hover:shadow-md transition-shadow">
-                                            <div class="flex justify-between items-start">
-                                                <div class="font-medium text-gray-800">{{ task.title }}</div>
-                                                <n-tag size="small" :type="task.status === 'Completado' ? 'success' : 'default'">{{ task.status }}</n-tag>
-                                            </div>
-                                            <div class="text-xs text-gray-500 mt-1 line-clamp-2">{{ task.description || 'Sin descripción' }}</div>
-                                            <div class="flex justify-between items-center mt-3 pt-2 border-t border-gray-50">
-                                                <span class="text-xs text-gray-400">Vence: {{ formatDate(task.due_date) }}</span>
-                                                <!-- Avatares de asignados -->
-                                                <div class="flex -space-x-2">
-                                                    <n-avatar v-for="user in task.users" :key="user.id" round size="tiny" :src="user.profile_photo_path" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 2: DETALLES GENERALES -->
+                        <!-- TAB 2: MATERIALES -->
+                        <n-tab-pane name="items" tab="Materiales y Productos">
+                             <div class="p-4">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="font-bold text-gray-700">Productos Asignados</h3>
+                                    <n-button type="primary" size="small" @click="showProductModal = true">
+                                        <template #icon><n-icon><AddOutline /></n-icon></template>
+                                        Agregar Producto
+                                    </n-button>
+                                </div>
+
+                                <div class="border rounded-lg overflow-hidden">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
+                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cant.</th>
+                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P. Unit (Ref)</th>
+                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Costo Total</th>
+                                                <th class="px-6 py-3"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            <tr v-for="item in order.items" :key="item.id">
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                    {{ item.product.name }} <span class="text-gray-400 text-xs">({{ item.product.sku }})</span>
+                                                </td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ item.quantity }}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-right">
+                                                    <n-popconfirm @positive-click="removeProduct(item.id)">
+                                                        <template #trigger>
+                                                            <n-button circle size="tiny" type="error" tertiary>
+                                                                <template #icon><n-icon><RemoveCircleOutline /></n-icon></template>
+                                                            </n-button>
+                                                        </template>
+                                                        ¿Quitar producto y devolver stock?
+                                                    </n-popconfirm>
+                                                </td>
+                                            </tr>
+                                            <tr v-if="!order.items?.length">
+                                                <td colspan="5" class="px-6 py-8 text-center text-gray-400 text-sm">No hay materiales asignados.</td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="bg-gray-50 font-bold">
+                                            <tr>
+                                                <td colspan="3" class="px-6 py-3 text-right">Total Materiales (Costo Interno):</td>
+                                                <td class="px-6 py-3 text-right text-indigo-600">
+                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.price * i.quantity), 0) || 0) }}
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                             </div>
+                        </n-tab-pane>
+
+                        <!-- TAB 3: DETALLES -->
                         <n-tab-pane name="details" tab="Detalles Operativos">
                             <div class="p-4">
                                 <n-descriptions label-placement="top" bordered column="3">
@@ -236,32 +321,40 @@ const goToEdit = () => router.visit(route('service-orders.edit', props.order.id)
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 3: EVIDENCIAS (Placeholder) -->
-                        <n-tab-pane name="files" tab="Evidencias y Documentos">
-                            <template #tab>
-                                <span class="flex items-center gap-2">
-                                    Evidencias 
-                                    <n-tag size="small" round type="info">{{ order.documents?.length || 0 }}</n-tag>
-                                </span>
-                            </template>
-                            
+                        <!-- TAB 4: EVIDENCIAS -->
+                        <n-tab-pane name="files" tab="Evidencias">
+                            <!-- Contenido existente... -->
                             <div class="p-8 text-center" v-if="!order.documents?.length">
-                                <n-empty description="No se han cargado evidencias fotográficas o documentos." >
-                                    <template #extra>
-                                        <n-button dashed>
-                                            <template #icon><n-icon><ImagesOutline /></n-icon></template>
-                                            Subir Evidencia
-                                        </n-button>
-                                    </template>
-                                </n-empty>
+                                <n-empty description="No se han cargado evidencias fotográficas o documentos." />
                             </div>
-                            <!-- Aquí iría tu componente de galería de medialibrary -->
                         </n-tab-pane>
 
                     </n-tabs>
                 </div>
-
             </div>
+
+            <!-- MODAL: Agregar Producto -->
+            <n-modal v-model:show="showProductModal" preset="card" title="Asignar Material/Producto" style="width: 500px;">
+                <n-form>
+                    <n-form-item label="Producto">
+                        <n-select 
+                            v-model:value="productForm.product_id" 
+                            :options="productOptions" 
+                            filterable 
+                            placeholder="Buscar producto..."
+                        />
+                    </n-form-item>
+                    <n-form-item label="Cantidad">
+                        <n-input-number v-model:value="productForm.quantity" :min="1" />
+                    </n-form-item>
+                    <div class="flex justify-end mt-4">
+                        <n-button type="primary" @click="addProduct" :loading="productForm.processing" :disabled="!productForm.product_id">
+                            Asignar y Descontar
+                        </n-button>
+                    </div>
+                </n-form>
+            </n-modal>
+
         </div>
     </AppLayout>
 </template>

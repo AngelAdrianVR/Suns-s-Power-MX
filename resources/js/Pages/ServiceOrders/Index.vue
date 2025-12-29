@@ -4,11 +4,12 @@ import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, 
-    createDiscreteApi, NTooltip, NProgress, NSelect
+    createDiscreteApi, NTooltip, NProgress, NSelect, NPopselect 
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
-    ConstructOutline, CalendarOutline, PersonOutline, LocationOutline, CheckmarkCircleOutline 
+    ConstructOutline, CalendarOutline, PersonOutline, LocationOutline, 
+    CheckmarkCircleOutline, ChevronDownOutline 
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -39,9 +40,29 @@ watch(search, (value) => {
 
 watch(statusFilter, applyFilters);
 
-// Acciones de Navegación (Rutas pre-configuradas aunque las vistas no existan aún)
+// Acciones de Navegación
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
 const goToShow = (id) => router.visit(route('service-orders.show', id));
+
+// Lógica para cambiar estatus (NUEVO)
+const handleStatusUpdate = (row, newStatus) => {
+    // Optimistic UI update o simplemente esperar la recarga
+    router.patch(route('service-orders.update-status', row.id), {
+        status: newStatus
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ 
+                title: 'Estatus Actualizado', 
+                content: `La orden #${row.id} ahora está en: ${newStatus}`,
+                duration: 2000 
+            });
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo actualizar el estatus.' });
+        }
+    });
+};
 
 const confirmDelete = (order) => {
     dialog.warning({
@@ -73,6 +94,9 @@ const getStatusColor = (status) => {
     return map[status] || 'default';
 };
 
+// Opciones para el select de filtro y cambio de estado
+const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
+
 // --- Configuración de Columnas Desktop ---
 const createColumns = () => [
     {
@@ -99,18 +123,42 @@ const createColumns = () => [
     {
         title: 'Estado & Avance',
         key: 'status',
-        width: 200,
+        width: 220, // Aumentado ligeramente para mejor espacio
         render(row) {
-            return h('div', { class: 'flex flex-col gap-2' }, [
-                h(NTag, { type: getStatusColor(row.status), size: 'small', bordered: false, round: true }, { default: () => row.status }),
-                // Barra de progreso basada en tareas completadas
-                h(NProgress, { 
-                    type: 'line', 
-                    percentage: row.progress, 
-                    color: row.status === 'Cancelado' ? '#ff4d4f' : undefined,
-                    height: 6,
-                    'indicator-placement': 'inside'
-                })
+            return h('div', { class: 'flex flex-col gap-2 w-full' }, [
+                // Popselect para cambiar estatus al hacer click
+                h(NPopselect, {
+                    options: statusOptions,
+                    trigger: 'click',
+                    onUpdateValue: (val) => handleStatusUpdate(row, val)
+                }, {
+                    // CORRECCIÓN AQUÍ: Usamos 'default' en lugar de 'trigger'
+                    default: () => h(NTag, { 
+                        type: getStatusColor(row.status), 
+                        size: 'small', 
+                        bordered: false, 
+                        round: true,
+                        style: { cursor: 'pointer', width: 'fit-content' },
+                        // Detenemos la propagación aquí para que el clic no llegue a la fila
+                        onClick: (e) => e.stopPropagation(),
+                    }, { 
+                        default: () => [
+                            row.status,
+                            h(NIcon, { class: 'ml-1 text-xs opacity-70' }, { default: () => h(ChevronDownOutline) })
+                        ] 
+                    })
+                }),
+                
+                // Barra de progreso corregida (width 100% y bloque contenedor)
+                h('div', { class: 'w-full pr-4' }, [
+                    h(NProgress, { 
+                        type: 'line', 
+                        percentage: row.progress, 
+                        color: row.status === 'Cancelado' ? '#ff4d4f' : undefined,
+                        height: 10,
+                        'indicator-placement': 'inside'
+                    })
+                ])
             ]);
         }
     },
@@ -120,8 +168,9 @@ const createColumns = () => [
         render(row) {
             return h('div', { class: 'flex flex-col text-xs' }, [
                 row.technician ? h('div', { class: 'flex items-center gap-2 mb-1' }, [
-                    h(NAvatar, { size: 20, src: row.technician.photo, round: true }),
-                    h('span', { class: 'text-gray-600' }, row.technician.name)
+                    // Se usa .photo que ahora trae URL completa
+                    h(NAvatar, { size: 24, src: row.technician.photo, round: true, fallbackSrc: 'https://ui-avatars.com/api/?name='+row.technician.name }),
+                    h('span', { class: 'text-gray-600 font-medium' }, row.technician.name)
                 ]) : h('span', { class: 'text-amber-500 italic' }, 'Sin asignar'),
                 
                 row.start_date ? h('div', { class: 'flex items-center gap-1 text-gray-400' }, [
@@ -150,7 +199,7 @@ const createColumns = () => [
                         circle: true, size: 'small', quaternary: true, type: 'info',
                         onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
                     }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
-                    default: () => 'Ver Detalles y Diagrama'
+                    default: () => 'Ver Detalles'
                 }),
                 h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'warning',
@@ -171,9 +220,6 @@ const rowProps = (row) => ({
     style: 'cursor: pointer;',
     onClick: () => goToShow(row.id)
 });
-
-// Opciones para el select de filtro
-const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
 
 </script>
 
@@ -264,7 +310,19 @@ const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
                                 </div>
                                 <span class="text-xs text-gray-400">{{ order.created_at_human }}</span>
                             </div>
-                            <n-tag :type="getStatusColor(order.status)" size="small" round :bordered="false">{{ order.status }}</n-tag>
+                            
+                            <!-- Estado Cambiable en Móvil también -->
+                            <n-popselect 
+                                :options="statusOptions" 
+                                trigger="click"
+                                @update:value="(val) => handleStatusUpdate(order, val)"
+                                @click.stop
+                            >
+                                <n-tag :type="getStatusColor(order.status)" size="small" round :bordered="false">
+                                    {{ order.status }}
+                                    <template #icon><n-icon :component="ChevronDownOutline" /></template>
+                                </n-tag>
+                            </n-popselect>
                         </div>
 
                         <!-- Info Principal -->

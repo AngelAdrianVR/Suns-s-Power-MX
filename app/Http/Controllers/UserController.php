@@ -57,6 +57,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'phone' => ['nullable', 'string', 'max:20'],
             'password' => ['required', 'string', 'min:8'],
             'branch_id' => ['required', 'exists:branches,id'],
             'documents' => ['nullable', 'array'],
@@ -66,6 +67,7 @@ class UserController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
+            'phone' => $validated['phone'] ?? null, // Guardamos el teléfono
             'password' => Hash::make($validated['password']),
             'branch_id' => $validated['branch_id'],
             'is_active' => true,
@@ -131,6 +133,7 @@ class UserController extends Controller
                 'max:255', 
                 Rule::unique('users')->ignore($user->id)
             ],
+            'phone' => ['nullable', 'string', 'max:20'], // Nuevo campo validado
             'branch_id' => ['required', 'exists:branches,id'],
             'password' => ['nullable', 'string', 'min:8'],
             'documents' => ['nullable', 'array'],
@@ -139,6 +142,7 @@ class UserController extends Controller
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
+        $user->phone = $validated['phone'] ?? $user->phone; // Actualizamos el teléfono
         $user->branch_id = $validated['branch_id'];
 
         if (!empty($validated['password'])) {

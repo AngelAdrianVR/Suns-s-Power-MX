@@ -16,6 +16,8 @@ class Task extends Model
         'service_order_id',
         'description',
         'created_by',
+        'start_date',
+        'finish_date',
         'due_date',
         'status',
         'priority',
@@ -23,6 +25,8 @@ class Task extends Model
 
     protected $casts = [
         'due_date' => 'datetime',
+        'start_date' => 'datetime',
+        'finish_date' => 'datetime',
     ];
 
     // --- Relaciones ---

@@ -8,7 +8,7 @@ import {
 import { 
     ArrowBackOutline, SaveOutline, PersonOutline, MailOutline, 
     KeyOutline, BusinessOutline, CloudUploadOutline, RefreshOutline, 
-    DocumentAttachOutline 
+    DocumentAttachOutline, CallOutline
 } from '@vicons/ionicons5';
 
 export default {
@@ -32,7 +32,8 @@ export default {
         // Iconos como componentes (para usar <Icon />)
         ArrowBackOutline,
         CloudUploadOutline, 
-        SaveOutline
+        SaveOutline,
+        CallOutline
     },
     props: {
         branches: {
@@ -45,6 +46,7 @@ export default {
         const form = useForm({
             name: '',
             email: '',
+            phone: '', // Nuevo campo
             password: '',
             branch_id: null,
             documents: [] 
@@ -64,7 +66,8 @@ export default {
             BusinessOutline,
             RefreshOutline,
             SaveOutline,
-            ArrowBackOutline
+            ArrowBackOutline,
+            CallOutline // Nuevo icono
         };
     },
     data() {
@@ -73,6 +76,7 @@ export default {
             rules: {
                 name: { required: true, message: 'El nombre es obligatorio', trigger: ['input', 'blur'] },
                 email: { required: true, message: 'El correo es obligatorio', trigger: ['input', 'blur'] },
+                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] }, // Regla nueva
                 password: { required: true, message: 'La contraseña es obligatoria', trigger: ['input', 'blur'] },
                 branch_id: { required: true, type: 'number', message: 'Selecciona una sucursal', trigger: ['blur', 'change'] }
             }
@@ -198,6 +202,24 @@ export default {
                                 >
                                     <template #prefix>
                                         <n-icon :component="MailOutline" />
+                                    </template>
+                                </n-input>
+                            </n-form-item>
+
+                            <!-- Teléfono (Nuevo Campo) -->
+                            <n-form-item 
+                                label="Teléfono (Con whatsapp)" 
+                                path="phone"
+                                :validation-status="form.errors.phone ? 'error' : undefined"
+                                :feedback="form.errors.phone"
+                            >
+                                <n-input 
+                                    v-model:value="form.phone" 
+                                    placeholder="Ej. 55 1234 5678"
+                                    @input="form.clearErrors('phone')"
+                                >
+                                    <template #prefix>
+                                        <n-icon :component="CallOutline" />
                                     </template>
                                 </n-input>
                             </n-form-item>

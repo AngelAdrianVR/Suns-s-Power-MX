@@ -1,15 +1,18 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, router } from '@inertiajs/vue3';
 import { 
     NAvatar, NTooltip, NTag, NEmpty, NButton, NIcon, NModal, NCard, NForm, 
-    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi 
+    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing
 } from 'naive-ui';
 import { 
     format, parseISO, differenceInHours, addDays, startOfDay, endOfDay 
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { AddOutline, SaveOutline } from '@vicons/ionicons5';
+import { 
+    AddOutline, SaveOutline, CloseOutline, LogoWhatsapp, 
+    PencilOutline, TrashOutline, ChatbubbleOutline 
+} from '@vicons/ionicons5';
 
 const props = defineProps({
     tasks: {
@@ -22,14 +25,16 @@ const props = defineProps({
     },
     assignableUsers: {
         type: Array,
-        default: () => [] // Array de { label: 'Nombre', value: id }
+        default: () => [] 
     }
 });
 
 const { notification } = createDiscreteApi(['notification']);
 const showCreateModal = ref(false);
+const showDetailModal = ref(false);
+const selectedTask = ref(null);
 
-// Formulario de Tarea
+// Formulario de Tarea (Creación)
 const form = useForm({
     service_order_id: props.orderId,
     title: '',
@@ -45,7 +50,6 @@ const priorityOptions = [
     { label: 'Alta', value: 'Alta' }
 ];
 
-// Mapeo de usuarios para el select (si no vienen ya formateados)
 const userOptions = computed(() => {
     return props.assignableUsers.map(u => ({
         label: u.name || u.label,
@@ -54,62 +58,83 @@ const userOptions = computed(() => {
 });
 
 const submitTask = () => {
-    // Asegurar ID de orden
     form.service_order_id = props.orderId;
-    
-    // Formatear fecha para enviar timestamp o string (dependiendo de config global, aquí mandamos el valor del picker directo)
-    // Inertia/Laravel maneja timestamps de JS, pero a veces es mejor formatear.
-    
     form.post(route('tasks.store'), {
         onSuccess: () => {
-            notification.success({ title: 'Éxito', content: 'Tarea creada y asignada.' });
+            notification.success({ title: 'Éxito', content: 'Tarea creada.' });
             showCreateModal.value = false;
             form.reset();
-        },
-        onError: () => {
-            notification.error({ title: 'Error', content: 'Revisa los campos del formulario.' });
         }
     });
 };
 
-// Configuración de colores por estado
-const statusColors = {
-    'Pendiente': 'bg-gray-300 border-gray-400 text-gray-700',
-    'En Proceso': 'bg-blue-200 border-blue-400 text-blue-800',
-    'Completado': 'bg-emerald-200 border-emerald-400 text-emerald-800',
-    'Detenido': 'bg-red-200 border-red-400 text-red-800',
+const updateTaskStatus = (task, newStatus) => {
+    // 1. Actualización optimista local para respuesta inmediata en UI
+    task.status = newStatus;
+
+    // 2. Petición al servidor
+    router.put(route('tasks.update', task.id), { status: newStatus }, {
+        preserveScroll: true,
+        preserveState: true, // Mantiene el estado local para que no parpadee
+        onSuccess: () => {
+             notification.success({ title: 'Actualizado', content: 'Estatus guardado.' });
+        },
+        onError: () => {
+            // Revertir si falla (opcional, requeriría guardar estado previo)
+            notification.error({ title: 'Error', content: 'No se pudo actualizar el estatus.' });
+        }
+    });
 };
 
-// 1. Calcular Rango Global de Fechas
+const deleteTask = (taskId) => {
+    router.delete(route('tasks.destroy', taskId), {
+        onSuccess: () => notification.success({title: 'Tarea eliminada'}),
+        preserveScroll: true
+    });
+};
+
+const sendWhatsapp = (user, taskTitle) => {
+    if (!user || !user.phone) {
+        notification.error({ title: 'Error', content: 'El usuario no tiene teléfono registrado.' });
+        return;
+    }
+    const phone = user.phone.replace(/\D/g, ''); 
+    const text = encodeURIComponent(`Hola ${user.name}, respecto a la tarea "${taskTitle}" de la Orden #${props.orderId}...`);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+};
+
+const openDetail = (task) => {
+    selectedTask.value = task;
+    showDetailModal.value = true;
+};
+
+// --- LÓGICA GANTT ---
+const statusColors = {
+    'Pendiente': 'bg-gray-300 border-gray-400 text-gray-700',
+    'En Proceso': 'bg-blue-300 border-blue-500 text-blue-900',
+    'Completado': 'bg-emerald-300 border-emerald-500 text-emerald-900',
+    'Detenido': 'bg-red-300 border-red-500 text-red-900',
+};
+
 const timeRange = computed(() => {
     if (!props.tasks.length) return null;
-
-    // Obtener fechas válidas
     const starts = props.tasks.map(t => t.start ? parseISO(t.start) : null).filter(Boolean);
     const ends = props.tasks.map(t => t.end ? parseISO(t.end) : null).filter(Boolean);
-
     if (!starts.length) return null;
 
     let minDate = startOfDay(new Date(Math.min(...starts)));
     let maxDate = endOfDay(new Date(Math.max(...ends)));
 
-    // Si la diferencia es muy corta (menos de 3 días), agregamos buffer visual
     if (differenceInHours(maxDate, minDate) < 72) {
         maxDate = addDays(maxDate, 3);
     }
-
-    const totalHours = differenceInHours(maxDate, minDate);
-
-    return { minDate, maxDate, totalHours };
+    return { minDate, maxDate, totalHours: differenceInHours(maxDate, minDate) };
 });
 
-// 2. Generar columnas de días para el encabezado
 const timelineDays = computed(() => {
     if (!timeRange.value) return [];
-    
     const days = [];
     let current = timeRange.value.minDate;
-    
     while (current <= timeRange.value.maxDate) {
         days.push(current);
         current = addDays(current, 1);
@@ -117,25 +142,13 @@ const timelineDays = computed(() => {
     return days;
 });
 
-// 3. Calcular posición y ancho de cada barra
 const getTaskStyle = (task) => {
     if (!task.start || !task.end || !timeRange.value) return {};
-
     const start = parseISO(task.start);
     const end = parseISO(task.end);
-    const globalStart = timeRange.value.minDate;
-    const totalDuration = timeRange.value.totalHours;
-
-    const offsetHours = differenceInHours(start, globalStart);
-    const durationHours = differenceInHours(end, start) || 1; // Mínimo 1 hora visual
-
-    const left = (offsetHours / totalDuration) * 100;
-    const width = (durationHours / totalDuration) * 100;
-
-    return {
-        left: `${left}%`,
-        width: `${width}%`
-    };
+    const left = (differenceInHours(start, timeRange.value.minDate) / timeRange.value.totalHours) * 100;
+    const width = (differenceInHours(end, start) / timeRange.value.totalHours) * 100 || 1; // min width
+    return { left: `${left}%`, width: `${width}%` };
 };
 </script>
 
@@ -149,7 +162,6 @@ const getTaskStyle = (task) => {
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-300"></span> En Proceso</span>
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-300"></span> Completado</span>
                 </div>
-                <!-- Botón Agregar Tarea -->
                 <n-button type="primary" size="small" ghost @click="showCreateModal = true">
                     <template #icon><n-icon><AddOutline /></n-icon></template>
                     Nueva Tarea
@@ -165,77 +177,95 @@ const getTaskStyle = (task) => {
         </div>
 
         <div v-else class="relative overflow-x-auto">
-            <div class="min-w-[800px] p-4">
+            <div class="min-w-[900px] p-4">
                 
-                <!-- Encabezado de Fechas (Eje X) -->
+                <!-- Encabezado -->
                 <div class="flex border-b border-gray-200 mb-4 pb-2">
-                    <div class="w-1/4 min-w-[200px] font-semibold text-gray-500 text-xs uppercase tracking-wider pl-2">
-                        Tarea / Actividad
+                    <div class="w-1/3 min-w-[320px] font-semibold text-gray-500 text-xs uppercase tracking-wider pl-2">
+                        Tarea / Gestión
                     </div>
                     <div class="flex-1 flex relative">
-                        <div 
-                            v-for="day in timelineDays" 
-                            :key="day" 
-                            class="flex-1 text-center text-xs text-gray-400 border-l border-gray-100 last:border-r"
-                        >
+                        <div v-for="day in timelineDays" :key="day" class="flex-1 text-center text-xs text-gray-400 border-l border-gray-100 last:border-r">
                             <div class="font-bold text-gray-600">{{ format(day, 'dd') }}</div>
                             <div class="text-[10px] uppercase">{{ format(day, 'MMM', { locale: es }) }}</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Lista de Tareas (Eje Y) y Barras -->
-                <div class="space-y-4 relative">
-                    <!-- Grid de fondo (Líneas verticales) -->
-                    <div class="absolute top-0 right-0 bottom-0 left-[25%] flex pointer-events-none opacity-30 z-0">
+                <!-- Lista de Tareas -->
+                <div class="space-y-6 relative">
+                    <div class="absolute top-0 right-0 bottom-0 left-[33%] flex pointer-events-none opacity-30 z-0">
                          <div v-for="day in timelineDays" :key="'grid-'+day" class="flex-1 border-l border-dashed border-gray-300"></div>
                     </div>
 
-                    <div v-for="task in tasks" :key="task.id" class="flex items-center relative z-10 group">
+                    <div v-for="task in tasks" :key="task.id" class="flex items-center relative z-10 group min-h-[50px]">
                         
-                        <!-- Nombre de la Tarea -->
-                        <div class="w-1/4 min-w-[200px] pr-4">
-                            <div class="font-medium text-sm text-gray-800 truncate" :title="task.name">
-                                {{ task.name }}
+                        <!-- Columna Izquierda: Detalles y Controles -->
+                        <div class="w-1/3 min-w-[320px] pr-4 flex flex-col justify-center border-r border-gray-100 mr-2">
+                            <div class="flex justify-between items-start mb-1">
+                                <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600" @click="openDetail(task)">
+                                    {{ task.name }}
+                                </span>
+                                <!-- SELECTOR DE ESTATUS -->
+                                <n-popselect 
+                                    :options="[
+                                        {label: 'Pendiente', value: 'Pendiente'},
+                                        {label: 'En Proceso', value: 'En Proceso'},
+                                        {label: 'Completado', value: 'Completado'},
+                                        {label: 'Detenido', value: 'Detenido'}
+                                    ]"
+                                    :value="task.status"
+                                    @update:value="(val) => updateTaskStatus(task, val)"
+                                    trigger="click"
+                                >
+                                    <n-tag size="tiny" :bordered="false" class="cursor-pointer font-bold" 
+                                        :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
+                                        {{ task.status }}
+                                    </n-tag>
+                                </n-popselect>
                             </div>
-                            <div class="flex -space-x-2 mt-1">
-                                <n-avatar 
-                                    v-for="user in task.assignees" 
-                                    :key="user.id" 
-                                    round 
-                                    size="small" 
-                                    :src="user.avatar"
-                                    class="border-2 border-white w-6 h-6"
-                                    :fallback-src="'https://ui-avatars.com/api/?name='+user.name"
-                                />
+
+                            <div class="flex justify-between items-center mt-1">
+                                <!-- Avatares -->
+                                <div class="flex -space-x-1">
+                                    <n-avatar v-for="user in task.assignees" :key="user.id" round size="tiny" :src="user.avatar" class="border border-white"/>
+                                </div>
+                                
+                                <!-- Botonera de Acciones -->
+                                <div class="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <n-button v-if="task.assignees.length" size="tiny" circle type="success" ghost @click="sendWhatsapp(task.assignees[0], task.name)">
+                                        <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
+                                    </n-button>
+                                    <n-popconfirm @positive-click="deleteTask(task.id)">
+                                        <template #trigger>
+                                            <n-button size="tiny" circle type="error" quaternary>
+                                                <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                            </n-button>
+                                        </template>
+                                        ¿Borrar tarea?
+                                    </n-popconfirm>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Barra de Tiempo -->
-                        <div class="flex-1 relative h-10 bg-gray-50 rounded-lg overflow-hidden border border-gray-100/50">
-                            
+                        <!-- Columna Derecha: Barra Gantt -->
+                        <div class="flex-1 relative h-8 bg-gray-50 rounded-full overflow-hidden border border-gray-100/50" @click="openDetail(task)">
                             <n-tooltip trigger="hover" placement="top">
                                 <template #trigger>
                                     <div 
-                                        class="absolute top-2 bottom-2 rounded-md shadow-sm transition-all hover:brightness-95 cursor-pointer flex items-center px-2"
+                                        class="absolute top-0 bottom-0 rounded-full shadow-sm transition-all hover:brightness-95 cursor-pointer flex items-center justify-center px-2"
                                         :class="statusColors[task.status] || 'bg-gray-200'"
                                         :style="getTaskStyle(task)"
                                     >
-                                        <div class="text-[10px] font-bold truncate opacity-90 w-full">
-                                            {{ task.progress }}%
-                                        </div>
+                                        <!-- Sin porcentaje, solo barra visual -->
                                     </div>
                                 </template>
-                                
-                                <!-- Tooltip Content -->
                                 <div class="text-xs">
                                     <div class="font-bold">{{ task.name }}</div>
-                                    <div>Inicio: {{ task.start ? format(parseISO(task.start), 'dd MMM HH:mm') : 'S/D' }}</div>
-                                    <div>Fin: {{ task.end ? format(parseISO(task.end), 'dd MMM HH:mm') : 'S/D' }}</div>
-                                    <div class="mt-1 font-mono">Estado: {{ task.status }}</div>
+                                    <div>{{ task.status }}</div>
+                                    <div>{{ task.start ? format(parseISO(task.start), 'dd MMM') : '' }} - {{ task.end ? format(parseISO(task.end), 'dd MMM') : '' }}</div>
                                 </div>
                             </n-tooltip>
-
                         </div>
                     </div>
                 </div>
@@ -243,80 +273,59 @@ const getTaskStyle = (task) => {
             </div>
         </div>
 
-        <!-- MODAL DE CREACIÓN DE TAREA -->
+        <!-- MODAL CREACIÓN -->
         <n-modal v-model:show="showCreateModal">
-            <n-card 
-                style="width: 600px" 
-                title="Nueva Tarea / Actividad" 
-                :bordered="false" 
-                size="huge" 
-                role="dialog" 
-                aria-modal="true"
-            >
-                <template #header-extra>
-                    <n-icon size="24" class="text-gray-400 cursor-pointer" @click="showCreateModal=false"><close-outline /></n-icon>
-                </template>
-
-                <n-form :model="form" label-placement="top" class="mt-2">
+            <n-card style="width: 600px" title="Nueva Tarea" :bordered="false" size="huge" role="dialog" aria-modal="true">
+                <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showCreateModal=false"><CloseOutline /></n-icon></template>
+                <n-form :model="form" label-placement="top">
                     <div class="grid grid-cols-2 gap-4">
-                        <!-- Título -->
-                        <div class="col-span-2">
-                            <n-form-item label="Título de la Tarea" path="title">
-                                <n-input v-model:value="form.title" placeholder="Ej. Instalación de soportes" />
-                            </n-form-item>
-                        </div>
-
-                        <!-- Prioridad -->
-                        <n-form-item label="Prioridad" path="priority">
-                            <n-select v-model:value="form.priority" :options="priorityOptions" />
-                        </n-form-item>
-
-                        <!-- Fecha Vencimiento -->
-                        <n-form-item label="Fecha Límite / Vencimiento" path="due_date">
-                            <n-date-picker 
-                                v-model:formatted-value="form.due_date"
-                                type="datetime"
-                                value-format="yyyy-MM-dd HH:mm:ss"
-                                class="w-full" 
-                                clearable
-                            />
-                        </n-form-item>
-
-                        <!-- Asignación (Múltiple) -->
-                        <div class="col-span-2">
-                            <n-form-item label="Asignar Responsables (Notificación Automática)" path="user_ids">
-                                <n-select 
-                                    v-model:value="form.user_ids" 
-                                    multiple 
-                                    :options="userOptions" 
-                                    placeholder="Selecciona técnicos..."
-                                    filterable
-                                />
-                            </n-form-item>
-                        </div>
-
-                        <!-- Descripción -->
-                        <div class="col-span-2">
-                            <n-form-item label="Descripción Detallada" path="description">
-                                <n-input 
-                                    v-model:value="form.description" 
-                                    type="textarea" 
-                                    placeholder="Instrucciones específicas..." 
-                                />
-                            </n-form-item>
-                        </div>
+                        <div class="col-span-2"><n-form-item label="Título" path="title"><n-input v-model:value="form.title" /></n-form-item></div>
+                        <n-form-item label="Prioridad"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
+                        <n-form-item label="Fecha Límite"><n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
+                        <div class="col-span-2"><n-form-item label="Asignar a"><n-select v-model:value="form.user_ids" multiple :options="userOptions" filterable /></n-form-item></div>
+                        <div class="col-span-2"><n-form-item label="Descripción"><n-input v-model:value="form.description" type="textarea" /></n-form-item></div>
                     </div>
                 </n-form>
-
                 <template #footer>
                     <div class="flex justify-end gap-3">
                         <n-button @click="showCreateModal = false">Cancelar</n-button>
-                        <n-button type="primary" @click="submitTask" :loading="form.processing">
-                            <template #icon><n-icon><SaveOutline /></n-icon></template>
-                            Guardar y Asignar
-                        </n-button>
+                        <n-button type="primary" @click="submitTask" :loading="form.processing">Guardar</n-button>
                     </div>
                 </template>
+            </n-card>
+        </n-modal>
+
+        <!-- MODAL DETALLE (SOLO LECTURA + COMENTARIO) -->
+        <n-modal v-model:show="showDetailModal">
+            <n-card style="width: 500px" :title="selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true">
+                <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showDetailModal=false"><CloseOutline /></n-icon></template>
+                
+                <div class="space-y-4" v-if="selectedTask">
+                    <n-tag :type="selectedTask.status === 'Completado' ? 'success' : 'default'">{{ selectedTask.status }}</n-tag>
+                    
+                    <div>
+                        <div class="text-xs text-gray-500 font-bold uppercase">Descripción</div>
+                        <p class="text-gray-700 text-sm mt-1">{{ selectedTask.description || 'Sin descripción detallada.' }}</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg">
+                        <div>
+                            <div class="text-xs text-gray-400">Inicio</div>
+                            <div class="text-sm font-medium">{{ selectedTask.start ? format(parseISO(selectedTask.start), 'dd MMM HH:mm') : 'N/A' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-400">Fin</div>
+                            <div class="text-sm font-medium">{{ selectedTask.end ? format(parseISO(selectedTask.end), 'dd MMM HH:mm') : 'N/A' }}</div>
+                        </div>
+                    </div>
+
+                    <div class="border-t pt-4 mt-4">
+                         <n-button block secondary type="info">
+                            <template #icon><n-icon><ChatbubbleOutline /></n-icon></template>
+                            Agregar Comentario
+                         </n-button>
+                    </div>
+                </div>
             </n-card>
         </n-modal>
     </div>
