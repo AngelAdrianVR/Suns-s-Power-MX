@@ -61,8 +61,16 @@ Route::resource('productos', ProductController::class)->names('products')
 
 
 // ---------------------------- Rutas de ordenes de servicio --------------------------------
+// Ruta específica para actualizar solo el estatus (método PATCH)
+Route::patch('ordenes-servicio/{serviceOrder}/status', [ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
+// Nueva ruta para subir evidencias (Media Library)
+Route::post('ordenes-servicio/{serviceOrder}/media', [ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
+// Recurso principal de órdenes de servicio CRUD
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
     ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
+// RUTAS PARA PRODUCTOS / MATERIALES (Stock)
+Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); // Esta es la que te daba error
+Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
 
 
 // ---------------------------- Rutas de Tareas --------------------------------

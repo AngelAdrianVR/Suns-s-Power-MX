@@ -9,19 +9,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class ServiceOrder extends Model 
+class ServiceOrder extends Model implements HasMedia
 {
     use HasFactory;
     use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
+    use InteractsWithMedia;
 
     protected $fillable = [
         'client_id',
         'branch_id',
         'technician_id',
         'sales_rep_id',
-        'status',
+        'status', // 'Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'
         'start_date',
+        'completion_date',
         'completion_date',
         'total_amount',
         'installation_address',

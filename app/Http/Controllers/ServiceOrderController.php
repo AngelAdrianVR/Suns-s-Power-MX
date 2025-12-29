@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ServiceOrder;
+use App\Models\ServiceOrderItem;
+use App\Models\Product;
 use App\Models\Client;
 use App\Models\User;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,22 +21,18 @@ class ServiceOrderController extends Controller
      */
     public function index(Request $request)
     {
-        // 1. Contexto Multi-tenant
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-
-        // 2. Filtros
         $filters = $request->only(['search', 'status', 'date_range']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
 
-        // 3. Consulta Base
         $orders = ServiceOrder::query()
             ->with([
-                'client:id,name,branch_id', // Solo campos necesarios
+                'client:id,name,branch_id',
                 'technician:id,name,profile_photo_path',
-                'salesRep:id,name'
+                'salesRep:id,name,profile_photo_path'
             ])
-            ->withCount('tasks') // Para calcular progreso rápido sin cargar todas las tareas
+            ->withCount('tasks')
             ->where('branch_id', $branchId)
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -62,11 +61,13 @@ class ServiceOrderController extends Controller
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
                     'technician' => $order->technician ? [
                         'name' => $order->technician->name,
-                        'photo' => $order->technician->profile_photo_path,
+                        'photo' => $order->technician->profile_photo_url, 
                     ] : null,
-                    'sales_rep' => $order->salesRep->name ?? 'N/A',
+                    'sales_rep' => $order->salesRep ? [
+                        'name' => $order->salesRep->name,
+                        'photo' => $order->salesRep->profile_photo_url,
+                    ] : null,
                     'total_amount' => $order->total_amount,
-                    // Usamos el accessor del modelo o cálculo manual
                     'progress' => $order->progress ?? 0, 
                     'created_at_human' => $order->created_at->diffForHumans(),
                 ];
@@ -75,33 +76,23 @@ class ServiceOrderController extends Controller
         return Inertia::render('ServiceOrders/Index', [
             'orders' => $orders,
             'filters' => $filters,
-            // Enviamos los estados posibles para un dropdown de filtro
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Instalado', 'Facturado', 'Cancelado']
         ]);
     }
 
-    /**
-     * Prepara la vista de creación.
-     */
     public function create()
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-
         return Inertia::render('ServiceOrders/Create', [
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            // Filtramos usuarios técnicos y vendedores de esta sucursal
             'technicians' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
         ]);
     }
 
-    /**
-     * Almacena la nueva orden.
-     */
     public function store(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
             'technician_id' => 'nullable|exists:users,id',
@@ -114,75 +105,68 @@ class ServiceOrderController extends Controller
         ]);
 
         $validated['branch_id'] = $branchId;
-
         DB::transaction(function () use ($validated) {
-            $order = ServiceOrder::create($validated);
+            ServiceOrder::create($validated);
         });
 
-        return redirect()->route('service-orders.index')
-            ->with('success', 'Orden de servicio generada correctamente.');
+        return redirect()->route('service-orders.index')->with('success', 'Orden de servicio generada correctamente.');
     }
 
-    /**
-     * Muestra el detalle completo y prepara datos para el diagrama dinámico.
-     */
     public function show(ServiceOrder $serviceOrder)
     {
-        // Seguridad Tenant
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) abort(403);
 
-        // Cargar todas las relaciones necesarias para el "Expediente de Obra"
         $serviceOrder->load([
             'client',
             'technician',
-            'items.product',
-            'tasks.assignees', // <--- CORREGIDO: Usamos 'assignees'
+            'items.product', 
+            'tasks.assignees', 
             'documents',
-            'payments'
         ]);
 
-        // Transformación de datos para el Gráfico/Diagrama (Gantt o Timeline)
         $diagramData = $serviceOrder->tasks->map(function ($task) {
             return [
                 'id' => $task->id,
                 'name' => $task->title,
+                'description' => $task->description, // Agregamos descripción para el modal
                 'start' => $task->start_date?->format('Y-m-d H:i:s'),
                 'end' => $task->due_date?->format('Y-m-d H:i:s'),
                 'status' => $task->status,
-                'progress' => $task->status === 'Completado' ? 100 : ($task->status === 'En Proceso' ? 50 : 0),
-                'dependencies' => [], 
-                // CORREGIDO: Usamos $task->assignees en lugar de $task->users
+                // Quitamos la lógica de porcentajes aquí, la UI la maneja por status
                 'assignees' => $task->assignees->map(fn($user) => [
                     'id' => $user->id,
                     'name' => $user->name,
-                    'avatar' => $user->profile_photo_path
+                    'phone' => $user->phone, 
+                    'avatar' => $user->profile_photo_url 
                 ])
             ];
         });
 
-        // OBTENER USUARIOS PARA EL SELECT DE ASIGNACIÓN (Modal de Tareas)
         $assignableUsers = User::where('branch_id', $branchId)
              ->where('is_active', true)
-             ->select('id', 'name')
+             ->select('id', 'name', 'phone')
              ->orderBy('name')
              ->get();
 
+        $availableProducts = Product::where('category_id', '!=', null) 
+            ->select('id', 'name', 'sku', 'sale_price', 'purchase_price') 
+            ->orderBy('name')
+            ->get();
+
         return Inertia::render('ServiceOrders/Show', [
             'order' => $serviceOrder,
-            'diagram_data' => $diagramData, // Datos listos para el componente visual
+            'diagram_data' => $diagramData,
             'stats' => [
                 'total_tasks' => $serviceOrder->tasks->count(),
                 'completed_tasks' => $serviceOrder->tasks->where('status', 'Completado')->count(),
-                'pending_balance' => $serviceOrder->total_amount - $serviceOrder->payments->sum('amount')
+                'pending_balance' => 0 
             ],
-            'assignable_users' => $assignableUsers // Lista de usuarios para el modal
+            'assignable_users' => $assignableUsers,
+            'available_products' => $availableProducts 
         ]);
     }
 
-    /**
-     * Edición de la orden.
-     */
     public function edit(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -194,9 +178,6 @@ class ServiceOrderController extends Controller
         ]);
     }
 
-    /**
-     * Actualización.
-     */
     public function update(Request $request, ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -213,13 +194,77 @@ class ServiceOrderController extends Controller
 
         $serviceOrder->update($validated);
 
-        return redirect()->route('service-orders.show', $serviceOrder->id)
-            ->with('success', 'Orden actualizada.');
+        return redirect()->route('service-orders.show', $serviceOrder->id)->with('success', 'Orden actualizada.');
     }
 
-    /**
-     * Eliminación con validación de integridad.
-     */
+    public function updateStatus(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) abort(403);
+
+        $validated = $request->validate([
+            'status' => 'required|in:Cotización,Aceptado,En Proceso,Instalado,Facturado,Cancelado'
+        ]);
+
+        $serviceOrder->update(['status' => $validated['status']]);
+        return back()->with('success', "Estatus actualizado a {$validated['status']}.");
+    }
+
+    public function addItems(Request $request, ServiceOrder $serviceOrder)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = Product::findOrFail($validated['product_id']);
+
+        DB::transaction(function () use ($serviceOrder, $product, $validated) {
+            $serviceOrder->items()->create([
+                'product_id' => $product->id,
+                'quantity' => $validated['quantity'],
+                'price' => $product->sale_price,
+            ]);
+
+            InventoryService::removeStock(
+                product: $product,
+                branchId: $serviceOrder->branch_id,
+                quantity: $validated['quantity'],
+                reason: 'Instalación',
+                reference: $serviceOrder,
+                notes: "Material asignado a Orden de Servicio #{$serviceOrder->id}"
+            );
+            
+            // ELIMINADO: Ya no incrementamos el total_amount de la orden
+            // $serviceOrder->increment('total_amount', $product->sale_price * $validated['quantity']);
+        });
+
+        return back()->with('success', 'Producto asignado correctamente.');
+    }
+
+    public function removeItem($itemId)
+    {
+        $item = ServiceOrderItem::with(['product', 'serviceOrder'])->findOrFail($itemId);
+        
+        DB::transaction(function () use ($item) {
+            InventoryService::addStock(
+                product: $item->product,
+                branchId: $item->serviceOrder->branch_id,
+                quantity: $item->quantity,
+                reason: 'Devolución',
+                reference: $item->serviceOrder,
+                notes: "Material removido de Orden de Servicio #{$item->serviceOrder->id}"
+            );
+
+            // ELIMINADO: Ya no decrementamos el total_amount de la orden
+            // $item->serviceOrder->decrement('total_amount', $item->price * $item->quantity);
+            
+            $item->delete();
+        });
+
+        return back()->with('success', 'Producto eliminado de la orden y stock devuelto.');
+    }
+
     public function destroy(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -230,7 +275,6 @@ class ServiceOrderController extends Controller
         }
 
         $serviceOrder->delete(); 
-
         return redirect()->route('service-orders.index')->with('success', 'Orden eliminada.');
     }
 }

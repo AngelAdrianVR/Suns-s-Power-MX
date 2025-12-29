@@ -11,7 +11,7 @@ import {
 import { 
     ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, 
     CalendarOutline, PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
-    CloudUploadOutline, DocumentAttachOutline
+    CloudUploadOutline, DocumentAttachOutline, CallOutline
 } from '@vicons/ionicons5';
 
 export default {
@@ -46,7 +46,8 @@ export default {
         TimeOutline,
         AlertCircleOutline,
         CloudUploadOutline,
-        DocumentAttachOutline
+        DocumentAttachOutline,
+        CallOutline
     },
     props: {
         user: {
@@ -166,12 +167,16 @@ export default {
 
                         <!-- Columna Derecha: Detalles y Acciones -->
                         <div class="flex-grow w-full">
-                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-5">
                                 <div>
                                     <h1 class="text-3xl font-bold text-gray-800">{{ user.name }}</h1>
                                     <p class="text-gray-500 flex items-center gap-2 mt-1">
                                         <n-icon><MailOutline /></n-icon>
                                         {{ user.email }}
+                                    </p>
+                                    <p class="text-gray-500 flex items-center gap-2">
+                                        <n-icon><CallOutline /></n-icon>
+                                        {{ user.phone || 'No proporcionado' }}
                                     </p>
                                 </div>
                                 <div class="flex flex-col md:flex-row gap-2 w-full md:w-auto">

@@ -23,8 +23,9 @@ return new class extends Migration
             // Relaciones
             $table->foreignId('created_by')->constrained('users')->onDelete('cascade'); // (Quién lo asignó)
             // Fecha de inicio para poder hacer rangos (Gantt)
-            $table->dateTime('start_date')->nullable();
-            $table->dateTime('due_date')->nullable();
+            $table->dateTime('start_date')->nullable(); // Fecha de inicio para poder hacer rangos (Gantt)
+            $table->dateTime('finish_date')->nullable(); // Fecha de finalización real
+            $table->dateTime('due_date')->nullable(); // Fecha límite
             
             $table->enum('status', ['Pendiente', 'En Proceso', 'Completado', 'Detenido'])->default('Pendiente');
             $table->enum('priority', ['Baja', 'Media', 'Alta'])->default('Media');

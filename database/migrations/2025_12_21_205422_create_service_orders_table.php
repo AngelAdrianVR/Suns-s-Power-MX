@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('sales_rep_id')->constrained('users'); // Representante de ventas que creó la orden
             
             $table->enum('status', [
-                'Cotización', 'Aceptado', 'En Proceso', 'Instalado', 'Facturado', 'Cancelado'
+                'Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'
             ])->default('Cotización');
             
             $table->dateTime('start_date')->nullable(); // Fecha de inicio del servicio
