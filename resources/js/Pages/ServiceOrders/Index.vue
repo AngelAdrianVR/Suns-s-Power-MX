@@ -87,7 +87,7 @@ const getStatusColor = (status) => {
         'Cotización': 'default',
         'Aceptado': 'info',
         'En Proceso': 'warning',
-        'Instalado': 'success',
+        'Completado': 'success',
         'Facturado': 'success',
         'Cancelado': 'error'
     };

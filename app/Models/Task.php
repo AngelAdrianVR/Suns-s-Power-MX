@@ -19,7 +19,7 @@ class Task extends Model
         'start_date',
         'finish_date',
         'due_date',
-        'status',
+        'status', // Pendiente, En Proceso, Completada, Detenido
         'priority',
     ];
 
@@ -45,5 +45,11 @@ class Task extends Model
     public function serviceOrder() // a qué orden de servicio pertenece la tarea
     {
         return $this->belongsTo(ServiceOrder::class);
+    }
+
+    // Relación polimórfica para comentarios
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'commentable');
     }
 }

@@ -7,13 +7,13 @@ import {
     NButton, NTag, NCard, NGrid, NGridItem, NDescriptions, NDescriptionsItem, 
     NTabs, NTabPane, NIcon, NThing, NAvatar, NProgress, NStatistic, NNumberAnimation,
     createDiscreteApi, NEmpty, NPopselect, NModal, NForm, NFormItem, NInput, NSelect, NInputNumber,
-    NPopconfirm
+    NPopconfirm, NUpload, NImageGroup, NImage
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
-    AddOutline, RemoveCircleOutline
+    AddOutline, RemoveCircleOutline, CloudUploadOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -47,13 +47,13 @@ const orderStatusOptions = [
     { label: 'Cotización', value: 'Cotización' },
     { label: 'Aceptado', value: 'Aceptado' },
     { label: 'En Proceso', value: 'En Proceso' },
-    { label: 'Instalado', value: 'Instalado' },
+    { label: 'Completado', value: 'Completado' }, 
     { label: 'Facturado', value: 'Facturado' },
     { label: 'Cancelado', value: 'Cancelado' }
 ];
 
 const getStatusType = (status) => {
-    const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Instalado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
+    const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
     return map[status] || 'default';
 };
 
@@ -93,6 +93,12 @@ const removeProduct = (itemId) => {
         preserveScroll: true,
         onSuccess: () => notification.success({title: 'Producto removido'})
     });
+};
+
+// --- GESTIÓN DE EVIDENCIAS (ARCHIVOS) ---
+const handleUploadFinish = ({ file, event }) => {
+    notification.success({ title: 'Archivo subido', content: 'La evidencia se ha guardado correctamente.' });
+    router.reload({ only: ['order'] }); // Recargar orden para ver nueva imagen
 };
 
 // --- ACCIONES GENERALES ---
@@ -308,11 +314,20 @@ const confirmDelete = () => {
                                             {{ formatDate(order.start_date) }}
                                         </div>
                                     </n-descriptions-item>
+                                    <!-- FECHA FINALIZACION -->
                                     <n-descriptions-item label="Fecha de Finalización">
-                                        {{ formatDate(order.completion_date) }}
+                                        <div class="flex items-center gap-2" :class="order.completion_date ? 'text-green-600 font-medium' : 'text-gray-400'">
+                                            <n-icon><CheckmarkCircleOutline /></n-icon>
+                                            {{ order.completion_date ? formatDate(order.completion_date) : 'En progreso' }}
+                                        </div>
                                     </n-descriptions-item>
+                                    <!-- REPRESENTANTE DE VENTAS CON AVATAR -->
                                     <n-descriptions-item label="Representante de Ventas">
-                                        {{ order.sales_rep?.name || 'N/A' }}
+                                        <div v-if="order.sales_rep" class="flex items-center gap-3">
+                                            <n-avatar size="small" round :src="order.sales_rep.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+order.sales_rep.name" />
+                                            <span>{{ order.sales_rep.name }}</span>
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">No asignado</span>
                                     </n-descriptions-item>
                                     <n-descriptions-item label="Notas">
                                         {{ order.notes || 'Sin notas registradas.' }}
@@ -323,9 +338,56 @@ const confirmDelete = () => {
 
                         <!-- TAB 4: EVIDENCIAS -->
                         <n-tab-pane name="files" tab="Evidencias">
-                            <!-- Contenido existente... -->
-                            <div class="p-8 text-center" v-if="!order.documents?.length">
-                                <n-empty description="No se han cargado evidencias fotográficas o documentos." />
+                            <div class="p-4">
+                                <!-- Uploader de Evidencias (AGREGADO) -->
+                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6">
+                                    <n-upload
+                                        :action="route('service-orders.upload-media', order.id)"
+                                        :headers="{ 'X-CSRF-TOKEN': $page.props.csrf_token }"
+                                        name="file"
+                                        @finish="handleUploadFinish"
+                                        list-type="image-card"
+                                        :show-file-list="false"
+                                    >
+                                        <n-button dashed block class="h-20">
+                                            <div class="flex flex-col items-center gap-2 text-gray-500">
+                                                <n-icon size="24"><CloudUploadOutline /></n-icon>
+                                                <span>Clic o arrastra para subir evidencias</span>
+                                            </div>
+                                        </n-button>
+                                    </n-upload>
+                                </div>
+
+                                <!-- Galería de Evidencias -->
+                                <div v-if="order.media?.length">
+                                    <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
+                                    <n-image-group>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div v-for="file in order.media" :key="file.id" class="relative group">
+                                                <n-image
+                                                    :src="file.original_url"
+                                                    class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
+                                                    object-fit="cover"
+                                                />
+                                                <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
+                                                
+                                                <!-- Botón eliminar archivo -->
+                                                <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
+                                                    <template #trigger>
+                                                        <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700">
+                                                            <n-icon><TrashOutline /></n-icon>
+                                                        </button>
+                                                    </template>
+                                                    ¿Eliminar evidencia?
+                                                </n-popconfirm>
+                                            </div>
+                                        </div>
+                                    </n-image-group>
+                                </div>
+
+                                <div class="p-8 text-center" v-else>
+                                    <n-empty description="No se han cargado evidencias fotográficas o documentos aún." />
+                                </div>
                             </div>
                         </n-tab-pane>
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductController;
@@ -74,7 +75,12 @@ Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'r
 
 
 // ---------------------------- Rutas de Tareas --------------------------------
-Route::resource('tareas', TaskController::class)->only(['store', 'update', 'destroy'])->names('tasks')->middleware('auth');
+Route::resource('tareas', TaskController::class)->only(['store', 'update', 'destroy'])->parameters(['tareas' => 'task'])
+    ->names('tasks')->middleware('auth');
+
+
+// Ruta para Comentarios
+Route::post('/comments', [CommentController::class, 'store'])->name('comments.store')->middleware('auth');
 
 
 // ---------------------------- Rutas de ordenes de compras --------------------------------

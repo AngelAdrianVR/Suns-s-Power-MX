@@ -1,9 +1,10 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import { 
     NAvatar, NTooltip, NTag, NEmpty, NButton, NIcon, NModal, NCard, NForm, 
-    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing
+    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing, NBadge,
+    NScrollbar
 } from 'naive-ui';
 import { 
     format, parseISO, differenceInHours, addDays, startOfDay, endOfDay 
@@ -11,7 +12,7 @@ import {
 import { es } from 'date-fns/locale';
 import { 
     AddOutline, SaveOutline, CloseOutline, LogoWhatsapp, 
-    PencilOutline, TrashOutline, ChatbubbleOutline 
+    PencilOutline, TrashOutline, ChatbubbleOutline, FlagOutline, SendOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -33,15 +34,26 @@ const { notification } = createDiscreteApi(['notification']);
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedTask = ref(null);
+const isEditing = ref(false); // Flag para saber si es edición
 
-// Formulario de Tarea (Creación)
+// Formulario de Tarea (Creación/Edición)
 const form = useForm({
+    id: null, // Para update
     service_order_id: props.orderId,
     title: '',
     description: '',
-    due_date: null,
+    start_date: null, 
+    due_date: null, 
+    finish_date: null, 
     priority: 'Media',
     user_ids: []
+});
+
+// Formulario de Comentario
+const commentForm = useForm({
+    body: '',
+    commentable_type: 'task',
+    commentable_id: null
 });
 
 const priorityOptions = [
@@ -50,6 +62,15 @@ const priorityOptions = [
     { label: 'Alta', value: 'Alta' }
 ];
 
+const getPriorityClass = (priority) => {
+    switch(priority) {
+        case 'Alta': return 'border-l-4 border-red-500';
+        case 'Media': return 'border-l-4 border-amber-500';
+        case 'Baja': return 'border-l-4 border-blue-400';
+        default: return 'border-l-4 border-gray-300';
+    }
+};
+
 const userOptions = computed(() => {
     return props.assignableUsers.map(u => ({
         label: u.name || u.label,
@@ -57,32 +78,55 @@ const userOptions = computed(() => {
     }));
 });
 
-const submitTask = () => {
+// --- Lógica CRUD Tareas ---
+
+const openCreate = () => {
+    isEditing.value = false;
+    form.reset();
     form.service_order_id = props.orderId;
-    form.post(route('tasks.store'), {
-        onSuccess: () => {
-            notification.success({ title: 'Éxito', content: 'Tarea creada.' });
-            showCreateModal.value = false;
-            form.reset();
-        }
-    });
+    form.user_ids = [];
+    showCreateModal.value = true;
+};
+
+const openEdit = (task) => {
+    isEditing.value = true;
+    form.id = task.id;
+    form.title = task.name;
+    form.description = task.description;
+    form.priority = task.priority;
+    form.start_date = task.start;
+    form.due_date = task.end; 
+    form.finish_date = task.finish_date;
+    form.user_ids = task.assignees.map(u => u.id);
+    showCreateModal.value = true;
+};
+
+const submitTask = () => {
+    if (isEditing.value) {
+        form.put(route('tasks.update', form.id), {
+            onSuccess: () => {
+                notification.success({ title: 'Actualizado', content: 'Tarea modificada.' });
+                showCreateModal.value = false;
+            }
+        });
+    } else {
+        form.post(route('tasks.store'), {
+            onSuccess: () => {
+                notification.success({ title: 'Éxito', content: 'Tarea creada.' });
+                showCreateModal.value = false;
+                form.reset();
+            }
+        });
+    }
 };
 
 const updateTaskStatus = (task, newStatus) => {
-    // 1. Actualización optimista local para respuesta inmediata en UI
+    // Actualización optimista
     task.status = newStatus;
-
-    // 2. Petición al servidor
     router.put(route('tasks.update', task.id), { status: newStatus }, {
         preserveScroll: true,
-        preserveState: true, // Mantiene el estado local para que no parpadee
-        onSuccess: () => {
-             notification.success({ title: 'Actualizado', content: 'Estatus guardado.' });
-        },
-        onError: () => {
-            // Revertir si falla (opcional, requeriría guardar estado previo)
-            notification.error({ title: 'Error', content: 'No se pudo actualizar el estatus.' });
-        }
+        preserveState: true, 
+        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.' })
     });
 };
 
@@ -90,6 +134,29 @@ const deleteTask = (taskId) => {
     router.delete(route('tasks.destroy', taskId), {
         onSuccess: () => notification.success({title: 'Tarea eliminada'}),
         preserveScroll: true
+    });
+};
+
+// --- Comentarios ---
+
+const openDetail = (task) => {
+    selectedTask.value = task;
+    commentForm.commentable_id = task.id;
+    showDetailModal.value = true;
+};
+
+const submitComment = () => {
+    if(!commentForm.body.trim()) return;
+    
+    commentForm.post(route('comments.store'), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            commentForm.reset('body');
+            notification.success({ title: 'Comentario agregado' });
+            // Necesitamos refrescar la vista para ver el nuevo comentario inmediatamente en el modal si inertia no lo hace auto (Suele hacerlo si props cambian)
+            // router.reload({ only: ['diagram_data'] }); // Puede ser necesario
+        }
     });
 };
 
@@ -101,11 +168,6 @@ const sendWhatsapp = (user, taskTitle) => {
     const phone = user.phone.replace(/\D/g, ''); 
     const text = encodeURIComponent(`Hola ${user.name}, respecto a la tarea "${taskTitle}" de la Orden #${props.orderId}...`);
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
-};
-
-const openDetail = (task) => {
-    selectedTask.value = task;
-    showDetailModal.value = true;
 };
 
 // --- LÓGICA GANTT ---
@@ -143,13 +205,20 @@ const timelineDays = computed(() => {
 });
 
 const getTaskStyle = (task) => {
-    if (!task.start || !task.end || !timeRange.value) return {};
+    const endDateStr = task.finish_date || task.end; 
+    
+    if (!task.start || !endDateStr || !timeRange.value) return {};
     const start = parseISO(task.start);
-    const end = parseISO(task.end);
+    const end = parseISO(endDateStr);
     const left = (differenceInHours(start, timeRange.value.minDate) / timeRange.value.totalHours) * 100;
-    const width = (differenceInHours(end, start) / timeRange.value.totalHours) * 100 || 1; // min width
+    const width = (differenceInHours(end, start) / timeRange.value.totalHours) * 100 || 1; 
     return { left: `${left}%`, width: `${width}%` };
 };
+
+const getDisplayEndDate = (task) => {
+    return task.finish_date || task.end;
+};
+
 </script>
 
 <template>
@@ -162,7 +231,7 @@ const getTaskStyle = (task) => {
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-300"></span> En Proceso</span>
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-300"></span> Completado</span>
                 </div>
-                <n-button type="primary" size="small" ghost @click="showCreateModal = true">
+                <n-button type="primary" size="small" ghost @click="openCreate">
                     <template #icon><n-icon><AddOutline /></n-icon></template>
                     Nueva Tarea
                 </n-button>
@@ -171,7 +240,7 @@ const getTaskStyle = (task) => {
 
         <div v-if="!tasks.length" class="p-8 flex flex-col items-center justify-center">
             <n-empty description="No hay tareas asignadas a esta orden aún." class="mb-4"/>
-            <n-button dashed type="primary" @click="showCreateModal = true">
+            <n-button dashed type="primary" @click="openCreate">
                 Crear primera tarea
             </n-button>
         </div>
@@ -181,8 +250,11 @@ const getTaskStyle = (task) => {
                 
                 <!-- Encabezado -->
                 <div class="flex border-b border-gray-200 mb-4 pb-2">
-                    <div class="w-1/3 min-w-[320px] font-semibold text-gray-500 text-xs uppercase tracking-wider pl-2">
-                        Tarea / Gestión
+                    <div class="w-5/12 min-w-[380px] font-semibold text-gray-500 text-xs uppercase tracking-wider pl-2 flex">
+                        <span class="flex-1">Tarea / Gestión</span>
+                        <!-- <span class="w-16 text-center">Prioridad</span> (Quitado encabezado explícito, ahora es borde) -->
+                        <span class="w-24 text-center">Inicio</span>
+                        <span class="w-24 text-center">Fin</span>
                     </div>
                     <div class="flex-1 flex relative">
                         <div v-for="day in timelineDays" :key="day" class="flex-1 text-center text-xs text-gray-400 border-l border-gray-100 last:border-r">
@@ -194,58 +266,92 @@ const getTaskStyle = (task) => {
 
                 <!-- Lista de Tareas -->
                 <div class="space-y-6 relative">
-                    <div class="absolute top-0 right-0 bottom-0 left-[33%] flex pointer-events-none opacity-30 z-0">
+                    <div class="absolute top-0 right-0 bottom-0 left-[41.6%] flex pointer-events-none opacity-30 z-0">
                          <div v-for="day in timelineDays" :key="'grid-'+day" class="flex-1 border-l border-dashed border-gray-300"></div>
                     </div>
 
                     <div v-for="task in tasks" :key="task.id" class="flex items-center relative z-10 group min-h-[50px]">
                         
                         <!-- Columna Izquierda: Detalles y Controles -->
-                        <div class="w-1/3 min-w-[320px] pr-4 flex flex-col justify-center border-r border-gray-100 mr-2">
-                            <div class="flex justify-between items-start mb-1">
-                                <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600" @click="openDetail(task)">
-                                    {{ task.name }}
-                                </span>
-                                <!-- SELECTOR DE ESTATUS -->
-                                <n-popselect 
-                                    :options="[
-                                        {label: 'Pendiente', value: 'Pendiente'},
-                                        {label: 'En Proceso', value: 'En Proceso'},
-                                        {label: 'Completado', value: 'Completado'},
-                                        {label: 'Detenido', value: 'Detenido'}
-                                    ]"
-                                    :value="task.status"
-                                    @update:value="(val) => updateTaskStatus(task, val)"
-                                    trigger="click"
-                                >
-                                    <n-tag size="tiny" :bordered="false" class="cursor-pointer font-bold" 
-                                        :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
-                                        {{ task.status }}
-                                    </n-tag>
-                                </n-popselect>
+                        <div class="w-5/12 min-w-[380px] pr-4 flex items-center border-r border-gray-100 mr-2 bg-white z-10 rounded-l-sm transition-all hover:bg-gray-50">
+                            
+                            <!-- Borde de prioridad explícito -->
+                            <div class="h-10 w-1 rounded-full mr-2" 
+                                :class="{
+                                    'bg-red-500': task.priority === 'Alta',
+                                    'bg-amber-500': task.priority === 'Media',
+                                    'bg-blue-400': task.priority === 'Baja'
+                                }">
                             </div>
 
-                            <div class="flex justify-between items-center mt-1">
-                                <!-- Avatares -->
-                                <div class="flex -space-x-1">
-                                    <n-avatar v-for="user in task.assignees" :key="user.id" round size="tiny" :src="user.avatar" class="border border-white"/>
+                            <div class="flex-1 flex flex-col justify-center pr-2">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600 flex items-center gap-2" @click="openDetail(task)">
+                                        {{ task.name }}
+                                        <!-- Indicador de comentarios no leídos (Punto rojo si has_unread_comments es true) -->
+                                        <n-badge dot type="error" v-if="task.has_unread_comments" />
+                                    </span>
+                                    
+                                    <!-- SELECTOR DE ESTATUS (Ahora editable) -->
+                                    <n-popselect 
+                                        :options="[
+                                            {label: 'Pendiente', value: 'Pendiente'},
+                                            {label: 'En Proceso', value: 'En Proceso'},
+                                            {label: 'Completado', value: 'Completado'},
+                                            {label: 'Detenido', value: 'Detenido'}
+                                        ]"
+                                        :value="task.status"
+                                        @update:value="(val) => updateTaskStatus(task, val)"
+                                        trigger="click"
+                                    >
+                                        <n-tag size="tiny" :bordered="false" class="cursor-pointer font-bold hover:opacity-80" 
+                                            :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
+                                            {{ task.status }}
+                                        </n-tag>
+                                    </n-popselect>
                                 </div>
-                                
-                                <!-- Botonera de Acciones -->
-                                <div class="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <n-button v-if="task.assignees.length" size="tiny" circle type="success" ghost @click="sendWhatsapp(task.assignees[0], task.name)">
-                                        <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
-                                    </n-button>
-                                    <n-popconfirm @positive-click="deleteTask(task.id)">
-                                        <template #trigger>
-                                            <n-button size="tiny" circle type="error" quaternary>
-                                                <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                            </n-button>
-                                        </template>
-                                        ¿Borrar tarea?
-                                    </n-popconfirm>
+                                <div class="flex justify-between items-center mt-1">
+                                    <div class="flex -space-x-1">
+                                        <n-avatar v-for="user in task.assignees" :key="user.id" round size="tiny" :src="user.avatar" class="border border-white"/>
+                                    </div>
+                                    <div class="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <!-- Comentarios -->
+                                        <n-button size="tiny" circle tertiary @click="openDetail(task)">
+                                            <template #icon>
+                                                <n-badge :value="task.comments?.length || 0" :max="99" :show-zero="false">
+                                                    <n-icon><ChatbubbleOutline /></n-icon>
+                                                </n-badge>
+                                            </template>
+                                        </n-button>
+                                        <!-- WhatsApp -->
+                                        <n-button v-if="task.assignees.length" size="tiny" circle type="success" ghost @click="sendWhatsapp(task.assignees[0], task.name)">
+                                            <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
+                                        </n-button>
+                                        <!-- Editar -->
+                                        <n-button size="tiny" circle secondary type="warning" @click="openEdit(task)">
+                                            <template #icon><n-icon><PencilOutline /></n-icon></template>
+                                        </n-button>
+                                        <!-- Borrar (Reintegrado) -->
+                                        <n-popconfirm @positive-click="deleteTask(task.id)">
+                                            <template #trigger>
+                                                <n-button size="tiny" circle type="error" quaternary>
+                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                </n-button>
+                                            </template>
+                                            ¿Borrar tarea?
+                                        </n-popconfirm>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <!-- Fechas Texto -->
+                            <div class="w-24 text-center text-[10px] text-gray-500 leading-tight">
+                                {{ task.start ? format(parseISO(task.start), 'dd MMM') : '-' }}
+                            </div>
+                            <div class="w-24 text-center text-[10px] text-gray-500 leading-tight font-medium" :class="task.finish_date ? 'text-green-600' : ''">
+                                {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}
+                            </div>
+
                         </div>
 
                         <!-- Columna Derecha: Barra Gantt -->
@@ -257,13 +363,12 @@ const getTaskStyle = (task) => {
                                         :class="statusColors[task.status] || 'bg-gray-200'"
                                         :style="getTaskStyle(task)"
                                     >
-                                        <!-- Sin porcentaje, solo barra visual -->
                                     </div>
                                 </template>
                                 <div class="text-xs">
                                     <div class="font-bold">{{ task.name }}</div>
                                     <div>{{ task.status }}</div>
-                                    <div>{{ task.start ? format(parseISO(task.start), 'dd MMM') : '' }} - {{ task.end ? format(parseISO(task.end), 'dd MMM') : '' }}</div>
+                                    <div>Prioridad: {{ task.priority }}</div>
                                 </div>
                             </n-tooltip>
                         </div>
@@ -273,16 +378,20 @@ const getTaskStyle = (task) => {
             </div>
         </div>
 
-        <!-- MODAL CREACIÓN -->
+        <!-- MODAL CREACIÓN / EDICIÓN -->
         <n-modal v-model:show="showCreateModal">
-            <n-card style="width: 600px" title="Nueva Tarea" :bordered="false" size="huge" role="dialog" aria-modal="true">
+            <n-card style="width: 600px" :title="isEditing ? 'Editar Tarea' : 'Nueva Tarea'" :bordered="false" size="huge" role="dialog" aria-modal="true">
                 <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showCreateModal=false"><CloseOutline /></n-icon></template>
                 <n-form :model="form" label-placement="top">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="col-span-2"><n-form-item label="Título" path="title"><n-input v-model:value="form.title" /></n-form-item></div>
                         <n-form-item label="Prioridad"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
-                        <n-form-item label="Fecha Límite"><n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
                         <div class="col-span-2"><n-form-item label="Asignar a"><n-select v-model:value="form.user_ids" multiple :options="userOptions" filterable /></n-form-item></div>
+                        
+                        <!-- Fechas -->
+                        <n-form-item label="Fecha Inicio"><n-date-picker v-model:formatted-value="form.start_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
+                        <n-form-item label="Fecha Estimada Fin"><n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
+
                         <div class="col-span-2"><n-form-item label="Descripción"><n-input v-model:value="form.description" type="textarea" /></n-form-item></div>
                     </div>
                 </n-form>
@@ -295,35 +404,96 @@ const getTaskStyle = (task) => {
             </n-card>
         </n-modal>
 
-        <!-- MODAL DETALLE (SOLO LECTURA + COMENTARIO) -->
+        <!-- MODAL DETALLE Y COMENTARIOS -->
         <n-modal v-model:show="showDetailModal">
-            <n-card style="width: 500px" :title="selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true">
+            <n-card style="width: 600px" :title="selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true" content-style="padding: 0;">
                 <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showDetailModal=false"><CloseOutline /></n-icon></template>
                 
-                <div class="space-y-4" v-if="selectedTask">
-                    <n-tag :type="selectedTask.status === 'Completado' ? 'success' : 'default'">{{ selectedTask.status }}</n-tag>
-                    
-                    <div>
-                        <div class="text-xs text-gray-500 font-bold uppercase">Descripción</div>
-                        <p class="text-gray-700 text-sm mt-1">{{ selectedTask.description || 'Sin descripción detallada.' }}</p>
+                <div class="flex h-[500px]" v-if="selectedTask">
+                    <!-- Columna Info -->
+                    <div class="w-1/2 p-6 space-y-4 border-r overflow-y-auto">
+                        <div class="flex justify-between items-center">
+                             <n-tag :type="selectedTask.status === 'Completado' ? 'success' : 'default'">{{ selectedTask.status }}</n-tag>
+                             <div class="flex items-center gap-1 text-xs text-gray-500">
+                                <div class="w-2 h-2 rounded-full" :class="{
+                                    'bg-red-500': selectedTask.priority === 'Alta',
+                                    'bg-amber-500': selectedTask.priority === 'Media',
+                                    'bg-blue-400': selectedTask.priority === 'Baja'
+                                }"></div>
+                                {{ selectedTask.priority }}
+                             </div>
+                        </div>
+                       
+                        <div>
+                            <div class="text-xs text-gray-500 font-bold uppercase">Descripción</div>
+                            <p class="text-gray-700 text-sm mt-1 bg-gray-50 p-2 rounded-md">{{ selectedTask.description || 'Sin descripción detallada.' }}</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-2 bg-gray-50 p-3 rounded-lg text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Inicio:</span>
+                                <span class="font-medium">{{ selectedTask.start ? format(parseISO(selectedTask.start), 'dd MMM HH:mm') : 'N/A' }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Fin Real:</span>
+                                <span class="font-medium" :class="selectedTask.finish_date ? 'text-green-700' : ''">
+                                    {{ selectedTask.finish_date ? format(parseISO(selectedTask.finish_date), 'dd MMM HH:mm') : '-' }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Vencimiento:</span>
+                                <span class="font-medium">{{ selectedTask.end ? format(parseISO(selectedTask.end), 'dd MMM HH:mm') : '-' }}</span>
+                            </div>
+                        </div>
+
+                         <div>
+                            <div class="text-xs text-gray-500 font-bold uppercase mb-1">Responsables</div>
+                            <div class="flex flex-wrap gap-1">
+                                <n-tag size="small" v-for="u in selectedTask.assignees" :key="u.id">{{ u.name }}</n-tag>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg">
-                        <div>
-                            <div class="text-xs text-gray-400">Inicio</div>
-                            <div class="text-sm font-medium">{{ selectedTask.start ? format(parseISO(selectedTask.start), 'dd MMM HH:mm') : 'N/A' }}</div>
+                    <!-- Columna Chat -->
+                    <div class="w-1/2 flex flex-col bg-gray-50/50">
+                        <div class="p-3 border-b bg-white text-xs font-bold text-gray-500 flex justify-between items-center">
+                            <span>COMENTARIOS</span>
+                            <n-badge :value="selectedTask.comments?.length || 0" type="info" />
                         </div>
-                        <div>
-                            <div class="text-xs text-gray-400">Fin</div>
-                            <div class="text-sm font-medium">{{ selectedTask.end ? format(parseISO(selectedTask.end), 'dd MMM HH:mm') : 'N/A' }}</div>
+                        
+                        <!-- Lista mensajes -->
+                        <div class="flex-1 p-3 overflow-y-auto space-y-3">
+                             <div v-if="!selectedTask.comments?.length" class="text-center text-gray-400 text-xs py-8">
+                                No hay comentarios aún.
+                             </div>
+                             <div v-for="comment in selectedTask.comments" :key="comment.id" class="flex gap-2 text-xs">
+                                <n-avatar :src="comment.user_avatar" round size="small" />
+                                <div class="bg-white p-2 rounded-lg shadow-sm border border-gray-100 flex-1">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="font-bold text-gray-700">{{ comment.user }}</span>
+                                        <span class="text-[10px] text-gray-400">{{ comment.created_at }}</span>
+                                    </div>
+                                    <p class="text-gray-600">{{ comment.body }}</p>
+                                </div>
+                             </div>
                         </div>
-                    </div>
 
-                    <div class="border-t pt-4 mt-4">
-                         <n-button block secondary type="info">
-                            <template #icon><n-icon><ChatbubbleOutline /></n-icon></template>
-                            Agregar Comentario
-                         </n-button>
+                        <!-- Input -->
+                        <div class="p-3 bg-white border-t">
+                             <n-input 
+                                v-model:value="commentForm.body" 
+                                type="textarea" 
+                                placeholder="Escribe un comentario..." 
+                                :autosize="{ minRows: 2, maxRows: 4 }"
+                                class="text-xs"
+                             />
+                             <div class="flex justify-end mt-2">
+                                 <n-button size="small" type="primary" :disabled="!commentForm.body" :loading="commentForm.processing" @click="submitComment">
+                                    <template #icon><n-icon><SendOutline /></n-icon></template>
+                                    Enviar
+                                 </n-button>
+                             </div>
+                        </div>
                     </div>
                 </div>
             </n-card>

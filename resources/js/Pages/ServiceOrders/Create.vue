@@ -38,7 +38,7 @@ const statusOptions = [
     { label: 'Cotización', value: 'Cotización' },
     { label: 'Aceptado', value: 'Aceptado' },
     { label: 'En Proceso', value: 'En Proceso' },
-    { label: 'Instalado', value: 'Instalado' },
+    { label: 'Completado', value: 'Completado' },
     { label: 'Facturado', value: 'Facturado' },
 ];
 

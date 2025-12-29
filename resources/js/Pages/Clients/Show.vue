@@ -43,7 +43,7 @@ const serviceColumns = [
         render(row) {
             const types = { 
                 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 
-                'Instalado': 'success', 'Facturado': 'success', 'Cancelado': 'error' 
+                'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' 
             };
             return h(NTag, { type: types[row.status] || 'default', size: 'small', bordered: false, round: true }, { default: () => row.status });
         }
