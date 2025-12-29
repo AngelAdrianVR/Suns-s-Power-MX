@@ -36,7 +36,6 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// CÁLCULO DE PROGRESO CORREGIDO
 const generalProgress = computed(() => {
     if (!props.stats || props.stats.total_tasks === 0) return 0;
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
@@ -88,6 +87,13 @@ const addProduct = () => {
     });
 };
 
+const formattedTotal = computed(() =>
+  new Intl.NumberFormat('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(props.order.total_amount ?? 0)
+)
+
 const removeProduct = (itemId) => {
     router.delete(route('service-orders.remove-item', itemId), {
         preserveScroll: true,
@@ -96,9 +102,30 @@ const removeProduct = (itemId) => {
 };
 
 // --- GESTIÓN DE EVIDENCIAS (ARCHIVOS) ---
-const handleUploadFinish = ({ file, event }) => {
-    notification.success({ title: 'Archivo subido', content: 'La evidencia se ha guardado correctamente.' });
-    router.reload({ only: ['order'] }); // Recargar orden para ver nueva imagen
+// CAMBIO: Input de archivo manual
+const fileInput = ref(null);
+const triggerFileInput = () => {
+    fileInput.value.click();
+};
+
+const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const form = useForm({
+        file: file
+    });
+
+    form.post(route('service-orders.upload-media', props.order.id), {
+        onSuccess: () => {
+            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.' });
+            router.reload({ only: ['order'] });
+            event.target.value = null; // Resetear input
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo subir el archivo.' });
+        }
+    });
 };
 
 // --- ACCIONES GENERALES ---
@@ -128,7 +155,6 @@ const confirmDelete = () => {
                         <h2 class="font-bold text-xl text-gray-800 leading-tight flex items-center gap-2">
                             Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                         </h2>
-                        <!-- SELECTOR DE ESTATUS -->
                         <div class="flex items-center gap-2 mt-1">
                             <n-popselect 
                                 :options="orderStatusOptions" 
@@ -178,7 +204,6 @@ const confirmDelete = () => {
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Progreso General</div>
                                     <div class="flex items-center gap-2">
-                                        <!-- PROGRESO ARREGLADO -->
                                         <n-progress type="circle" :percentage="generalProgress" :size="40" :stroke-width="8" status="success">
                                             <span class="text-[10px]">{{ generalProgress }}%</span>
                                         </n-progress>
@@ -191,7 +216,7 @@ const confirmDelete = () => {
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
-                                    <n-statistic :value="order.total_amount">
+                                    <n-statistic :value="formattedTotal">
                                         <template #prefix>$</template>
                                     </n-statistic>
                                 </div>
@@ -199,7 +224,6 @@ const confirmDelete = () => {
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Técnico Líder</div>
-                                    <!-- AVATAR ARREGLADO -->
                                     <div v-if="order.technician" class="flex items-center gap-2 mt-1">
                                         <n-avatar round size="small" :src="order.technician.profile_photo_path" :fallback-src="'https://ui-avatars.com/api/?name='+order.technician.name" />
                                         <span class="text-sm font-medium">{{ order.technician.name }}</span>
@@ -209,7 +233,6 @@ const confirmDelete = () => {
                             </n-grid-item>
                         </n-grid>
                     </n-card>
-                    <!-- Mapa FIXED -->
                     <n-card size="small" class="rounded-2xl shadow-sm bg-blue-50/30 border-blue-100">
                         <div class="flex flex-col h-full justify-between">
                             <div>
@@ -229,14 +252,11 @@ const confirmDelete = () => {
                     </n-card>
                 </div>
 
-                <!-- Contenido Principal -->
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4">
                         
-                        <!-- TAB 1: DIAGRAMA PMS (Funcionalidad Completa) -->
                         <n-tab-pane name="gantt" tab="Cronograma y Tareas">
                             <div class="py-4 space-y-6">
-                                <!-- Componente GANTT actualizado con todas las funciones -->
                                 <TaskGanttChart 
                                     :tasks="diagram_data" 
                                     :order-id="order.id"
@@ -245,7 +265,6 @@ const confirmDelete = () => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 2: MATERIALES -->
                         <n-tab-pane name="items" tab="Materiales y Productos">
                              <div class="p-4">
                                 <div class="flex justify-between items-center mb-4">
@@ -256,7 +275,8 @@ const confirmDelete = () => {
                                     </n-button>
                                 </div>
 
-                                <div class="border rounded-lg overflow-hidden">
+                                <!-- CAMBIO: Scroll Horizontal -->
+                                <div class="border rounded-lg overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
@@ -304,7 +324,6 @@ const confirmDelete = () => {
                              </div>
                         </n-tab-pane>
 
-                        <!-- TAB 3: DETALLES -->
                         <n-tab-pane name="details" tab="Detalles Operativos">
                             <div class="p-4">
                                 <n-descriptions label-placement="top" bordered column="3">
@@ -314,14 +333,12 @@ const confirmDelete = () => {
                                             {{ formatDate(order.start_date) }}
                                         </div>
                                     </n-descriptions-item>
-                                    <!-- FECHA FINALIZACION -->
                                     <n-descriptions-item label="Fecha de Finalización">
                                         <div class="flex items-center gap-2" :class="order.completion_date ? 'text-green-600 font-medium' : 'text-gray-400'">
                                             <n-icon><CheckmarkCircleOutline /></n-icon>
                                             {{ order.completion_date ? formatDate(order.completion_date) : 'En progreso' }}
                                         </div>
                                     </n-descriptions-item>
-                                    <!-- REPRESENTANTE DE VENTAS CON AVATAR -->
                                     <n-descriptions-item label="Representante de Ventas">
                                         <div v-if="order.sales_rep" class="flex items-center gap-3">
                                             <n-avatar size="small" round :src="order.sales_rep.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+order.sales_rep.name" />
@@ -336,29 +353,26 @@ const confirmDelete = () => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 4: EVIDENCIAS -->
                         <n-tab-pane name="files" tab="Evidencias">
                             <div class="p-4">
-                                <!-- Uploader de Evidencias (AGREGADO) -->
-                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6">
-                                    <n-upload
-                                        :action="route('service-orders.upload-media', order.id)"
-                                        :headers="{ 'X-CSRF-TOKEN': $page.props.csrf_token }"
-                                        name="file"
-                                        @finish="handleUploadFinish"
-                                        list-type="image-card"
-                                        :show-file-list="false"
-                                    >
-                                        <n-button dashed block class="h-20">
-                                            <div class="flex flex-col items-center gap-2 text-gray-500">
-                                                <n-icon size="24"><CloudUploadOutline /></n-icon>
-                                                <span>Clic o arrastra para subir evidencias</span>
-                                            </div>
-                                        </n-button>
-                                    </n-upload>
+                                <!-- CAMBIO: Uploader Manual -->
+                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
+                                    <input 
+                                        type="file" 
+                                        ref="fileInput" 
+                                        class="hidden" 
+                                        @change="handleFileChange" 
+                                        accept="image/*,application/pdf"
+                                    />
+                                    <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-20 w-full md:w-1/2">
+                                        <div class="flex flex-col items-center gap-2">
+                                            <n-icon size="24"><CloudUploadOutline /></n-icon>
+                                            <span>Seleccionar archivo para subir</span>
+                                        </div>
+                                    </n-button>
+                                    <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imagenes y PDF (Max 10MB)</p>
                                 </div>
 
-                                <!-- Galería de Evidencias -->
                                 <div v-if="order.media?.length">
                                     <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
                                     <n-image-group>
@@ -371,7 +385,6 @@ const confirmDelete = () => {
                                                 />
                                                 <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
                                                 
-                                                <!-- Botón eliminar archivo -->
                                                 <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
                                                     <template #trigger>
                                                         <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700">

@@ -192,6 +192,10 @@ class ServiceOrderController extends Controller
 
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
+            // AGREGA ESTAS LÍNEAS:
+            'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
+            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            // -------------------
             'technicians' => User::where('branch_id', $branchId)->get(['id', 'name']),
         ]);
     }
@@ -202,10 +206,12 @@ class ServiceOrderController extends Controller
         if ($serviceOrder->branch_id !== $branchId) abort(403);
 
         $validated = $request->validate([
-            'status' => 'required|string',
-            'start_date' => 'nullable|date',
-            'completion_date' => 'nullable|date|after_or_equal:start_date',
+            'client_id' => 'required|exists:clients,id', // Faltaba este
+            'sales_rep_id' => 'required|exists:users,id', // Faltaba este
             'technician_id' => 'nullable|exists:users,id',
+            'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
+            'start_date' => 'nullable|date',
+            'total_amount' => 'required|numeric|min:0', // Faltaba este
             'installation_address' => 'required|string',
             'notes' => 'nullable|string',
         ]);

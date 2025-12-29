@@ -34,11 +34,11 @@ const { notification } = createDiscreteApi(['notification']);
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedTask = ref(null);
-const isEditing = ref(false); // Flag para saber si es edición
+const isEditing = ref(false); 
 
-// Formulario de Tarea (Creación/Edición)
+// Formulario de Tarea
 const form = useForm({
-    id: null, // Para update
+    id: null, 
     service_order_id: props.orderId,
     title: '',
     description: '',
@@ -62,15 +62,6 @@ const priorityOptions = [
     { label: 'Alta', value: 'Alta' }
 ];
 
-const getPriorityClass = (priority) => {
-    switch(priority) {
-        case 'Alta': return 'border-l-4 border-red-500';
-        case 'Media': return 'border-l-4 border-amber-500';
-        case 'Baja': return 'border-l-4 border-blue-400';
-        default: return 'border-l-4 border-gray-300';
-    }
-};
-
 const userOptions = computed(() => {
     return props.assignableUsers.map(u => ({
         label: u.name || u.label,
@@ -85,6 +76,8 @@ const openCreate = () => {
     form.reset();
     form.service_order_id = props.orderId;
     form.user_ids = [];
+    // Aseguramos que start_date sea null al crear para no enviarlo
+    form.start_date = null; 
     showCreateModal.value = true;
 };
 
@@ -121,7 +114,6 @@ const submitTask = () => {
 };
 
 const updateTaskStatus = (task, newStatus) => {
-    // Actualización optimista
     task.status = newStatus;
     router.put(route('tasks.update', task.id), { status: newStatus }, {
         preserveScroll: true,
@@ -138,7 +130,6 @@ const deleteTask = (taskId) => {
 };
 
 // --- Comentarios ---
-
 const openDetail = (task) => {
     selectedTask.value = task;
     commentForm.commentable_id = task.id;
@@ -147,15 +138,12 @@ const openDetail = (task) => {
 
 const submitComment = () => {
     if(!commentForm.body.trim()) return;
-    
     commentForm.post(route('comments.store'), {
         preserveScroll: true,
         preserveState: true,
         onSuccess: () => {
             commentForm.reset('body');
             notification.success({ title: 'Comentario agregado' });
-            // Necesitamos refrescar la vista para ver el nuevo comentario inmediatamente en el modal si inertia no lo hace auto (Suele hacerlo si props cambian)
-            // router.reload({ only: ['diagram_data'] }); // Puede ser necesario
         }
     });
 };
@@ -180,9 +168,15 @@ const statusColors = {
 
 const timeRange = computed(() => {
     if (!props.tasks.length) return null;
+    // Solo consideramos tareas con fecha de inicio para el rango del gráfico
     const starts = props.tasks.map(t => t.start ? parseISO(t.start) : null).filter(Boolean);
     const ends = props.tasks.map(t => t.end ? parseISO(t.end) : null).filter(Boolean);
-    if (!starts.length) return null;
+    
+    // Si no hay ninguna tarea iniciada, usamos el día de hoy por defecto para dibujar el grid
+    if (!starts.length) {
+        const now = new Date();
+        return { minDate: startOfDay(now), maxDate: endOfDay(addDays(now, 3)), totalHours: 72 };
+    }
 
     let minDate = startOfDay(new Date(Math.min(...starts)));
     let maxDate = endOfDay(new Date(Math.max(...ends)));
@@ -207,7 +201,10 @@ const timelineDays = computed(() => {
 const getTaskStyle = (task) => {
     const endDateStr = task.finish_date || task.end; 
     
-    if (!task.start || !endDateStr || !timeRange.value) return {};
+    // Si no tiene fecha de inicio, no mostramos la barra en el Gantt (o podríamos mostrarla gris)
+    if (!task.start || !endDateStr || !timeRange.value) {
+        return { display: 'none' };
+    }
     const start = parseISO(task.start);
     const end = parseISO(endDateStr);
     const left = (differenceInHours(start, timeRange.value.minDate) / timeRange.value.totalHours) * 100;
@@ -215,8 +212,9 @@ const getTaskStyle = (task) => {
     return { left: `${left}%`, width: `${width}%` };
 };
 
+// CAMBIO: Ahora solo retorna la fecha de finalización real, no la estimada
 const getDisplayEndDate = (task) => {
-    return task.finish_date || task.end;
+    return task.finish_date; 
 };
 
 </script>
@@ -252,7 +250,6 @@ const getDisplayEndDate = (task) => {
                 <div class="flex border-b border-gray-200 mb-4 pb-2">
                     <div class="w-5/12 min-w-[380px] font-semibold text-gray-500 text-xs uppercase tracking-wider pl-2 flex">
                         <span class="flex-1">Tarea / Gestión</span>
-                        <!-- <span class="w-16 text-center">Prioridad</span> (Quitado encabezado explícito, ahora es borde) -->
                         <span class="w-24 text-center">Inicio</span>
                         <span class="w-24 text-center">Fin</span>
                     </div>
@@ -275,7 +272,6 @@ const getDisplayEndDate = (task) => {
                         <!-- Columna Izquierda: Detalles y Controles -->
                         <div class="w-5/12 min-w-[380px] pr-4 flex items-center border-r border-gray-100 mr-2 bg-white z-10 rounded-l-sm transition-all hover:bg-gray-50">
                             
-                            <!-- Borde de prioridad explícito -->
                             <div class="h-10 w-1 rounded-full mr-2" 
                                 :class="{
                                     'bg-red-500': task.priority === 'Alta',
@@ -288,11 +284,9 @@ const getDisplayEndDate = (task) => {
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600 flex items-center gap-2" @click="openDetail(task)">
                                         {{ task.name }}
-                                        <!-- Indicador de comentarios no leídos (Punto rojo si has_unread_comments es true) -->
                                         <n-badge dot type="error" v-if="task.has_unread_comments" />
                                     </span>
                                     
-                                    <!-- SELECTOR DE ESTATUS (Ahora editable) -->
                                     <n-popselect 
                                         :options="[
                                             {label: 'Pendiente', value: 'Pendiente'},
@@ -315,7 +309,6 @@ const getDisplayEndDate = (task) => {
                                         <n-avatar v-for="user in task.assignees" :key="user.id" round size="tiny" :src="user.avatar" class="border border-white"/>
                                     </div>
                                     <div class="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <!-- Comentarios -->
                                         <n-button size="tiny" circle tertiary @click="openDetail(task)">
                                             <template #icon>
                                                 <n-badge :value="task.comments?.length || 0" :max="99" :show-zero="false">
@@ -323,15 +316,12 @@ const getDisplayEndDate = (task) => {
                                                 </n-badge>
                                             </template>
                                         </n-button>
-                                        <!-- WhatsApp -->
                                         <n-button v-if="task.assignees.length" size="tiny" circle type="success" ghost @click="sendWhatsapp(task.assignees[0], task.name)">
                                             <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
                                         </n-button>
-                                        <!-- Editar -->
                                         <n-button size="tiny" circle secondary type="warning" @click="openEdit(task)">
                                             <template #icon><n-icon><PencilOutline /></n-icon></template>
                                         </n-button>
-                                        <!-- Borrar (Reintegrado) -->
                                         <n-popconfirm @positive-click="deleteTask(task.id)">
                                             <template #trigger>
                                                 <n-button size="tiny" circle type="error" quaternary>
@@ -348,6 +338,7 @@ const getDisplayEndDate = (task) => {
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight">
                                 {{ task.start ? format(parseISO(task.start), 'dd MMM') : '-' }}
                             </div>
+                            <!-- CAMBIO: Ahora solo muestra la fecha real de fin -->
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight font-medium" :class="task.finish_date ? 'text-green-600' : ''">
                                 {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}
                             </div>
@@ -389,8 +380,14 @@ const getDisplayEndDate = (task) => {
                         <div class="col-span-2"><n-form-item label="Asignar a"><n-select v-model:value="form.user_ids" multiple :options="userOptions" filterable /></n-form-item></div>
                         
                         <!-- Fechas -->
-                        <n-form-item label="Fecha Inicio"><n-date-picker v-model:formatted-value="form.start_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
-                        <n-form-item label="Fecha Estimada Fin"><n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" /></n-form-item>
+                        <!-- CAMBIO: Ocultamos Fecha Inicio si NO estamos editando -->
+                        <n-form-item label="Fecha Inicio" v-if="isEditing">
+                            <n-date-picker v-model:formatted-value="form.start_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" />
+                        </n-form-item>
+                        
+                        <n-form-item label="Fecha Estimada Fin">
+                            <n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" />
+                        </n-form-item>
 
                         <div class="col-span-2"><n-form-item label="Descripción"><n-input v-model:value="form.description" type="textarea" /></n-form-item></div>
                     </div>
@@ -404,7 +401,7 @@ const getDisplayEndDate = (task) => {
             </n-card>
         </n-modal>
 
-        <!-- MODAL DETALLE Y COMENTARIOS -->
+        <!-- MODAL DETALLE -->
         <n-modal v-model:show="showDetailModal">
             <n-card style="width: 600px" :title="selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true" content-style="padding: 0;">
                 <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showDetailModal=false"><CloseOutline /></n-icon></template>
@@ -461,7 +458,6 @@ const getDisplayEndDate = (task) => {
                             <n-badge :value="selectedTask.comments?.length || 0" type="info" />
                         </div>
                         
-                        <!-- Lista mensajes -->
                         <div class="flex-1 p-3 overflow-y-auto space-y-3">
                              <div v-if="!selectedTask.comments?.length" class="text-center text-gray-400 text-xs py-8">
                                 No hay comentarios aún.
@@ -478,7 +474,6 @@ const getDisplayEndDate = (task) => {
                              </div>
                         </div>
 
-                        <!-- Input -->
                         <div class="p-3 bg-white border-t">
                              <n-input 
                                 v-model:value="commentForm.body" 

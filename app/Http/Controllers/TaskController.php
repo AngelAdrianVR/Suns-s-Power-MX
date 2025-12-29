@@ -31,6 +31,7 @@ class TaskController extends Controller
 
         DB::transaction(function () use ($validated, $branchId) {
             // 1. Crear Tarea
+            // CAMBIO: start_date ya no se asigna automáticamente a now(), se respeta el null si no viene.
             $task = Task::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
@@ -39,7 +40,7 @@ class TaskController extends Controller
                 'created_by' => Auth::id(),
                 'status' => 'Pendiente',
                 'priority' => $validated['priority'],
-                'start_date' => $validated['start_date'] ?? now(), 
+                'start_date' => $validated['start_date'] ?? null, // CAMBIO: Default null
                 'due_date' => $validated['due_date'] ?? null,
                 'finish_date' => $validated['finish_date'] ?? null,
             ]);
@@ -54,12 +55,10 @@ class TaskController extends Controller
             }
 
             // 3. ACTUALIZACIÓN AUTOMÁTICA DE LA ORDEN
-            // Si se agrega una tarea, la orden cambia a "En Proceso" (si no está ya finalizada/cancelada)
             $order = ServiceOrder::find($validated['service_order_id']);
             if ($order && !in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
                 $order->update(['status' => 'En Proceso']);
                 
-                // Si la orden pasa a En Proceso al crear tarea y no tiene fecha inicio, se la ponemos
                 if (is_null($order->start_date)) {
                     $order->update(['start_date' => now()]);
                 }
@@ -84,6 +83,28 @@ class TaskController extends Controller
             'finish_date' => 'nullable|date'
         ]);
 
+        // --- LÓGICA DE FECHAS AUTOMÁTICAS ---
+        if (isset($validated['status'])) {
+            $newStatus = $validated['status'];
+            
+            // 1. Al iniciar "En Proceso": Guardar fecha inicio solo si no existe.
+            if ($newStatus === 'En Proceso') {
+                if (is_null($task->start_date)) {
+                    $validated['start_date'] = now();
+                }
+                // Si ya tiene fecha, NO se actualiza (se mantiene la original).
+            }
+
+            // 2. Al cambiar a "Completado": Agregar fecha fin.
+            if ($newStatus === 'Completado') {
+                $validated['finish_date'] = now();
+            } else {
+                // 3. Si cambia a cualquier otro estatus (y deja de ser completado), borrar fecha fin.
+                $validated['finish_date'] = null;
+            }
+        }
+        // ------------------------------------
+
         $task->update($validated);
 
         // LÓGICA DE ACTUALIZACIÓN DE ORDEN BASADA EN TAREAS
@@ -91,16 +112,14 @@ class TaskController extends Controller
             $order = $task->serviceOrder;
 
             if ($order) {
-                // 1. Asignar Fecha de Inicio si la tarea pasa a "En Proceso" y la orden no tiene fecha
+                // Asignar Fecha de Inicio de ORDEN si la tarea pasa a "En Proceso"
                 if ($task->status === 'En Proceso' && is_null($order->start_date)) {
                     $order->update(['start_date' => now()]);
                 }
 
-                // Verificar tareas pendientes
                 $incompleteTasks = $order->tasks()->where('status', '!=', 'Completado')->count();
 
                 if ($incompleteTasks === 0) {
-                    // TODAS COMPLETADAS: Marcar orden como Completado y poner fecha fin
                     if ($order->status !== 'Completado' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
                         $order->update([
                             'status' => 'Completado',
@@ -108,21 +127,14 @@ class TaskController extends Controller
                         ]);
                     }
                 } else {
-                    // HAY TAREAS PENDIENTES:
-                    
-                    // A) Si la orden estaba "Completado", debe regresar a "En Proceso" y quitar fecha fin
                     if ($order->status === 'Completado') {
                         $order->update([
                             'status' => 'En Proceso',
                             'completion_date' => null
                         ]);
                     } 
-                    
-                    // B) Si la tarea se puso "En Proceso" y la orden no lo estaba, actualizar orden
                     elseif ($task->status === 'En Proceso' && $order->status !== 'En Proceso' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
                         $order->update(['status' => 'En Proceso']);
-                        
-                        // Refuerzo: asignar start_date si faltaba
                         if (is_null($order->start_date)) {
                             $order->update(['start_date' => now()]);
                         }
@@ -134,9 +146,6 @@ class TaskController extends Controller
         return back()->with('success', 'Tarea actualizada.');
     }
 
-    /**
-     * Eliminar Tarea
-     */
     public function destroy(Task $task)
     {
         $task->delete();

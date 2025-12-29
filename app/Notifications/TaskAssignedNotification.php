@@ -40,7 +40,7 @@ class TaskAssignedNotification extends Notification
         return [
             'title' => 'Nueva Tarea Asignada',
             'message' => "<b>{$this->assignedBy->name}</b> te ha asignado la tarea <b>{$this->task->title}</b> en la orden #{$this->task->service_order_id}.",
-            'icon' => 'construct-outline', // Nombre de icono compatible con tu frontend (Ionicons)
+            'icon' => 'fa-solid fa-briefcase',
             'url' => route('service-orders.show', $this->task->service_order_id), // Redirige a la orden
             'type' => 'task_assignment',
             'task_id' => $this->task->id
