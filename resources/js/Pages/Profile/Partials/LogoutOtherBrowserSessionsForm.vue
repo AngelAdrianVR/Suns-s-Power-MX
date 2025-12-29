@@ -1,18 +1,14 @@
 <script setup>
 import { ref } from 'vue';
 import { useForm } from '@inertiajs/vue3';
-import ActionMessage from '@/Components/ActionMessage.vue';
-import ActionSection from '@/Components/ActionSection.vue';
-import DialogModal from '@/Components/DialogModal.vue';
-import InputError from '@/Components/InputError.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import { NCard, NButton, NIcon, NList, NListItem, NThing, NTag, NModal, NInput, useMessage } from 'naive-ui';
+import { LaptopOutline, PhonePortraitOutline, LogOutOutline, GlobeOutline } from '@vicons/ionicons5';
 
 defineProps({
     sessions: Array,
 });
 
+const message = useMessage();
 const confirmingLogout = ref(false);
 const passwordInput = ref(null);
 
@@ -22,120 +18,148 @@ const form = useForm({
 
 const confirmLogout = () => {
     confirmingLogout.value = true;
-
-    setTimeout(() => passwordInput.value.focus(), 250);
+    // setTimeout(() => passwordInput.value?.focus(), 250); // Naive focus handling is slightly different
 };
 
 const logoutOtherBrowserSessions = () => {
     form.delete(route('other-browser-sessions.destroy'), {
         preserveScroll: true,
-        onSuccess: () => closeModal(),
-        onError: () => passwordInput.value.focus(),
+        onSuccess: () => {
+            closeModal();
+            message.success('Se han cerrado las otras sesiones correctamente.');
+        },
+        onError: () => {
+            // passwordInput.value?.focus();
+            message.error('Contraseña incorrecta.');
+        },
         onFinish: () => form.reset(),
     });
 };
 
 const closeModal = () => {
     confirmingLogout.value = false;
-
     form.reset();
 };
 </script>
 
 <template>
-    <ActionSection>
-        <template #title>
-            Browser Sessions
-        </template>
-
-        <template #description>
-            Manage and log out your active sessions on other browsers and devices.
-        </template>
-
-        <template #content>
-            <div class="max-w-xl text-sm text-gray-600">
-                If necessary, you may log out of all of your other browser sessions across all of your devices. Some of your recent sessions are listed below; however, this list may not be exhaustive. If you feel your account has been compromised, you should also update your password.
-            </div>
-
-            <!-- Other Browser Sessions -->
-            <div v-if="sessions.length > 0" class="mt-5 space-y-6">
-                <div v-for="(session, i) in sessions" :key="i" class="flex items-center">
-                    <div>
-                        <svg v-if="session.agent.is_desktop" class="size-8 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                        </svg>
-
-                        <svg v-else class="size-8 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
-                        </svg>
+    <div class="relative">
+        <n-card 
+            class="iphone-card" 
+            :bordered="false"
+            content-style="padding: 2rem;"
+        >
+            <template #header>
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="p-2 bg-orange-50 rounded-xl text-orange-500">
+                        <n-icon size="24"><GlobeOutline /></n-icon>
                     </div>
-
-                    <div class="ms-3">
-                        <div class="text-sm text-gray-600">
-                            {{ session.agent.platform ? session.agent.platform : 'Unknown' }} - {{ session.agent.browser ? session.agent.browser : 'Unknown' }}
-                        </div>
-
-                        <div>
-                            <div class="text-xs text-gray-500">
-                                {{ session.ip_address }},
-
-                                <span v-if="session.is_current_device" class="text-green-500 font-semibold">This device</span>
-                                <span v-else>Last active {{ session.last_active }}</span>
-                            </div>
-                        </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800">Sesiones de Navegador</h3>
+                        <p class="text-sm text-gray-400 font-medium">Administra y cierra tus sesiones activas en otros dispositivos.</p>
                     </div>
                 </div>
+            </template>
+
+            <div class="max-w-xl text-sm text-gray-500 mb-6 leading-relaxed">
+                Si es necesario, puedes cerrar todas las demás sesiones de navegador en todos tus dispositivos. A continuación se muestran algunas de tus sesiones recientes; sin embargo, esta lista puede no ser exhaustiva. Si crees que tu cuenta ha sido comprometida, también deberías actualizar tu contraseña.
+            </div>
+
+            <!-- Lista de Sesiones -->
+            <div v-if="sessions.length > 0" class="mb-8">
+                <n-list hoverable class="bg-transparent">
+                    <n-list-item v-for="(session, i) in sessions" :key="i" class="rounded-xl hover:bg-gray-50 transition-colors">
+                        <template #prefix>
+                            <div class="p-3 bg-gray-100 rounded-full text-gray-500">
+                                <n-icon v-if="session.agent.is_desktop" size="24"><LaptopOutline /></n-icon>
+                                <n-icon v-else size="24"><PhonePortraitOutline /></n-icon>
+                            </div>
+                        </template>
+                        
+                        <n-thing>
+                            <template #header>
+                                <span class="text-gray-800 font-semibold">
+                                    {{ session.agent.platform ? session.agent.platform : 'Desconocido' }} 
+                                    - 
+                                    {{ session.agent.browser ? session.agent.browser : 'Desconocido' }}
+                                </span>
+                            </template>
+                            <template #description>
+                                <div class="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                    <span>{{ session.ip_address }}</span>
+                                    <span class="mx-1">•</span>
+                                    <span v-if="session.is_current_device" class="text-green-500 font-bold">Este dispositivo</span>
+                                    <span v-else>Última actividad {{ session.last_active }}</span>
+                                </div>
+                            </template>
+                        </n-thing>
+                    </n-list-item>
+                </n-list>
             </div>
 
             <div class="flex items-center mt-5">
-                <PrimaryButton @click="confirmLogout">
-                    Log Out Other Browser Sessions
-                </PrimaryButton>
-
-                <ActionMessage :on="form.recentlySuccessful" class="ms-3">
-                    Done.
-                </ActionMessage>
+                <n-button type="warning" secondary round @click="confirmLogout">
+                    <template #icon><n-icon><LogOutOutline /></n-icon></template>
+                    Cerrar Otras Sesiones
+                </n-button>
             </div>
 
-            <!-- Log Out Other Devices Confirmation Modal -->
-            <DialogModal :show="confirmingLogout" @close="closeModal">
-                <template #title>
-                    Log Out Other Browser Sessions
-                </template>
+            <!-- Modal de Confirmación -->
+            <n-modal
+                v-model:show="confirmingLogout"
+                preset="card"
+                style="width: 90%; max-width: 500px; border-radius: 16px;"
+                title="Cerrar Otras Sesiones"
+                :bordered="false"
+                size="huge"
+                aria-modal="true"
+            >
+                <div class="py-2">
+                    <p class="text-gray-600 mb-4">
+                        Por favor ingresa tu contraseña para confirmar que deseas cerrar las sesiones de navegador en todos tus dispositivos.
+                    </p>
 
-                <template #content>
-                    Please enter your password to confirm you would like to log out of your other browser sessions across all of your devices.
-
-                    <div class="mt-4">
-                        <TextInput
-                            ref="passwordInput"
-                            v-model="form.password"
-                            type="password"
-                            class="mt-1 block w-3/4"
-                            placeholder="Password"
-                            autocomplete="current-password"
-                            @keyup.enter="logoutOtherBrowserSessions"
-                        />
-
-                        <InputError :message="form.errors.password" class="mt-2" />
-                    </div>
-                </template>
+                    <n-input
+                        ref="passwordInput"
+                        v-model:value="form.password"
+                        type="password"
+                        placeholder="Contraseña"
+                        show-password-on="click"
+                        round
+                        size="large"
+                        @keyup.enter="logoutOtherBrowserSessions"
+                        :status="form.errors.password ? 'error' : undefined"
+                    />
+                    <span v-if="form.errors.password" class="text-red-500 text-xs mt-1 block">{{ form.errors.password }}</span>
+                </div>
 
                 <template #footer>
-                    <SecondaryButton @click="closeModal">
-                        Cancel
-                    </SecondaryButton>
-
-                    <PrimaryButton
-                        class="ms-3"
-                        :class="{ 'opacity-25': form.processing }"
-                        :disabled="form.processing"
-                        @click="logoutOtherBrowserSessions"
-                    >
-                        Log Out Other Browser Sessions
-                    </PrimaryButton>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="closeModal" round>
+                            Cancelar
+                        </n-button>
+                        <n-button 
+                            type="primary" 
+                            round 
+                            :loading="form.processing"
+                            @click="logoutOtherBrowserSessions"
+                        >
+                            Cerrar Sesiones
+                        </n-button>
+                    </div>
                 </template>
-            </DialogModal>
-        </template>
-    </ActionSection>
+            </n-modal>
+        </n-card>
+    </div>
 </template>
+
+<style scoped>
+.iphone-card {
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.05);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+</style>

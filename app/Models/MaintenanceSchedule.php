@@ -3,11 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Traits\BelongsToBranch; // Trait Multi-sucursal
+use App\Traits\BelongsToBranchTrait; // Trait Multi-sucursal
 
 class MaintenanceSchedule extends Model
 {
-    use BelongsToBranch;
+    use BelongsToBranchTrait;
 
     protected $fillable = [
         'client_id',

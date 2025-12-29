@@ -1,289 +1,244 @@
 <script setup>
-import { ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
-import ApplicationMark from '@/Components/ApplicationMark.vue';
+import { ref, computed } from 'vue';
+import { Head, Link, usePage, router } from '@inertiajs/vue3';
+import { 
+    NConfigProvider, 
+    NMessageProvider, 
+    NDialogProvider, 
+    NGlobalStyle,
+    NDrawer,
+    NDrawerContent,
+    NButton,
+    NAvatar,
+    NSelect,
+    NIcon
+} from 'naive-ui';
+import { StorefrontOutline } from '@vicons/ionicons5';
 import Banner from '@/Components/Banner.vue';
-import Dropdown from '@/Components/Dropdown.vue';
-import DropdownLink from '@/Components/DropdownLink.vue';
-import NavLink from '@/Components/NavLink.vue';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
+import SideNav from '@/Components/MyComponents/SideNav.vue';
+import NotificationsDropdown from '@/Components/MyComponents/NotificationsDropdown.vue';
 
 defineProps({
     title: String,
 });
 
-const showingNavigationDropdown = ref(false);
+const showMobileMenu = ref(false);
+const page = usePage();
 
-const switchToTeam = (team) => {
-    router.put(route('current-team.update'), {
-        team_id: team.id,
+// --- DATA INERTIA ---
+const user = computed(() => page.props.auth.user);
+const notifications = computed(() => page.props.notifications || []);
+
+// --- LOGICA SUCURSALES ---
+// MODIFICADO: Si no hay sucursal en sesión, usamos la del usuario por defecto para que el select no aparezca vacío
+const currentBranchId = computed(() => page.props.auth.current_branch || page.props.auth.user?.branch_id);
+
+const branchesOptions = computed(() => {
+    return (page.props.branches || []).map(branch => ({
+        label: branch.name,
+        value: branch.id
+    }));
+});
+
+const handleBranchChange = (value) => {
+    router.post(route('branch.switch'), { 
+        branch_id: value 
     }, {
-        preserveState: false,
+        preserveScroll: true,
+        onSuccess: () => {
+            // Recarga exitosa
+        }
     });
 };
 
-const logout = () => {
-    router.post(route('logout'));
+// --- LOGICA ROLES ---
+const userRole = computed(() => {
+    const roles = page.props.auth.roles || [];
+    return roles.length > 0 
+        ? roles[0].charAt(0).toUpperCase() + roles[0].slice(1) 
+        : 'Usuario';
+});
+
+// Validar si es Admin para mostrar el selector
+const isAdmin = computed(() => {
+    const roles = page.props.auth.roles || [];
+    // Ajusta estos strings según tus roles exactos en base de datos (ej: 'Super Admin', 'Administrador')
+    return roles.some(r => ['admin', 'super admin', 'administrador', 'gerente'].includes(r.toLowerCase()));
+});
+
+// Configuración del tema de Naive UI
+const themeOverrides = {
+    common: {
+        primaryColor: '#2563EB',
+        primaryColorHover: '#3B82F6',
+        primaryColorPressed: '#1D4ED8',
+        baseColor: '#FFFFFF',
+        borderRadius: '8px',
+    },
+    Layout: {
+        siderColor: 'transparent', 
+        color: '#F3F4F6',
+    }
 };
 </script>
 
 <template>
-    <div>
-        <Head :title="title" />
+    <n-config-provider :theme-overrides="themeOverrides">
+        <n-global-style />
+        <n-message-provider>
+            <n-dialog-provider>
+                
+                <div class="h-screen w-full bg-gray-100 flex overflow-hidden text-gray-800 font-sans">
+                    <Head :title="title" />
+                    <Banner />
 
-        <Banner />
-
-        <div class="min-h-screen bg-gray-100">
-            <nav class="bg-white border-b border-gray-100">
-                <!-- Primary Navigation Menu -->
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between h-16">
-                        <div class="flex">
-                            <!-- Logo -->
-                            <div class="shrink-0 flex items-center">
-                                <Link :href="route('dashboard')">
-                                    <ApplicationMark class="block h-9 w-auto" />
-                                </Link>
-                            </div>
-
-                            <!-- Navigation Links -->
-                            <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
-                                    Dashboard
-                                </NavLink>
-                            </div>
-                        </div>
-
-                        <div class="hidden sm:flex sm:items-center sm:ms-6">
-                            <div class="ms-3 relative">
-                                <!-- Teams Dropdown -->
-                                <Dropdown v-if="$page.props.jetstream.hasTeamFeatures" align="right" width="60">
-                                    <template #trigger>
-                                        <span class="inline-flex rounded-md">
-                                            <button type="button" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none focus:bg-gray-50 active:bg-gray-50 transition ease-in-out duration-150">
-                                                {{ $page.props.auth.user.current_team.name }}
-
-                                                <svg class="ms-2 -me-0.5 size-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
-                                                </svg>
-                                            </button>
-                                        </span>
-                                    </template>
-
-                                    <template #content>
-                                        <div class="w-60">
-                                            <!-- Team Management -->
-                                            <div class="block px-4 py-2 text-xs text-gray-400">
-                                                Manage Team
-                                            </div>
-
-                                            <!-- Team Settings -->
-                                            <DropdownLink :href="route('teams.show', $page.props.auth.user.current_team)">
-                                                Team Settings
-                                            </DropdownLink>
-
-                                            <DropdownLink v-if="$page.props.jetstream.canCreateTeams" :href="route('teams.create')">
-                                                Create New Team
-                                            </DropdownLink>
-
-                                            <!-- Team Switcher -->
-                                            <template v-if="$page.props.auth.user.all_teams.length > 1">
-                                                <div class="border-t border-gray-200" />
-
-                                                <div class="block px-4 py-2 text-xs text-gray-400">
-                                                    Switch Teams
-                                                </div>
-
-                                                <template v-for="team in $page.props.auth.user.all_teams" :key="team.id">
-                                                    <form @submit.prevent="switchToTeam(team)">
-                                                        <DropdownLink as="button">
-                                                            <div class="flex items-center">
-                                                                <svg v-if="team.id == $page.props.auth.user.current_team_id" class="me-2 size-5 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                </svg>
-
-                                                                <div>{{ team.name }}</div>
-                                                            </div>
-                                                        </DropdownLink>
-                                                    </form>
-                                                </template>
-                                            </template>
-                                        </div>
-                                    </template>
-                                </Dropdown>
-                            </div>
-
-                            <!-- Settings Dropdown -->
-                            <div class="ms-3 relative">
-                                <Dropdown align="right" width="48">
-                                    <template #trigger>
-                                        <button v-if="$page.props.jetstream.managesProfilePhotos" class="flex text-sm border-2 border-transparent rounded-full focus:outline-none focus:border-gray-300 transition">
-                                            <img class="size-8 rounded-full object-cover" :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name">
-                                        </button>
-
-                                        <span v-else class="inline-flex rounded-md">
-                                            <button type="button" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none focus:bg-gray-50 active:bg-gray-50 transition ease-in-out duration-150">
-                                                {{ $page.props.auth.user.name }}
-
-                                                <svg class="ms-2 -me-0.5 size-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                                </svg>
-                                            </button>
-                                        </span>
-                                    </template>
-
-                                    <template #content>
-                                        <!-- Account Management -->
-                                        <div class="block px-4 py-2 text-xs text-gray-400">
-                                            Manage Account
-                                        </div>
-
-                                        <DropdownLink :href="route('profile.show')">
-                                            Profile
-                                        </DropdownLink>
-
-                                        <DropdownLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')">
-                                            API Tokens
-                                        </DropdownLink>
-
-                                        <div class="border-t border-gray-200" />
-
-                                        <!-- Authentication -->
-                                        <form @submit.prevent="logout">
-                                            <DropdownLink as="button">
-                                                Log Out
-                                            </DropdownLink>
-                                        </form>
-                                    </template>
-                                </Dropdown>
-                            </div>
-                        </div>
-
-                        <!-- Hamburger -->
-                        <div class="-me-2 flex items-center sm:hidden">
-                            <button class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 focus:text-gray-500 transition duration-150 ease-in-out" @click="showingNavigationDropdown = ! showingNavigationDropdown">
-                                <svg
-                                    class="size-6"
-                                    stroke="currentColor"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        :class="{'hidden': showingNavigationDropdown, 'inline-flex': ! showingNavigationDropdown }"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M4 6h16M4 12h16M4 18h16"
-                                    />
-                                    <path
-                                        :class="{'hidden': ! showingNavigationDropdown, 'inline-flex': showingNavigationDropdown }"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M6 18L18 6M6 6l12 12"
-                                    />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Responsive Navigation Menu -->
-                <div :class="{'block': showingNavigationDropdown, 'hidden': ! showingNavigationDropdown}" class="sm:hidden">
-                    <div class="pt-2 pb-3 space-y-1">
-                        <ResponsiveNavLink :href="route('dashboard')" :active="route().current('dashboard')">
-                            Dashboard
-                        </ResponsiveNavLink>
+                    <!-- Desktop Sidebar -->
+                    <div class="hidden lg:block w-56 flex-shrink-0 h-full">
+                        <SideNav />
                     </div>
 
-                    <!-- Responsive Settings Options -->
-                    <div class="pt-4 pb-1 border-t border-gray-200">
-                        <div class="flex items-center px-4">
-                            <div v-if="$page.props.jetstream.managesProfilePhotos" class="shrink-0 me-3">
-                                <img class="size-10 rounded-full object-cover" :src="$page.props.auth.user.profile_photo_url" :alt="$page.props.auth.user.name">
-                            </div>
+                    <!-- Area de Contenido Principal -->
+                    <div class="flex-1 flex flex-col h-full overflow-hidden relative">
+                        
+                        <!-- Header Desktop -->
+                        <header class="hidden lg:flex items-center justify-end px-8 py-3 bg-transparent z-10 gap-4">
+                            
+                            <!-- (Eliminado el selector global grande de aquí) -->
 
-                            <div>
-                                <div class="font-medium text-base text-gray-800">
-                                    {{ $page.props.auth.user.name }}
-                                </div>
-                                <div class="font-medium text-sm text-gray-500">
-                                    {{ $page.props.auth.user.email }}
-                                </div>
-                            </div>
-                        </div>
+                            <div class="flex items-center gap-4">
+                                <!-- Notificaciones -->
+                                <NotificationsDropdown :notifications="notifications" />
 
-                        <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.show')" :active="route().current('profile.show')">
-                                Profile
-                            </ResponsiveNavLink>
+                                <!-- Perfil de Usuario Integrado -->
+                                <div class="flex items-center gap-3 pl-4 border-l border-gray-300 ml-2">
+                                    <div class="text-right hidden lg:block">
+                                        <p class="text-sm  text-gray-700 leading-none mb-1">{{ user?.name }}</p>
+                                        
+                                        <!-- OPCIÓN A: Selector de Sucursal (Solo Admins) -->
+                                        <div v-if="isAdmin" class="w-40 scale-95 origin-right">
+                                            <n-select
+                                                :value="currentBranchId"
+                                                :options="branchesOptions"
+                                                @update:value="handleBranchChange"
+                                                placeholder="Sucursal"
+                                                size="tiny"
+                                                class="font-medium"
+                                                :consistent-menu-width="false"
+                                            />
+                                        </div>
 
-                            <ResponsiveNavLink v-if="$page.props.jetstream.hasApiFeatures" :href="route('api-tokens.index')" :active="route().current('api-tokens.index')">
-                                API Tokens
-                            </ResponsiveNavLink>
-
-                            <!-- Authentication -->
-                            <form method="POST" @submit.prevent="logout">
-                                <ResponsiveNavLink as="button">
-                                    Log Out
-                                </ResponsiveNavLink>
-                            </form>
-
-                            <!-- Team Management -->
-                            <template v-if="$page.props.jetstream.hasTeamFeatures">
-                                <div class="border-t border-gray-200" />
-
-                                <div class="block px-4 py-2 text-xs text-gray-400">
-                                    Manage Team
-                                </div>
-
-                                <!-- Team Settings -->
-                                <ResponsiveNavLink :href="route('teams.show', $page.props.auth.user.current_team)" :active="route().current('teams.show')">
-                                    Team Settings
-                                </ResponsiveNavLink>
-
-                                <ResponsiveNavLink v-if="$page.props.jetstream.canCreateTeams" :href="route('teams.create')" :active="route().current('teams.create')">
-                                    Create New Team
-                                </ResponsiveNavLink>
-
-                                <!-- Team Switcher -->
-                                <template v-if="$page.props.auth.user.all_teams.length > 1">
-                                    <div class="border-t border-gray-200" />
-
-                                    <div class="block px-4 py-2 text-xs text-gray-400">
-                                        Switch Teams
+                                        <!-- OPCIÓN B: Texto Rol (Usuarios normales) -->
+                                        <p v-else class="text-xs text-blue-600 font-semibold">{{ userRole }}</p>
                                     </div>
 
-                                    <template v-for="team in $page.props.auth.user.all_teams" :key="team.id">
-                                        <form @submit.prevent="switchToTeam(team)">
-                                            <ResponsiveNavLink as="button">
-                                                <div class="flex items-center">
-                                                    <svg v-if="team.id == $page.props.auth.user.current_team_id" class="me-2 size-5 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                    <div>{{ team.name }}</div>
-                                                </div>
-                                            </ResponsiveNavLink>
-                                        </form>
-                                    </template>
-                                </template>
-                            </template>
+                                    <n-avatar 
+                                        round 
+                                        size="medium" 
+                                        :src="user?.profile_photo_url" 
+                                        class="shadow-sm border border-white cursor-default flex-shrink-0"
+                                        :fallback-src="'https://ui-avatars.com/api/?name=' + (user?.name || 'User')"
+                                    />
+                                </div>
+                            </div>
+                        </header>
+
+                        <!-- Mobile Header -->
+                        <header class="lg:hidden bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center justify-between px-4 sticky top-0 z-20">
+                            <div class="flex items-center">
+                                <Link :href="route('dashboard')" class="block w-10 h-10 rounded mr-3 shadow-sm">
+                                    <img src="@/../../public/images/isologo-suns-power-mx.png" onerror="this.src='https://ui-avatars.com/api/?name=SP&background=0D8ABC&color=fff'" alt="Logo" class="w-full h-full object-cover" />
+                                </Link>
+                            </div>
+                            
+                            <div class="flex items-center gap-3">
+                                <NotificationsDropdown :notifications="notifications" />
+
+                                <button @click="showMobileMenu = true" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+                                    <!-- Si es admin, mostramos un indicador visual sutil en el botón de menú -->
+                                    <div class="relative">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                                        </svg>
+                                        <span v-if="isAdmin" class="absolute -top-1 -right-1 block h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-white"></span>
+                                    </div>
+                                </button>
+                            </div>
+                        </header>
+
+                        <!-- Page Header -->
+                        <div v-if="$slots.header" class="px-6 py-2 pb-6 flex items-center justify-between">
+                            <slot name="header" />
                         </div>
+
+                        <!-- Main Content -->
+                        <main class="flex-1 overflow-y-auto px-4 lg:px-6 pb-6 scroll-smooth">
+                             <slot />
+                        </main>
                     </div>
-                </div>
-            </nav>
 
-            <!-- Page Heading -->
-            <header v-if="$slots.header" class="bg-white shadow">
-                <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                    <slot name="header" />
-                </div>
-            </header>
+                    <!-- Mobile Drawer -->
+                    <n-drawer v-model:show="showMobileMenu" placement="left" :width="280">
+                        <n-drawer-content body-content-style="padding: 0;">
+                            
+                            <!-- Mobile User Profile & Branch Selector -->
+                            <div class="p-5 bg-gradient-to-br from-gray-50 to-white border-b border-gray-200">
+                                <div class="flex items-center gap-3 mb-4">
+                                    <n-avatar 
+                                        round 
+                                        size="large" 
+                                        :src="user?.profile_photo_url" 
+                                        :fallback-src="'https://ui-avatars.com/api/?name=' + (user?.name || 'User')"
+                                        class="border-2 border-white shadow-sm"
+                                    />
+                                    <div>
+                                        <p class="font-bold text-gray-800 text-sm">{{ user?.name }}</p>
+                                        <p class="text-xs text-blue-600 font-medium">{{ userRole }}</p>
+                                    </div>
+                                </div>
 
-            <!-- Page Content -->
-            <main>
-                <slot />
-            </main>
-        </div>
-    </div>
+                                <!-- Selector Móvil (Solo Admin) -->
+                                <div v-if="isAdmin">
+                                    <p class="text-[10px] uppercase text-gray-400 font-bold mb-2 tracking-wider flex items-center gap-1">
+                                        <n-icon :component="StorefrontOutline" /> Sucursal Activa
+                                    </p>
+                                    <n-select
+                                        :value="currentBranchId"
+                                        :options="branchesOptions"
+                                        @update:value="handleBranchChange"
+                                        size="small"
+                                        class="shadow-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Navegación -->
+                            <div class="pt-2">
+                                <SideNav />
+                            </div>
+                            
+                        </n-drawer-content>
+                    </n-drawer>
+
+                </div>
+
+            </n-dialog-provider>
+        </n-message-provider>
+    </n-config-provider>
 </template>
+
+<style>
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+</style>

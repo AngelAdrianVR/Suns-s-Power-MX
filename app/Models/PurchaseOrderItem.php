@@ -12,6 +12,7 @@ class PurchaseOrderItem extends Model
         'purchase_order_id',
         'product_id',
         'quantity',
+        'currency',
         'unit_cost', // Costo histórico
     ];
 

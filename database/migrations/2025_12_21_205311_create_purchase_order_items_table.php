@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('purchase_order_id')->constrained()->onDelete('cascade');
             $table->foreignId('product_id')->constrained()->onDelete('restrict');
+            $table->string('currency')->default('MXN'); // MXN o USD
             $table->integer('quantity');
             $table->decimal('unit_cost', 10, 2); // Costo al momento de la compra
             $table->timestamps();

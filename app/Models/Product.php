@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -30,9 +31,40 @@ class Product extends Model implements HasMedia
         return $this->belongsTo(Category::class);
     }
 
+    /**
+     * Relación con Sucursales para manejo de Stock
+     */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class)
+                    ->withPivot(['current_stock', 'min_stock_alert', 'location_in_warehouse'])
+                    ->withTimestamps();
+    }
+
+    /**
+     * Historial de movimientos de inventario
+     */
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
     public function purchaseOrderItems(): HasMany
     {
         return $this->hasMany(PurchaseOrderItem::class);
+    }
+
+    public function suppliers()
+    {
+        return $this->belongsToMany(Supplier::class, 'product_supplier')
+                    ->withPivot('supplier_sku', 'purchase_price', 'currency', 'delivery_days', 'is_preferred')
+                    ->withTimestamps();
+    }
+
+    // Helper para obtener el mejor precio disponible
+    public function getBestSupplierAttribute()
+    {
+        return $this->suppliers()->orderByPivot('purchase_price', 'asc')->first();
     }
 
     // Definir colección de imágenes para Spatie (Opcional)

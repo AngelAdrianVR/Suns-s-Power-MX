@@ -8,20 +8,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use App\Models\Traits\BelongsToBranch; // trait para manejo de sucursales hecho por mi
+use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class ServiceOrder extends Model 
+class ServiceOrder extends Model implements HasMedia
 {
     use HasFactory;
-    use BelongsToBranch; // Usar el trait para manejo de sucursales
+    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
+    use InteractsWithMedia;
 
     protected $fillable = [
         'client_id',
         'branch_id',
         'technician_id',
         'sales_rep_id',
-        'status',
+        'status', // 'Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'
         'start_date',
+        'completion_date',
         'completion_date',
         'total_amount',
         'installation_address',
@@ -62,6 +66,23 @@ class ServiceOrder extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    // Una orden de servicio tiene muchas tareas (instalación, configuración, etc.)
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
+
+    // Opcional: Calcular progreso basado en tareas completadas
+    public function getProgressAttribute()
+    {
+        $totalTasks = $this->tasks()->count();
+        if ($totalTasks === 0) return 0;
+        
+        $completedTasks = $this->tasks()->where('status', 'Completado')->count();
+        
+        return round(($completedTasks / $totalTasks) * 100);
     }
 
     // Documentos asociados (Evidencias de instalación, fotos)

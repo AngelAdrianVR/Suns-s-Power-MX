@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Models\Branch; // Asegúrate de importar tu modelo Branch
 
 class HandleInertiaRequests extends Middleware
 {
@@ -35,9 +36,35 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
-            //
+            
+            'auth' => [
+                'user' => $user,
+                
+                // Enviamos los roles (ej: ['admin', 'vendedor'])
+                'roles' => $user ? $user->getRoleNames() : [],
+                
+                // Enviamos TODOS los permisos directos y heredados (ej: ['crear_producto', 'ver_reportes'])
+                // pluck('name') extrae solo el string del nombre para no enviar objetos pesados
+                'permissions' => $user ? $user->getAllPermissions()->pluck('name') : [],
+
+                // Enviamos la sucursal actual seleccionada en la sesión
+                'current_branch' => $request->session()->get('current_branch_id'),
+            ],
+
+            // Lista de sucursales para el dropdown (solo si hay usuario logueado)
+            // Filtramos solo id y nombre por seguridad y rendimiento
+            'branches' => $user 
+                ? Branch::select('id', 'name')->where('is_active', true)->get() 
+                : [],
+
+            // Inyectamos las últimas notificaciones
+            'notifications' => $user 
+                ? $user->notifications()->latest()->take(20)->get() 
+                : [],
         ];
     }
 }

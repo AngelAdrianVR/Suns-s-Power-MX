@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('contracts', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->default(1)->constrained();
             $table->foreignId('service_order_id')->constrained()->onDelete('cascade');
             $table->dateTime('generated_at'); // Fecha y hora de generación del contrato
             $table->json('content_json')->nullable(); // Cláusulas dinámicas

@@ -16,25 +16,25 @@ class RoleSeeder extends Seeder
 
         // 2. Crear Permisos (Operaciones atómicas)
         // Inventario
-        Permission::create(['name' => 'ver_inventario']);
-        Permission::create(['name' => 'crear_producto']);
-        Permission::create(['name' => 'editar_producto']);
-        Permission::create(['name' => 'ajustar_stock']); // Solo almacén o admin
+        Permission::create(['name' => 'Ver inventario']);
+        Permission::create(['name' => 'Crear producto']);
+        Permission::create(['name' => 'Editar producto']);
+        Permission::create(['name' => 'Ajustar stock']); // Solo almacén o admin
         
         // Ventas y CRM
-        Permission::create(['name' => 'ver_clientes']);
-        Permission::create(['name' => 'crear_cliente']);
-        Permission::create(['name' => 'crear_cotizacion']);
-        Permission::create(['name' => 'ver_precios_compra']); // Sensible: Ocultar costos a vendedores si quieres
+        Permission::create(['name' => 'Ver clientes']);
+        Permission::create(['name' => 'Crear cliente']);
+        Permission::create(['name' => 'Crear cotizacion']);
+        Permission::create(['name' => 'Ver precios compra']); // Sensible: Ocultar costos a vendedores si quieres
         
         // Operaciones y Técnica
-        Permission::create(['name' => 'ver_ordenes_servicio']);
-        Permission::create(['name' => 'finalizar_instalacion']);
-        Permission::create(['name' => 'ver_tablero_tareas']);
+        Permission::create(['name' => 'Ver ordenes servicio']);
+        Permission::create(['name' => 'finalizar instalacion']);
+        Permission::create(['name' => 'Ver tablero tareas']);
         
         // Admin
-        Permission::create(['name' => 'gestionar_usuarios']);
-        Permission::create(['name' => 'ver_reportes_financieros']);
+        Permission::create(['name' => 'gestionar usuarios']);
+        Permission::create(['name' => 'Ver reportes financieros']);
 
         // 3. Crear Roles y Asignar Permisos
 
@@ -45,29 +45,29 @@ class RoleSeeder extends Seeder
         // Role: Ventas
         $roleVentas = Role::create(['name' => 'Ventas']);
         $roleVentas->givePermissionTo([
-            'ver_inventario',
-            'ver_clientes',
-            'crear_cliente',
-            'crear_cotizacion',
-            'ver_ordenes_servicio', // Solo ver estado
-            'ver_tablero_tareas'
+            'Ver inventario',
+            'Ver clientes',
+            'Crear cliente',
+            'Crear cotizacion',
+            'Ver ordenes servicio', // Solo Ver estado
+            'Ver tablero tareas'
         ]);
 
         // Role: Técnico
         $roleTecnico = Role::create(['name' => 'Técnico']);
         $roleTecnico->givePermissionTo([
-            'ver_ordenes_servicio',
-            'finalizar_instalacion', // Importante para cerrar orden
-            'ver_tablero_tareas'
+            'Ver ordenes servicio',
+            // 'Finalizar instalacion', // Importante para cerrar orden
+            'Ver tablero tareas'
         ]);
 
         // Role: Almacén
         $roleAlmacen = Role::create(['name' => 'Almacén']);
         $roleAlmacen->givePermissionTo([
-            'ver_inventario',
-            'crear_producto',
-            'editar_producto',
-            'ajustar_stock'
+            'Ver inventario',
+            'Crear producto',
+            'Editar producto',
+            'Ajustar stock'
         ]);
     }
 }

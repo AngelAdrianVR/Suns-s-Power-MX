@@ -6,25 +6,28 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Traits\BelongsToBranch; // trait para manejo de sucursales hecho por mi
+use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
 
 class PurchaseOrder extends Model
 {
     use HasFactory;
-    use BelongsToBranch; // Usar el trait para manejo de sucursales
+    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
 
     protected $fillable = [
         'supplier_id',
         'branch_id',
         'requested_by',
         'status',
+        'currency',
         'total_cost',
         'expected_date',
+        'received_date', // fecha de recepción
         'notes',
     ];
 
     protected $casts = [
         'expected_date' => 'date',
+        'received_date' => 'date',
     ];
 
     public function supplier(): BelongsTo
