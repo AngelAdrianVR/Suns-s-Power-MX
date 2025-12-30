@@ -2,6 +2,7 @@
 import { ref, h } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; // <--- Importamos el Modal
 import { 
     NButton, NCard, NIcon, NTag, NTabs, NTabPane, NStatistic, NDataTable, NEmpty, 
     NSpace, NAvatar, NDivider, createDiscreteApi, NBadge, NAlert, NTooltip
@@ -10,7 +11,7 @@ import {
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
-    CreateOutline, AddOutline
+    CreateOutline, AddOutline, EyeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -18,10 +19,17 @@ const props = defineProps({
     stats: Object, // { total_debt, total_paid, balance, services_count }
 });
 
-const { notification } = createDiscreteApi(['notification']);
+// Configuración Global de Notificaciones (Auto-cierre en 4seg)
+const { notification } = createDiscreteApi(['notification'], {
+    notificationProviderProps: {
+        duration: 4000,
+        keepAliveOnHover: true
+    }
+});
 
 // --- ESTADO Y UTILIDADES ---
-const activeTab = ref('services'); // Pestaña por defecto: Servicios
+const activeTab = ref('services'); // Pestaña por defecto
+const showPaymentModal = ref(false); // Estado del modal de pagos
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
@@ -29,12 +37,10 @@ const formatCurrency = (amount) => {
 
 const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+    return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-// --- DEFINICIÓN DE COLUMNAS PARA TABLAS ---
-
-// Columnas para Servicios
+// --- COLUMNAS SERVICIOS ---
 const serviceColumns = [
     { title: 'Folio', key: 'id', width: 80, render: (row) => `#${row.id}` },
     { 
@@ -59,29 +65,48 @@ const serviceColumns = [
                 trigger: () => h(NButton, { 
                     circle: true, size: 'tiny', secondary: true,
                     onClick: () => router.visit(route('service-orders.show', row.id))
-                }, { icon: () => h(NIcon, null, { default: () => h(ArrowBackOutline, { style: 'transform: rotate(180deg)' }) }) }),
+                }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
                 default: () => 'Ver Detalles'
             });
         }
     }
 ];
 
-// Columnas para Pagos
+// --- COLUMNAS PAGOS (Modificadas) ---
 const paymentColumns = [
-    { title: 'Fecha', key: 'payment_date', render: (row) => formatDate(row.payment_date) },
-    { title: 'Método', key: 'method' },
-    { title: 'Referencia', key: 'reference', render: (row) => row.reference || '-' },
+    { title: 'Fecha', key: 'payment_date', width: 100, render: (row) => formatDate(row.payment_date) },
+    { 
+        title: 'Concepto / Orden', 
+        key: 'service_order_id',
+        minWidth: 140,
+        render(row) {
+            if (row.service_order) {
+                // Link a la orden de servicio si existe
+                return h('div', { class: 'flex flex-col' }, [
+                    h('span', { class: 'text-xs text-gray-500' }, 'Abono a Orden:'),
+                    h(Link, { 
+                        href: route('service-orders.show', row.service_order.id),
+                        class: 'font-bold text-indigo-600 hover:underline cursor-pointer' 
+                    }, { default: () => `OS-#${row.service_order.id}` })
+                ]);
+            }
+            return h('span', { class: 'text-gray-400 italic' }, 'Saldo General');
+        }
+    },
+    { title: 'Método', key: 'method', width: 100 },
+    { title: 'Referencia', key: 'reference', render: (row) => h('span', { class: 'text-xs text-gray-500' }, row.reference || '-') },
     { 
         title: 'Monto', 
         key: 'amount', 
         align: 'right', 
+        width: 120,
         render: (row) => h('span', { class: 'font-bold text-emerald-600' }, formatCurrency(row.amount)) 
     }
 ];
 
-// Columnas para Documentos
+// --- COLUMNAS DOCUMENTOS ---
 const docColumns = [
-    { title: 'Nombre', key: 'name', render: (row) => h('div', { class: 'font-medium' }, row.name) },
+    { title: 'Nombre', key: 'name', render: (row) => h('div', { class: 'font-medium text-gray-700' }, row.name) },
     { title: 'Categoría', key: 'category', render: (row) => h(NTag, { size: 'small' }, { default: () => row.category }) },
     { title: 'Fecha', key: 'created_at', render: (row) => formatDate(row.created_at) },
     {
@@ -97,9 +122,15 @@ const docColumns = [
 ];
 
 // --- ACCIONES ---
-const registerPayment = () => {
-    notification.info({ title: 'Próximamente', content: 'Módulo de Pagos en desarrollo.' });
-    // router.visit(route('payments.create', { client_id: props.client.id }));
+const openPaymentModal = () => {
+    if (props.stats.balance <= 1) {
+        notification.success({ 
+            title: 'Sin Deuda', 
+            content: 'Este cliente está al corriente. No es necesario registrar abonos.' 
+        });
+        return;
+    }
+    showPaymentModal.value = true;
 };
 
 const createServiceOrder = () => {
@@ -129,13 +160,11 @@ const createServiceOrder = () => {
                     </Link>
                 </div>
 
-                <!-- CABECERA PRINCIPAL: Identidad y Finanzas -->
+                <!-- CABECERA PRINCIPAL -->
                 <div class="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
-                    <!-- Fondo decorativo -->
                     <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-60 pointer-events-none"></div>
 
                     <div class="flex flex-col lg:flex-row justify-between gap-8 relative z-10">
-                        
                         <!-- Columna Identidad -->
                         <div class="flex items-start gap-5">
                             <n-avatar :size="80" class="bg-indigo-100 text-indigo-600 shadow-inner flex-shrink-0">
@@ -170,7 +199,6 @@ const createServiceOrder = () => {
 
                         <!-- Columna Estado Financiero -->
                         <div class="flex gap-4 items-center">
-                            <!-- Card Saldo Pendiente -->
                             <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100 min-w-[180px] flex flex-col justify-between h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
@@ -185,8 +213,8 @@ const createServiceOrder = () => {
                                     <n-icon><AlertCircleOutline /></n-icon> Pago requerido
                                 </div>
                             </div>
-
-                            <!-- Estadísticas Rápidas -->
+                            
+                            <!-- Stats escritorio -->
                             <div class="hidden sm:flex flex-col gap-2">
                                 <div class="bg-white border border-gray-100 px-4 py-2 rounded-xl shadow-sm">
                                     <div class="text-[10px] text-gray-400 uppercase">Total Facturado</div>
@@ -200,7 +228,6 @@ const createServiceOrder = () => {
                         </div>
                     </div>
 
-                    <!-- Notas Importantes (Siempre Visibles) -->
                     <div v-if="client.notes" class="mt-6 pt-4 border-t border-gray-50">
                         <n-alert type="warning" :bordered="false" class="bg-amber-50 rounded-xl">
                             <template #icon><n-icon><AlertCircleOutline /></n-icon></template>
@@ -216,24 +243,23 @@ const createServiceOrder = () => {
                         v-model:value="activeTab" 
                         type="line" 
                         animated 
-                        pane-class="p-6"
+                        pane-class="p-4 sm:p-6" 
                         justify-content="start"
                         class="custom-tabs"
                     >
                         
-                        <!-- PESTAÑA 1: SERVICIOS (Principal) -->
+                        <!-- PESTAÑA 1: SERVICIOS -->
                         <n-tab-pane name="services" tab="Servicios">
                             <template #tab>
                                 <div class="flex items-center gap-2">
-                                    <n-icon><ConstructOutline /></n-icon> Órdenes de Servicio
+                                    <n-icon><ConstructOutline /></n-icon> <span class="hidden sm:inline">Órdenes de Servicio</span> <span class="sm:hidden">Órdenes</span>
                                     <n-badge :value="client.service_orders.length" type="info" :max="99" class="scale-75" />
                                 </div>
                             </template>
 
-                            <!-- Header de Tab -->
                             <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                                 <div>
-                                    <h3 class="text-lg font-bold text-gray-800">Historial de Instalaciones y Servicios</h3>
+                                    <h3 class="text-lg font-bold text-gray-800">Historial de Servicios</h3>
                                     <p class="text-sm text-gray-500">Gestión operativa del cliente</p>
                                 </div>
                                 <n-button type="primary" round size="medium" @click="createServiceOrder">
@@ -242,32 +268,35 @@ const createServiceOrder = () => {
                                 </n-button>
                             </div>
 
-                            <n-data-table
-                                :columns="serviceColumns"
-                                :data="client.service_orders"
-                                :bordered="false"
-                                size="small"
-                                :pagination="{ pageSize: 10 }"
-                                class="mb-4"
-                            />
+                            <!-- Wrapper para Scroll Horizontal en Móvil -->
+                            <div class="overflow-x-auto">
+                                <div class="min-w-[600px] sm:min-w-full">
+                                    <n-data-table
+                                        :columns="serviceColumns"
+                                        :data="client.service_orders"
+                                        :bordered="false"
+                                        size="small"
+                                        :pagination="{ pageSize: 10 }"
+                                        class="mb-4"
+                                    />
+                                </div>
+                            </div>
                         </n-tab-pane>
 
-                        <!-- PESTAÑA 2: PAGOS Y COBRANZA -->
+                        <!-- PESTAÑA 2: PAGOS -->
                         <n-tab-pane name="payments" tab="Pagos">
                             <template #tab>
                                 <div class="flex items-center gap-2">
-                                    <n-icon><WalletOutline /></n-icon> Historial de Pagos
+                                    <n-icon><WalletOutline /></n-icon> <span class="hidden sm:inline">Historial de Pagos</span> <span class="sm:hidden">Pagos</span>
                                 </div>
                             </template>
 
-                            <!-- Header de Tab -->
                             <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                                 <div>
                                     <h3 class="text-lg font-bold text-gray-800">Control de Cobranza</h3>
                                     <p class="text-sm text-gray-500">Registro de abonos y liquidaciones</p>
                                 </div>
-                                <!-- Acción Contextual de Pagos -->
-                                <n-button type="success" secondary round size="medium" @click="registerPayment" :disabled="stats.balance <= 0">
+                                <n-button type="success" secondary round size="medium" @click="openPaymentModal" :disabled="stats.balance <= 0">
                                     <template #icon><n-icon><CashOutline /></n-icon></template>
                                     Registrar Abono
                                 </n-button>
@@ -281,20 +310,25 @@ const createServiceOrder = () => {
                                 <span class="font-bold text-gray-800 text-xl">{{ formatCurrency(stats.total_paid) }}</span>
                             </div>
 
-                            <n-data-table
-                                :columns="paymentColumns"
-                                :data="client.payments"
-                                :bordered="false"
-                                size="small"
-                                :pagination="{ pageSize: 10 }"
-                            />
+                            <!-- Wrapper para Scroll Horizontal en Móvil -->
+                            <div class="overflow-x-auto pb-2">
+                                <div class="min-w-[700px] sm:min-w-full">
+                                    <n-data-table
+                                        :columns="paymentColumns"
+                                        :data="client.payments"
+                                        :bordered="false"
+                                        size="small"
+                                        :pagination="{ pageSize: 10 }"
+                                    />
+                                </div>
+                            </div>
                         </n-tab-pane>
 
                         <!-- PESTAÑA 3: DOCUMENTOS -->
                         <n-tab-pane name="documents" tab="Documentos">
                             <template #tab>
                                 <div class="flex items-center gap-2">
-                                    <n-icon><DocumentTextOutline /></n-icon> Documentos
+                                    <n-icon><DocumentTextOutline /></n-icon> <span class="hidden sm:inline">Documentos</span> <span class="sm:hidden">Docs</span>
                                 </div>
                             </template>
 
@@ -305,7 +339,6 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
 
-                            <!-- Área de carga (Placeholder visual) -->
                             <div class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center mb-6 hover:bg-gray-50 transition-colors cursor-pointer group">
                                 <div class="bg-blue-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
                                     <n-icon size="24" class="text-blue-500"><CloudDownloadOutline /></n-icon>
@@ -314,33 +347,45 @@ const createServiceOrder = () => {
                                 <p class="text-gray-400 text-xs mt-1">Arrastra archivos aquí o haz clic para explorar</p>
                             </div>
 
-                            <n-data-table
-                                :columns="docColumns"
-                                :data="client.documents"
-                                :bordered="false"
-                                size="small"
-                            />
+                            <!-- Wrapper para Scroll Horizontal en Móvil -->
+                            <div class="overflow-x-auto">
+                                <div class="min-w-[500px] sm:min-w-full">
+                                    <n-data-table
+                                        :columns="docColumns"
+                                        :data="client.documents"
+                                        :bordered="false"
+                                        size="small"
+                                    />
+                                </div>
+                            </div>
                         </n-tab-pane>
 
                     </n-tabs>
                 </div>
-
             </div>
         </div>
+
+        <!-- MODAL DE PAGOS -->
+        <PaymentModal 
+            v-model:show="showPaymentModal" 
+            :client="client"
+            @close="showPaymentModal = false"
+        />
+
     </AppLayout>
 </template>
 
 <style scoped>
-/* Estilos personalizados para las pestañas para darles un toque moderno */
+/* Estilos personalizados para las pestañas */
 :deep(.n-tabs .n-tabs-tab) {
-    padding-top: 20px;
-    padding-bottom: 20px;
+    padding-top: 16px;
+    padding-bottom: 16px;
     font-weight: 600;
     font-size: 0.95rem;
     transition: color 0.3s;
 }
 :deep(.n-tabs .n-tabs-tab--active) {
-    color: #4f46e5 !important; /* Indigo 600 */
+    color: #4f46e5 !important;
 }
 :deep(.n-tabs .n-tabs-bar) {
     height: 3px;

@@ -142,7 +142,7 @@ const confirmDelete = () => {
 </script>
 
 <template>
-    <AppLayout :title="`Orden #${order.id}`">
+    <AppLayout :title="`Orden de servicio #${order.id}`">
         <template #header>
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div class="flex items-center gap-3">
