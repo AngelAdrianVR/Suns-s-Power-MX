@@ -21,7 +21,9 @@ class TaskController extends Controller
             'service_order_id' => 'required|exists:service_orders,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'due_date' => 'nullable|date',
+            'due_date' => 'nullable|date', // Fecha Estimada Fin
+            'start_date' => 'nullable|date', // Fecha Inicio
+            'finish_date' => 'nullable|date', // Fecha Real Fin
             'priority' => 'required|in:Baja,Media,Alta',
             'user_ids' => 'required|array|min:1', 
             'user_ids.*' => 'exists:users,id'
@@ -29,6 +31,7 @@ class TaskController extends Controller
 
         DB::transaction(function () use ($validated, $branchId) {
             // 1. Crear Tarea
+            // CAMBIO: start_date ya no se asigna automáticamente a now(), se respeta el null si no viene.
             $task = Task::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
@@ -37,8 +40,9 @@ class TaskController extends Controller
                 'created_by' => Auth::id(),
                 'status' => 'Pendiente',
                 'priority' => $validated['priority'],
-                'start_date' => now(), 
+                'start_date' => $validated['start_date'] ?? null, // CAMBIO: Default null
                 'due_date' => $validated['due_date'] ?? null,
+                'finish_date' => $validated['finish_date'] ?? null,
             ]);
 
             $task->assignees()->sync($validated['user_ids']);
@@ -51,10 +55,13 @@ class TaskController extends Controller
             }
 
             // 3. ACTUALIZACIÓN AUTOMÁTICA DE LA ORDEN
-            // Si se agrega una tarea, la orden cambia a "En Proceso" (si no está ya finalizada/cancelada)
             $order = ServiceOrder::find($validated['service_order_id']);
-            if ($order && !in_array($order->status, ['Instalado', 'Facturado', 'Cancelado'])) {
+            if ($order && !in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
                 $order->update(['status' => 'En Proceso']);
+                
+                if (is_null($order->start_date)) {
+                    $order->update(['start_date' => now()]);
+                }
             }
         });
 
@@ -71,31 +78,67 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'status' => 'sometimes|in:Pendiente,En Proceso,Completado,Detenido',
             'priority' => 'sometimes|in:Baja,Media,Alta',
-            'due_date' => 'nullable|date'
+            'start_date' => 'nullable|date',
+            'due_date' => 'nullable|date',
+            'finish_date' => 'nullable|date'
         ]);
 
-        $oldStatus = $task->status;
+        // --- LÓGICA DE FECHAS AUTOMÁTICAS ---
+        if (isset($validated['status'])) {
+            $newStatus = $validated['status'];
+            
+            // 1. Al iniciar "En Proceso": Guardar fecha inicio solo si no existe.
+            if ($newStatus === 'En Proceso') {
+                if (is_null($task->start_date)) {
+                    $validated['start_date'] = now();
+                }
+                // Si ya tiene fecha, NO se actualiza (se mantiene la original).
+            }
+
+            // 2. Al cambiar a "Completado": Agregar fecha fin.
+            if ($newStatus === 'Completado') {
+                $validated['finish_date'] = now();
+            } else {
+                // 3. Si cambia a cualquier otro estatus (y deja de ser completado), borrar fecha fin.
+                $validated['finish_date'] = null;
+            }
+        }
+        // ------------------------------------
+
         $task->update($validated);
 
         // LÓGICA DE ACTUALIZACIÓN DE ORDEN BASADA EN TAREAS
         if ($task->service_order_id) {
-            $order = $task->service_order;
+            $order = $task->serviceOrder;
 
-            // CASO 1: Si la tarea pasa a "En Proceso", la orden también (si no lo está ya)
-            if ($task->status === 'En Proceso' && $order->status !== 'En Proceso') {
-                // Solo si no está ya terminada o cancelada
-                if (!in_array($order->status, ['Instalado', 'Facturado', 'Cancelado'])) {
-                    $order->update(['status' => 'En Proceso']);
+            if ($order) {
+                // Asignar Fecha de Inicio de ORDEN si la tarea pasa a "En Proceso"
+                if ($task->status === 'En Proceso' && is_null($order->start_date)) {
+                    $order->update(['start_date' => now()]);
                 }
-            }
 
-            // CASO 2: Si todas las tareas están terminadas, marcar orden como "Instalado"
-            // Solo verificamos esto si la tarea actual se marcó como completada
-            if ($task->status === 'Completado') {
                 $incompleteTasks = $order->tasks()->where('status', '!=', 'Completado')->count();
-                
-                if ($incompleteTasks === 0 && !in_array($order->status, ['Facturado', 'Cancelado'])) {
-                    $order->update(['status' => 'Instalado']);
+
+                if ($incompleteTasks === 0) {
+                    if ($order->status !== 'Completado' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
+                        $order->update([
+                            'status' => 'Completado',
+                            'completion_date' => now()
+                        ]);
+                    }
+                } else {
+                    if ($order->status === 'Completado') {
+                        $order->update([
+                            'status' => 'En Proceso',
+                            'completion_date' => null
+                        ]);
+                    } 
+                    elseif ($task->status === 'En Proceso' && $order->status !== 'En Proceso' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
+                        $order->update(['status' => 'En Proceso']);
+                        if (is_null($order->start_date)) {
+                            $order->update(['start_date' => now()]);
+                        }
+                    }
                 }
             }
         }
@@ -103,9 +146,6 @@ class TaskController extends Controller
         return back()->with('success', 'Tarea actualizada.');
     }
 
-    /**
-     * Eliminar Tarea
-     */
     public function destroy(Task $task)
     {
         $task->delete();

@@ -7,13 +7,13 @@ import {
     NButton, NTag, NCard, NGrid, NGridItem, NDescriptions, NDescriptionsItem, 
     NTabs, NTabPane, NIcon, NThing, NAvatar, NProgress, NStatistic, NNumberAnimation,
     createDiscreteApi, NEmpty, NPopselect, NModal, NForm, NFormItem, NInput, NSelect, NInputNumber,
-    NPopconfirm
+    NPopconfirm, NUpload, NImageGroup, NImage
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
-    AddOutline, RemoveCircleOutline
+    AddOutline, RemoveCircleOutline, CloudUploadOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -36,7 +36,6 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// CÁLCULO DE PROGRESO CORREGIDO
 const generalProgress = computed(() => {
     if (!props.stats || props.stats.total_tasks === 0) return 0;
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
@@ -47,13 +46,13 @@ const orderStatusOptions = [
     { label: 'Cotización', value: 'Cotización' },
     { label: 'Aceptado', value: 'Aceptado' },
     { label: 'En Proceso', value: 'En Proceso' },
-    { label: 'Instalado', value: 'Instalado' },
+    { label: 'Completado', value: 'Completado' }, 
     { label: 'Facturado', value: 'Facturado' },
     { label: 'Cancelado', value: 'Cancelado' }
 ];
 
 const getStatusType = (status) => {
-    const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Instalado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
+    const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
     return map[status] || 'default';
 };
 
@@ -88,10 +87,44 @@ const addProduct = () => {
     });
 };
 
+const formattedTotal = computed(() =>
+  new Intl.NumberFormat('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(props.order.total_amount ?? 0)
+)
+
 const removeProduct = (itemId) => {
     router.delete(route('service-orders.remove-item', itemId), {
         preserveScroll: true,
         onSuccess: () => notification.success({title: 'Producto removido'})
+    });
+};
+
+// --- GESTIÓN DE EVIDENCIAS (ARCHIVOS) ---
+// CAMBIO: Input de archivo manual
+const fileInput = ref(null);
+const triggerFileInput = () => {
+    fileInput.value.click();
+};
+
+const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const form = useForm({
+        file: file
+    });
+
+    form.post(route('service-orders.upload-media', props.order.id), {
+        onSuccess: () => {
+            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.' });
+            router.reload({ only: ['order'] });
+            event.target.value = null; // Resetear input
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo subir el archivo.' });
+        }
     });
 };
 
@@ -109,7 +142,7 @@ const confirmDelete = () => {
 </script>
 
 <template>
-    <AppLayout :title="`Orden #${order.id}`">
+    <AppLayout :title="`Orden de servicio #${order.id}`">
         <template #header>
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div class="flex items-center gap-3">
@@ -122,7 +155,6 @@ const confirmDelete = () => {
                         <h2 class="font-bold text-xl text-gray-800 leading-tight flex items-center gap-2">
                             Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                         </h2>
-                        <!-- SELECTOR DE ESTATUS -->
                         <div class="flex items-center gap-2 mt-1">
                             <n-popselect 
                                 :options="orderStatusOptions" 
@@ -172,7 +204,6 @@ const confirmDelete = () => {
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Progreso General</div>
                                     <div class="flex items-center gap-2">
-                                        <!-- PROGRESO ARREGLADO -->
                                         <n-progress type="circle" :percentage="generalProgress" :size="40" :stroke-width="8" status="success">
                                             <span class="text-[10px]">{{ generalProgress }}%</span>
                                         </n-progress>
@@ -185,7 +216,7 @@ const confirmDelete = () => {
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
-                                    <n-statistic :value="order.total_amount">
+                                    <n-statistic :value="formattedTotal">
                                         <template #prefix>$</template>
                                     </n-statistic>
                                 </div>
@@ -193,7 +224,6 @@ const confirmDelete = () => {
                             <n-grid-item>
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Técnico Líder</div>
-                                    <!-- AVATAR ARREGLADO -->
                                     <div v-if="order.technician" class="flex items-center gap-2 mt-1">
                                         <n-avatar round size="small" :src="order.technician.profile_photo_path" :fallback-src="'https://ui-avatars.com/api/?name='+order.technician.name" />
                                         <span class="text-sm font-medium">{{ order.technician.name }}</span>
@@ -203,7 +233,6 @@ const confirmDelete = () => {
                             </n-grid-item>
                         </n-grid>
                     </n-card>
-                    <!-- Mapa FIXED -->
                     <n-card size="small" class="rounded-2xl shadow-sm bg-blue-50/30 border-blue-100">
                         <div class="flex flex-col h-full justify-between">
                             <div>
@@ -223,14 +252,11 @@ const confirmDelete = () => {
                     </n-card>
                 </div>
 
-                <!-- Contenido Principal -->
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4">
                         
-                        <!-- TAB 1: DIAGRAMA PMS (Funcionalidad Completa) -->
                         <n-tab-pane name="gantt" tab="Cronograma y Tareas">
                             <div class="py-4 space-y-6">
-                                <!-- Componente GANTT actualizado con todas las funciones -->
                                 <TaskGanttChart 
                                     :tasks="diagram_data" 
                                     :order-id="order.id"
@@ -239,7 +265,6 @@ const confirmDelete = () => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 2: MATERIALES -->
                         <n-tab-pane name="items" tab="Materiales y Productos">
                              <div class="p-4">
                                 <div class="flex justify-between items-center mb-4">
@@ -250,7 +275,8 @@ const confirmDelete = () => {
                                     </n-button>
                                 </div>
 
-                                <div class="border rounded-lg overflow-hidden">
+                                <!-- CAMBIO: Scroll Horizontal -->
+                                <div class="border rounded-lg overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
@@ -298,7 +324,6 @@ const confirmDelete = () => {
                              </div>
                         </n-tab-pane>
 
-                        <!-- TAB 3: DETALLES -->
                         <n-tab-pane name="details" tab="Detalles Operativos">
                             <div class="p-4">
                                 <n-descriptions label-placement="top" bordered column="3">
@@ -309,10 +334,17 @@ const confirmDelete = () => {
                                         </div>
                                     </n-descriptions-item>
                                     <n-descriptions-item label="Fecha de Finalización">
-                                        {{ formatDate(order.completion_date) }}
+                                        <div class="flex items-center gap-2" :class="order.completion_date ? 'text-green-600 font-medium' : 'text-gray-400'">
+                                            <n-icon><CheckmarkCircleOutline /></n-icon>
+                                            {{ order.completion_date ? formatDate(order.completion_date) : 'En progreso' }}
+                                        </div>
                                     </n-descriptions-item>
                                     <n-descriptions-item label="Representante de Ventas">
-                                        {{ order.sales_rep?.name || 'N/A' }}
+                                        <div v-if="order.sales_rep" class="flex items-center gap-3">
+                                            <n-avatar size="small" round :src="order.sales_rep.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+order.sales_rep.name" />
+                                            <span>{{ order.sales_rep.name }}</span>
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">No asignado</span>
                                     </n-descriptions-item>
                                     <n-descriptions-item label="Notas">
                                         {{ order.notes || 'Sin notas registradas.' }}
@@ -321,11 +353,54 @@ const confirmDelete = () => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB 4: EVIDENCIAS -->
                         <n-tab-pane name="files" tab="Evidencias">
-                            <!-- Contenido existente... -->
-                            <div class="p-8 text-center" v-if="!order.documents?.length">
-                                <n-empty description="No se han cargado evidencias fotográficas o documentos." />
+                            <div class="p-4">
+                                <!-- CAMBIO: Uploader Manual -->
+                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
+                                    <input 
+                                        type="file" 
+                                        ref="fileInput" 
+                                        class="hidden" 
+                                        @change="handleFileChange" 
+                                        accept="image/*,application/pdf"
+                                    />
+                                    <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-20 w-full md:w-1/2">
+                                        <div class="flex flex-col items-center gap-2">
+                                            <n-icon size="24"><CloudUploadOutline /></n-icon>
+                                            <span>Seleccionar archivo para subir</span>
+                                        </div>
+                                    </n-button>
+                                    <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imagenes y PDF (Max 10MB)</p>
+                                </div>
+
+                                <div v-if="order.media?.length">
+                                    <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
+                                    <n-image-group>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div v-for="file in order.media" :key="file.id" class="relative group">
+                                                <n-image
+                                                    :src="file.original_url"
+                                                    class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
+                                                    object-fit="cover"
+                                                />
+                                                <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
+                                                
+                                                <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
+                                                    <template #trigger>
+                                                        <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700">
+                                                            <n-icon><TrashOutline /></n-icon>
+                                                        </button>
+                                                    </template>
+                                                    ¿Eliminar evidencia?
+                                                </n-popconfirm>
+                                            </div>
+                                        </div>
+                                    </n-image-group>
+                                </div>
+
+                                <div class="p-8 text-center" v-else>
+                                    <n-empty description="No se han cargado evidencias fotográficas o documentos aún." />
+                                </div>
                             </div>
                         </n-tab-pane>
 

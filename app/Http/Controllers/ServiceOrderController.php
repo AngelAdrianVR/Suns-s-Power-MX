@@ -76,7 +76,7 @@ class ServiceOrderController extends Controller
         return Inertia::render('ServiceOrders/Index', [
             'orders' => $orders,
             'filters' => $filters,
-            'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Instalado', 'Facturado', 'Cancelado']
+            'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado']
         ]);
     }
 
@@ -97,7 +97,7 @@ class ServiceOrderController extends Controller
             'client_id' => 'required|exists:clients,id',
             'technician_id' => 'nullable|exists:users,id',
             'sales_rep_id' => 'required|exists:users,id',
-            'status' => 'required|in:Cotización,Aceptado,En Proceso,Instalado,Facturado,Cancelado',
+            'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
             'installation_address' => 'required|string',
@@ -120,20 +120,38 @@ class ServiceOrderController extends Controller
         $serviceOrder->load([
             'client',
             'technician',
+            'salesRep',
             'items.product', 
             'tasks.assignees', 
-            'documents',
+            'tasks.comments.user', // Cargar comentarios y usuario
+            'media',
         ]);
 
-        $diagramData = $serviceOrder->tasks->map(function ($task) {
+        $currentUserId = Auth::id();
+
+        $diagramData = $serviceOrder->tasks->map(function ($task) use ($currentUserId) {
+            // Lógica simple de "No leídos": Si hay comentarios que NO son míos.
+            $hasUnread = $task->comments->contains(function ($comment) use ($currentUserId) {
+                return $comment->user_id !== $currentUserId;
+            });
+
             return [
                 'id' => $task->id,
                 'name' => $task->title,
-                'description' => $task->description, // Agregamos descripción para el modal
+                'description' => $task->description,
+                'priority' => $task->priority,
                 'start' => $task->start_date?->format('Y-m-d H:i:s'),
+                'finish_date' => $task->finish_date?->format('Y-m-d H:i:s'),
                 'end' => $task->due_date?->format('Y-m-d H:i:s'),
                 'status' => $task->status,
-                // Quitamos la lógica de porcentajes aquí, la UI la maneja por status
+                'has_unread_comments' => $hasUnread, // Indicador
+                'comments' => $task->comments->map(fn($c) => [
+                    'id' => $c->id,
+                    'body' => $c->body,
+                    'user' => $c->user->name,
+                    'user_avatar' => $c->user->profile_photo_url,
+                    'created_at' => $c->created_at->diffForHumans()
+                ]),
                 'assignees' => $task->assignees->map(fn($user) => [
                     'id' => $user->id,
                     'name' => $user->name,
@@ -174,6 +192,10 @@ class ServiceOrderController extends Controller
 
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
+            // AGREGA ESTAS LÍNEAS:
+            'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
+            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            // -------------------
             'technicians' => User::where('branch_id', $branchId)->get(['id', 'name']),
         ]);
     }
@@ -184,10 +206,12 @@ class ServiceOrderController extends Controller
         if ($serviceOrder->branch_id !== $branchId) abort(403);
 
         $validated = $request->validate([
-            'status' => 'required|string',
-            'start_date' => 'nullable|date',
-            'completion_date' => 'nullable|date|after_or_equal:start_date',
+            'client_id' => 'required|exists:clients,id', // Faltaba este
+            'sales_rep_id' => 'required|exists:users,id', // Faltaba este
             'technician_id' => 'nullable|exists:users,id',
+            'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
+            'start_date' => 'nullable|date',
+            'total_amount' => 'required|numeric|min:0', // Faltaba este
             'installation_address' => 'required|string',
             'notes' => 'nullable|string',
         ]);
@@ -203,11 +227,32 @@ class ServiceOrderController extends Controller
         if ($serviceOrder->branch_id !== $branchId) abort(403);
 
         $validated = $request->validate([
-            'status' => 'required|in:Cotización,Aceptado,En Proceso,Instalado,Facturado,Cancelado'
+            'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado'
         ]);
 
-        $serviceOrder->update(['status' => $validated['status']]);
-        return back()->with('success', "Estatus actualizado a {$validated['status']}.");
+        $newStatus = $validated['status'];
+        $updateData = ['status' => $newStatus];
+
+        if ($newStatus === 'Completado') {
+            $updateData['completion_date'] = now();
+        } else {
+            $updateData['completion_date'] = null;
+        }
+
+        $serviceOrder->update($updateData);
+        return back()->with('success', "Estatus actualizado a {$newStatus}.");
+    }
+
+    // Método para subir evidencias (Media Library)
+    public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
+    {
+        $request->validate([
+            'file' => 'required|file|max:10240', // Max 10MB
+        ]);
+
+        $serviceOrder->addMediaFromRequest('file')->toMediaCollection('evidences');
+
+        return back()->with('success', 'Archivo subido correctamente.');
     }
 
     public function addItems(Request $request, ServiceOrder $serviceOrder)
@@ -234,9 +279,6 @@ class ServiceOrderController extends Controller
                 reference: $serviceOrder,
                 notes: "Material asignado a Orden de Servicio #{$serviceOrder->id}"
             );
-            
-            // ELIMINADO: Ya no incrementamos el total_amount de la orden
-            // $serviceOrder->increment('total_amount', $product->sale_price * $validated['quantity']);
         });
 
         return back()->with('success', 'Producto asignado correctamente.');
@@ -256,9 +298,6 @@ class ServiceOrderController extends Controller
                 notes: "Material removido de Orden de Servicio #{$item->serviceOrder->id}"
             );
 
-            // ELIMINADO: Ya no decrementamos el total_amount de la orden
-            // $item->serviceOrder->decrement('total_amount', $item->price * $item->quantity);
-            
             $item->delete();
         });
 
@@ -270,7 +309,7 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) abort(403);
 
-        if ($serviceOrder->status === 'Instalado' || $serviceOrder->status === 'Facturado') {
+        if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
             return back()->with('error', 'No se puede eliminar una orden completada o facturada.');
         }
 

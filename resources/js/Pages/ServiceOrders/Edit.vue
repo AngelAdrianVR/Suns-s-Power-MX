@@ -13,24 +13,49 @@ import {
 } from '@vicons/ionicons5';
 
 const props = defineProps({
-    clients: Array,
-    technicians: Array,
-    sales_reps: Array,
+    order: {
+        type: Object,
+        required: true
+    },
+    // Se agregan valores por defecto para evitar errores si las listas vienen vacías
+    clients: {
+        type: Array,
+        default: () => [] 
+    },
+    technicians: {
+        type: Array,
+        default: () => []
+    },
+    sales_reps: {
+        type: Array,
+        default: () => []
+    }
 });
 
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
 
-// Formulario basado en el modelo ServiceOrder
+// Función auxiliar para corregir el formato de fecha ISO que envía Laravel
+// Convierte "2023-10-25T12:00:00.000000Z" a "2023-10-25 12:00:00"
+const formatInitialDate = (dateString) => {
+    if (!dateString) return null;
+    if (dateString.includes('T')) {
+        return dateString.replace('T', ' ').substring(0, 19);
+    }
+    return dateString;
+};
+
+// Formulario inicializado con los datos de la orden
 const form = useForm({
-    client_id: null,
-    technician_id: null,
-    sales_rep_id: null,
-    status: 'Cotización', // Valor por defecto
-    start_date: null,     // Timestamp para NDatePicker
-    total_amount: 0,
-    installation_address: '',
-    notes: '',
+    client_id: props.order.client_id,
+    technician_id: props.order.technician_id,
+    sales_rep_id: props.order.sales_rep_id,
+    status: props.order.status,
+    // CORRECCIÓN CRÍTICA: Formateamos la fecha inicial para evitar el RangeError
+    start_date: formatInitialDate(props.order.start_date), 
+    total_amount: Number(props.order.total_amount),
+    installation_address: props.order.installation_address,
+    notes: props.order.notes,
 });
 
 // Opciones de Estado
@@ -40,6 +65,7 @@ const statusOptions = [
     { label: 'En Proceso', value: 'En Proceso' },
     { label: 'Completado', value: 'Completado' },
     { label: 'Facturado', value: 'Facturado' },
+    { label: 'Cancelado', value: 'Cancelado' }, 
 ];
 
 // Reglas de validación
@@ -70,20 +96,19 @@ const rules = {
     }
 };
 
-// Transformar datos para los Selects de Naive UI
-const clientOptions = props.clients.map(c => ({ label: c.name, value: c.id }));
-const techOptions = props.technicians.map(t => ({ label: t.name, value: t.id }));
-const salesOptions = props.sales_reps.map(s => ({ label: s.name, value: s.id }));
+// Transformar datos para los Selects de Naive UI con protección
+const clientOptions = (props.clients || []).map(c => ({ label: c.name, value: c.id }));
+const techOptions = (props.technicians || []).map(t => ({ label: t.name, value: t.id }));
+const salesOptions = (props.sales_reps || []).map(s => ({ label: s.name, value: s.id }));
 
 const submit = () => {
     formRef.value?.validate((errors) => {
         if (!errors) {
-            // Conversión de fecha si es necesario antes de enviar (aunque Inertia maneja timestamps bien usualmente)
-            form.post(route('service-orders.store'), {
+            form.put(route('service-orders.update', props.order.id), {
                 onSuccess: () => {
                     notification.success({
-                        title: 'Orden Creada',
-                        content: 'La orden de servicio se ha generado correctamente.',
+                        title: 'Orden Actualizada',
+                        content: 'Los cambios se han guardado correctamente.',
                         duration: 3000
                     });
                 },
@@ -107,17 +132,17 @@ const submit = () => {
 </script>
 
 <template>
-    <AppLayout title="Nueva Orden de Servicio">
+    <AppLayout :title="`Editar Orden #${order.id}`">
         <template #header>
             <div class="flex items-center gap-4">
-                <Link :href="route('service-orders.index')">
+                <Link :href="route('service-orders.show', order.id)">
                     <n-button circle secondary type="default">
                         <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
                     </n-button>
                 </Link>
                 <div>
                     <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                        Generar Nueva Orden
+                        Editar Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                     </h2>
                 </div>
             </div>
@@ -175,7 +200,7 @@ const submit = () => {
 
                                     <!-- Estado Inicial -->
                                     <n-grid-item>
-                                        <n-form-item label="Estado Inicial" path="status">
+                                        <n-form-item label="Estatus Actual" path="status">
                                             <n-select 
                                                 v-model:value="form.status" 
                                                 :options="statusOptions" 
@@ -214,7 +239,6 @@ const submit = () => {
                                     <!-- Fecha Inicio -->
                                     <n-grid-item>
                                         <n-form-item label="Fecha Programada de Inicio" path="start_date">
-                                            <!-- CORRECCIÓN: Se agrega value-format -->
                                             <n-date-picker 
                                                 v-model:formatted-value="form.start_date" 
                                                 type="datetime" 
@@ -303,10 +327,10 @@ const submit = () => {
                                     class="shadow-md hover:shadow-lg transition-shadow"
                                 >
                                     <template #icon><n-icon><SaveOutline /></n-icon></template>
-                                    Crear Orden
+                                    Guardar Cambios
                                 </n-button>
                                 
-                                <Link :href="route('service-orders.index')" class="w-full">
+                                <Link :href="route('service-orders.show', order.id)" class="w-full">
                                     <n-button block ghost type="error">
                                         Cancelar
                                     </n-button>

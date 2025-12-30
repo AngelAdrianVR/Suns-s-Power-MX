@@ -2,6 +2,7 @@
 import { ref, watch, h } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; // <--- IMPORTANTE: Ajusta la ruta según donde guardes el archivo
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NTooltip 
 } from 'naive-ui';
@@ -29,15 +30,19 @@ watch(search, (value) => {
     }, 300);
 });
 
+// --- ESTADO DEL MODAL DE PAGOS ---
+const showPaymentModal = ref(false);
+const selectedClientForPayment = ref(null);
+
+// Acción: Abrir Modal de Abono
+const registerPayment = (client) => {
+    selectedClientForPayment.value = client;
+    showPaymentModal.value = true;
+};
+
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('clients.edit', id));
 const goToShow = (id) => router.visit(route('clients.show', id));
-
-// Acción: Registrar Abono (Redirige a la creación de pago pre-seleccionando al cliente)
-const registerPayment = (client) => {
-    // Asumiendo que existe una ruta 'payments.create' que acepta query param client_id
-    router.visit(route('payments.create', { client_id: client.id }));
-};
 
 const confirmDelete = (client) => {
     dialog.warning({
@@ -324,6 +329,14 @@ const rowProps = (row) => ({
 
             </div>
         </div>
+
+        <!-- MODAL DE PAGOS (Global para esta vista) -->
+        <PaymentModal 
+            v-model:show="showPaymentModal" 
+            :client="selectedClientForPayment"
+            @close="selectedClientForPayment = null"
+        />
+
     </AppLayout>
 </template>
 

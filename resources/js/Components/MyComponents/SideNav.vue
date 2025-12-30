@@ -186,6 +186,20 @@ export default {
                     show: hasPermission('Ver clientes') || true
                 },
                 {
+                    label: 'Tickets',
+                    icon: icons.dashboard,
+                    route: 'dashboard', // Cambiar a la ruta correcta de tickets cuando esté disponible
+                    active: current('dashboard.*'),
+                    show:  true
+                },
+                {
+                    label: 'Contratos',
+                    icon: icons.dashboard,
+                    route: 'dashboard', // Cambiar a la ruta correcta de tickets cuando esté disponible
+                    active: current('dashboard.*'),
+                    show:  true
+                },
+                {
                     label: 'Usuarios',
                     icon: icons.users,
                     route: 'users.index',
