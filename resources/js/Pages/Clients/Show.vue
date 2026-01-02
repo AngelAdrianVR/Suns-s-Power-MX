@@ -126,7 +126,8 @@ const openPaymentModal = () => {
     if (props.stats.balance <= 1) {
         notification.success({ 
             title: 'Sin Deuda', 
-            content: 'Este cliente está al corriente. No es necesario registrar abonos.' 
+            content: 'Este cliente está al corriente. No es necesario registrar abonos.',
+            duration: 3000
         });
         return;
     }

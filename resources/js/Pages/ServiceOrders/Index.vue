@@ -15,7 +15,8 @@ import {
 const props = defineProps({
     orders: Object, // Paginado
     filters: Object,
-    statuses: Array
+    statuses: Array,
+    can_view_financials: Boolean // Nueva Prop (Actúa como check de admin)
 });
 
 // Configuración de Notificaciones
@@ -46,7 +47,9 @@ const goToShow = (id) => router.visit(route('service-orders.show', id));
 
 // Lógica para cambiar estatus (NUEVO)
 const handleStatusUpdate = (row, newStatus) => {
-    // Optimistic UI update o simplemente esperar la recarga
+    // Doble verificación de seguridad en el cliente
+    if (!props.can_view_financials) return;
+
     router.patch(route('service-orders.update-status', row.id), {
         status: newStatus
     }, {
@@ -55,7 +58,7 @@ const handleStatusUpdate = (row, newStatus) => {
             notification.success({ 
                 title: 'Estatus Actualizado', 
                 content: `La orden #${row.id} ahora está en: ${newStatus}`,
-                duration: 2000 
+                duration: 3000 
             });
         },
         onError: () => {
@@ -98,117 +101,136 @@ const getStatusColor = (status) => {
 const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
 
 // --- Configuración de Columnas Desktop ---
-const createColumns = () => [
-    {
-        title: 'Folio',
-        key: 'id',
-        width: 80,
-        render(row) {
-            return h('span', { class: 'font-mono text-gray-500 font-bold' }, `#${row.id}`);
+const createColumns = () => {
+    const columns = [
+        {
+            title: 'Folio',
+            key: 'id',
+            width: 80,
+            render(row) {
+                return h('span', { class: 'font-mono text-gray-500 font-bold' }, `#${row.id}`);
+            }
+        },
+        {
+            title: 'Cliente / Ubicación',
+            key: 'client',
+            render(row) {
+                return h('div', { class: 'flex flex-col' }, [
+                    h('span', { class: 'font-bold text-gray-800 text-sm' }, row.client?.name || 'Cliente Eliminado'),
+                    h('div', { class: 'flex items-center gap-1 text-xs text-gray-400 mt-1' }, [
+                        h(NIcon, { component: LocationOutline }),
+                        h('span', { class: 'truncate max-w-[200px]' }, row.installation_address)
+                    ])
+                ]);
+            }
+        },
+        {
+            title: 'Estado & Avance',
+            key: 'status',
+            width: 220, 
+            render(row) {
+                // Renderizado condicional del Tag de estatus
+                const statusTag = h(NTag, { 
+                    type: getStatusColor(row.status), 
+                    size: 'small', 
+                    bordered: false, 
+                    round: true,
+                    style: { 
+                        cursor: props.can_view_financials ? 'pointer' : 'default', 
+                        width: 'fit-content' 
+                    },
+                    // Solo detenemos la propagación del click si es editable (para abrir el popselect)
+                    // Si no es editable, el click pasa a la fila y abre el detalle
+                    onClick: (e) => props.can_view_financials && e.stopPropagation(),
+                }, { 
+                    default: () => [
+                        row.status,
+                        // Solo mostramos el icono de flecha si es editable
+                        props.can_view_financials 
+                            ? h(NIcon, { class: 'ml-1 text-xs opacity-70' }, { default: () => h(ChevronDownOutline) }) 
+                            : null
+                    ] 
+                });
+
+                return h('div', { class: 'flex flex-col gap-2 w-full' }, [
+                    // Si puede ver finanzas (Admin), envolvemos en Popselect
+                    props.can_view_financials ? h(NPopselect, {
+                        options: statusOptions,
+                        trigger: 'click',
+                        onUpdateValue: (val) => handleStatusUpdate(row, val)
+                    }, {
+                        default: () => statusTag
+                    }) : statusTag, // Si no, solo mostramos el tag
+                    
+                    h('div', { class: 'w-full pr-4' }, [
+                        h(NProgress, { 
+                            type: 'line', 
+                            percentage: row.progress, 
+                            color: row.status === 'Cancelado' ? '#ff4d4f' : undefined,
+                            height: 10,
+                            'indicator-placement': 'inside'
+                        })
+                    ])
+                ]);
+            }
+        },
+        {
+            title: 'Técnico / Fecha',
+            key: 'technician',
+            render(row) {
+                return h('div', { class: 'flex flex-col text-xs' }, [
+                    row.technician ? h('div', { class: 'flex items-center gap-2 mb-1' }, [
+                        h(NAvatar, { size: 24, src: row.technician.photo, round: true, fallbackSrc: 'https://ui-avatars.com/api/?name='+row.technician.name }),
+                        h('span', { class: 'text-gray-600 font-medium' }, row.technician.name)
+                    ]) : h('span', { class: 'text-amber-500 italic' }, 'Sin asignar'),
+                    
+                    row.start_date ? h('div', { class: 'flex items-center gap-1 text-gray-400' }, [
+                        h(NIcon, { component: CalendarOutline }),
+                        h('span', row.start_date)
+                    ]) : null
+                ]);
+            }
         }
-    },
-    {
-        title: 'Cliente / Ubicación',
-        key: 'client',
-        render(row) {
-            return h('div', { class: 'flex flex-col' }, [
-                h('span', { class: 'font-bold text-gray-800 text-sm' }, row.client?.name || 'Cliente Eliminado'),
-                h('div', { class: 'flex items-center gap-1 text-xs text-gray-400 mt-1' }, [
-                    h(NIcon, { component: LocationOutline }),
-                    h('span', { class: 'truncate max-w-[200px]' }, row.installation_address)
-                ])
-            ]);
-        }
-    },
-    {
-        title: 'Estado & Avance',
-        key: 'status',
-        width: 220, // Aumentado ligeramente para mejor espacio
-        render(row) {
-            return h('div', { class: 'flex flex-col gap-2 w-full' }, [
-                // Popselect para cambiar estatus al hacer click
-                h(NPopselect, {
-                    options: statusOptions,
-                    trigger: 'click',
-                    onUpdateValue: (val) => handleStatusUpdate(row, val)
-                }, {
-                    // CORRECCIÓN AQUÍ: Usamos 'default' en lugar de 'trigger'
-                    default: () => h(NTag, { 
-                        type: getStatusColor(row.status), 
-                        size: 'small', 
-                        bordered: false, 
-                        round: true,
-                        style: { cursor: 'pointer', width: 'fit-content' },
-                        // Detenemos la propagación aquí para que el clic no llegue a la fila
-                        onClick: (e) => e.stopPropagation(),
-                    }, { 
-                        default: () => [
-                            row.status,
-                            h(NIcon, { class: 'ml-1 text-xs opacity-70' }, { default: () => h(ChevronDownOutline) })
-                        ] 
-                    })
-                }),
-                
-                // Barra de progreso corregida (width 100% y bloque contenedor)
-                h('div', { class: 'w-full pr-4' }, [
-                    h(NProgress, { 
-                        type: 'line', 
-                        percentage: row.progress, 
-                        color: row.status === 'Cancelado' ? '#ff4d4f' : undefined,
-                        height: 10,
-                        'indicator-placement': 'inside'
-                    })
-                ])
-            ]);
-        }
-    },
-    {
-        title: 'Técnico / Fecha',
-        key: 'technician',
-        render(row) {
-            return h('div', { class: 'flex flex-col text-xs' }, [
-                row.technician ? h('div', { class: 'flex items-center gap-2 mb-1' }, [
-                    // Se usa .photo que ahora trae URL completa
-                    h(NAvatar, { size: 24, src: row.technician.photo, round: true, fallbackSrc: 'https://ui-avatars.com/api/?name='+row.technician.name }),
-                    h('span', { class: 'text-gray-600 font-medium' }, row.technician.name)
-                ]) : h('span', { class: 'text-amber-500 italic' }, 'Sin asignar'),
-                
-                row.start_date ? h('div', { class: 'flex items-center gap-1 text-gray-400' }, [
-                    h(NIcon, { component: CalendarOutline }),
-                    h('span', row.start_date)
-                ]) : null
-            ]);
-        }
-    },
-    {
-        title: 'Total',
-        key: 'total_amount',
-        align: 'right',
-        render(row) {
-            return h('span', { class: 'font-mono text-gray-700 font-medium' }, formatCurrency(row.total_amount));
-        }
-    },
-    {
-        title: '',
-        key: 'actions',
-        width: 140,
-        render(row) {
-            return h(NSpace, { justify: 'end' }, () => [
-                h(NTooltip, { trigger: 'hover' }, {
-                    trigger: () => h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'info',
-                        onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
-                    }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
-                    default: () => 'Ver Detalles'
-                }),
-                h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'warning',
-                    onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
-            ]);
-        }
+    ];
+
+    // Condicional para columna Total
+    if (props.can_view_financials) {
+        columns.push({
+            title: 'Total',
+            key: 'total_amount',
+            align: 'right',
+            render(row) {
+                return h('span', { class: 'font-mono text-gray-700 font-medium' }, formatCurrency(row.total_amount));
+            }
+        });
     }
-];
+
+    // Columna de Acciones siempre al final
+    if (props.can_view_financials) {
+        columns.push({
+            title: '',
+            key: 'actions',
+            width: 140,
+            render(row) {
+                return h(NSpace, { justify: 'end' }, () => [
+                    h(NTooltip, { trigger: 'hover' }, {
+                        trigger: () => h(NButton, {
+                            circle: true, size: 'small', quaternary: true, type: 'info',
+                            onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
+                        }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
+                        default: () => 'Ver Detalles'
+                    }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'warning',
+                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
+                ]);
+            }
+        });
+    }
+
+    return columns;
+};
 
 const columns = createColumns();
 
@@ -311,8 +333,9 @@ const rowProps = (row) => ({
                                 <span class="text-xs text-gray-400">{{ order.created_at_human }}</span>
                             </div>
                             
-                            <!-- Estado Cambiable en Móvil también -->
+                            <!-- Estado: Editable solo si es admin -->
                             <n-popselect 
+                                v-if="can_view_financials"
                                 :options="statusOptions" 
                                 trigger="click"
                                 @update:value="(val) => handleStatusUpdate(order, val)"
@@ -323,6 +346,17 @@ const rowProps = (row) => ({
                                     <template #icon><n-icon :component="ChevronDownOutline" /></template>
                                 </n-tag>
                             </n-popselect>
+
+                            <!-- Estado: Solo lectura para no admins -->
+                            <n-tag 
+                                v-else
+                                :type="getStatusColor(order.status)" 
+                                size="small" 
+                                round 
+                                :bordered="false"
+                            >
+                                {{ order.status }}
+                            </n-tag>
                         </div>
 
                         <!-- Info Principal -->
@@ -351,7 +385,9 @@ const rowProps = (row) => ({
 
                         <!-- Footer Actions -->
                         <div class="flex justify-between items-center border-t border-gray-100 pt-3">
-                            <span class="font-bold text-gray-800">{{ formatCurrency(order.total_amount) }}</span>
+                            <span v-if="can_view_financials" class="font-bold text-gray-800">{{ formatCurrency(order.total_amount) }}</span>
+                            <span v-else class="text-xs text-gray-400 italic">Confidencial</span>
+                            
                             <div class="flex gap-2">
                                 <n-button circle size="small" quaternary type="info" @click.stop="goToShow(order.id)">
                                     <template #icon><n-icon :component="EyeOutline" /></template>

@@ -129,7 +129,7 @@ Route::delete('/media/{media}', function (Media $media) {
     try {
         $media->delete(); // Elimina el archivo y su registro
 
-        return response()->json(['message' => 'Archivo eliminado correctamente.'], 200);
+        // return response()->json(['message' => 'Archivo eliminado correctamente.'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Error al eliminar el archivo.'], 500);
     }
