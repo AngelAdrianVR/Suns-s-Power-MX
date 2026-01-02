@@ -10,6 +10,7 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TicketController; // Importar el controlador
 use App\Http\Controllers\UserController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -71,8 +72,18 @@ Route::post('ordenes-servicio/{serviceOrder}/media', [ServiceOrderController::cl
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
     ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
 // RUTAS PARA PRODUCTOS / MATERIALES (Stock)
-Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); // Esta es la que te daba error
+Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
 Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
+
+
+// ---------------------------- Rutas de Tickets (Soporte) --------------------------------
+// Ruta para AGREGAR RESPUESTA/COMENTARIO (Reply)
+Route::post('/tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('tickets.reply');
+// Ruta para actualización rápida de estatus
+Route::patch('/tickets/{ticket}/status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
+// Resource principal
+Route::resource('tickets', TicketController::class)->names('tickets')
+    ->parameters(['tickets' => 'ticket'])->middleware('auth');
 
 
 // ---------------------------- Rutas de Tareas --------------------------------
@@ -80,7 +91,7 @@ Route::resource('tareas', TaskController::class)->only(['store', 'update', 'dest
     ->names('tasks')->middleware('auth');
 
 
-// Ruta para Comentarios
+// Ruta para Comentarios Generales
 Route::post('/comments', [CommentController::class, 'store'])->name('comments.store')->middleware('auth');
 
 
