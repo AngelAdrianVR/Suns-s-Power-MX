@@ -233,7 +233,7 @@ const submitQuickAssign = async () => {
             delivery_days: quickAssignForm.value.delivery_days
         });
 
-        notification.success({ title: 'Éxito', content: 'Producto asignado.' });
+        notification.success({ title: 'Éxito', content: 'Producto asignado.', duration: 3000 });
 
         const newProduct = {
             label: quickAssignForm.value.product_obj.label,
@@ -270,8 +270,8 @@ const submit = () => {
             }
             // CAMBIO: Usamos PUT y la ruta update con el ID de la orden
             form.put(route('purchases.update', props.order.id), {
-                onSuccess: () => notification.success({ title: 'Orden Actualizada' }),
-                onError: () => notification.error({ title: 'Error al actualizar' })
+                onSuccess: () => notification.success({ title: 'Orden Actualizada', duration: 3000 }),
+                onError: () => notification.error({ title: 'Error al actualizar', duration: 3000 })
             });
         }
     });

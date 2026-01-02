@@ -13,7 +13,7 @@ import {
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
-    AddOutline, RemoveCircleOutline, CloudUploadOutline
+    AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -21,7 +21,8 @@ const props = defineProps({
     diagram_data: Array,
     stats: Object,
     assignable_users: Array,
-    available_products: Array
+    available_products: Array,
+    can_view_financials: Boolean // Nueva Prop
 });
 
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
@@ -59,7 +60,7 @@ const getStatusType = (status) => {
 const handleStatusUpdate = (newStatus) => {
     router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
         preserveScroll: true,
-        onSuccess: () => notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}` })
+        onSuccess: () => notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}`, duration: 3000 })
     });
 };
 
@@ -71,7 +72,10 @@ const productForm = useForm({
 
 const productOptions = computed(() => {
     return props.available_products.map(p => ({
-        label: `${p.name} (${p.sku}) - ${formatCurrency(p.sale_price)}`,
+        // Condicional en la etiqueta si no tiene permisos
+        label: props.can_view_financials 
+            ? `${p.name} (${p.sku}) - ${formatCurrency(p.sale_price)}` 
+            : `${p.name} (${p.sku})`,
         value: p.id
     }));
 });
@@ -81,7 +85,7 @@ const addProduct = () => {
         onSuccess: () => { 
             showProductModal.value = false; 
             productForm.reset();
-            notification.success({ title: 'Producto Agregado' }); 
+            notification.success({ title: 'Producto Agregado', duration: 3000 }); 
         },
         preserveScroll: true
     });
@@ -97,12 +101,11 @@ const formattedTotal = computed(() =>
 const removeProduct = (itemId) => {
     router.delete(route('service-orders.remove-item', itemId), {
         preserveScroll: true,
-        onSuccess: () => notification.success({title: 'Producto removido'})
+        onSuccess: () => notification.success({title: 'Producto removido', duration: 3000})
     });
 };
 
 // --- GESTIÓN DE EVIDENCIAS (ARCHIVOS) ---
-// CAMBIO: Input de archivo manual
 const fileInput = ref(null);
 const triggerFileInput = () => {
     fileInput.value.click();
@@ -118,7 +121,7 @@ const handleFileChange = (event) => {
 
     form.post(route('service-orders.upload-media', props.order.id), {
         onSuccess: () => {
-            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.' });
+            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.', duration: 3000 });
             router.reload({ only: ['order'] });
             event.target.value = null; // Resetear input
         },
@@ -137,6 +140,16 @@ const confirmDelete = () => {
         negativeText: 'Cancelar',
         onPositiveClick: () => router.delete(route('service-orders.destroy', props.order.id))
     });
+};
+
+// Función auxiliar para saber si es imagen
+const isImage = (file) => {
+    // Si la librería de Spatie guarda mime_type
+    if (file.mime_type) {
+        return file.mime_type.startsWith('image/');
+    }
+    // Fallback por extensión
+    return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
 };
 
 </script>
@@ -174,7 +187,7 @@ const confirmDelete = () => {
                     </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div v-if="can_view_financials" class="flex gap-2">
                     <n-button quaternary type="warning" @click="() => router.visit(route('service-orders.edit', order.id))">
                         <template #icon><n-icon><CreateOutline /></n-icon></template>
                         Editar
@@ -213,7 +226,8 @@ const confirmDelete = () => {
                                     </div>
                                 </div>
                             </n-grid-item>
-                            <n-grid-item>
+                            <!-- VISIBILIDAD CONDICIONAL: Total Proyecto -->
+                            <n-grid-item v-if="can_view_financials">
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
                                     <n-statistic :value="formattedTotal">
@@ -275,15 +289,15 @@ const confirmDelete = () => {
                                     </n-button>
                                 </div>
 
-                                <!-- CAMBIO: Scroll Horizontal -->
                                 <div class="border rounded-lg overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
                                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
                                                 <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cant.</th>
-                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P. Unit (Ref)</th>
-                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Costo Total</th>
+                                                <!-- VISIBILIDAD CONDICIONAL: Columnas de Precio -->
+                                                <th v-if="can_view_financials" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P. Unit (Ref)</th>
+                                                <th v-if="can_view_financials" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Costo Total</th>
                                                 <th class="px-6 py-3"></th>
                                             </tr>
                                         </thead>
@@ -293,8 +307,9 @@ const confirmDelete = () => {
                                                     {{ item.product.name }} <span class="text-gray-400 text-xs">({{ item.product.sku }})</span>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ item.quantity }}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
+                                                <!-- VISIBILIDAD CONDICIONAL: Celdas de Precio -->
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                                     <n-popconfirm @positive-click="removeProduct(item.id)">
                                                         <template #trigger>
@@ -310,7 +325,8 @@ const confirmDelete = () => {
                                                 <td colspan="5" class="px-6 py-8 text-center text-gray-400 text-sm">No hay materiales asignados.</td>
                                             </tr>
                                         </tbody>
-                                        <tfoot class="bg-gray-50 font-bold">
+                                        <!-- VISIBILIDAD CONDICIONAL: Footer -->
+                                        <tfoot v-if="can_view_financials" class="bg-gray-50 font-bold">
                                             <tr>
                                                 <td colspan="3" class="px-6 py-3 text-right">Total Materiales (Costo Interno):</td>
                                                 <td class="px-6 py-3 text-right text-indigo-600">
@@ -355,14 +371,13 @@ const confirmDelete = () => {
 
                         <n-tab-pane name="files" tab="Evidencias">
                             <div class="p-4">
-                                <!-- CAMBIO: Uploader Manual -->
                                 <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
                                     <input 
                                         type="file" 
                                         ref="fileInput" 
                                         class="hidden" 
                                         @change="handleFileChange" 
-                                        accept="image/*,application/pdf"
+                                        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
                                     />
                                     <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-20 w-full md:w-1/2">
                                         <div class="flex flex-col items-center gap-2">
@@ -370,32 +385,43 @@ const confirmDelete = () => {
                                             <span>Seleccionar archivo para subir</span>
                                         </div>
                                     </n-button>
-                                    <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imagenes y PDF (Max 10MB)</p>
+                                    <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imágenes, PDF y Documentos (Max 10MB)</p>
                                 </div>
 
                                 <div v-if="order.media?.length">
                                     <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
-                                    <n-image-group>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div v-for="file in order.media" :key="file.id" class="relative group">
-                                                <n-image
-                                                    :src="file.original_url"
-                                                    class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
-                                                    object-fit="cover"
-                                                />
-                                                <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
-                                                
-                                                <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
-                                                    <template #trigger>
-                                                        <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700">
-                                                            <n-icon><TrashOutline /></n-icon>
-                                                        </button>
-                                                    </template>
-                                                    ¿Eliminar evidencia?
-                                                </n-popconfirm>
+                                    <!-- Si es imagen, usamos n-image-group. Si no, lo mostramos aparte para no romper el layout -->
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div v-for="file in order.media" :key="file.id" class="relative group">
+                                            
+                                            <!-- Caso 1: Imagen -->
+                                            <n-image
+                                                v-if="isImage(file)"
+                                                :src="file.original_url"
+                                                class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
+                                                object-fit="cover"
+                                            />
+
+                                            <!-- Caso 2: Documento (PDF, etc) -->
+                                            <div v-else class="w-full h-40 rounded-lg shadow-sm border border-gray-200 bg-gray-100 flex flex-col items-center justify-center gap-2 p-2">
+                                                <n-icon size="40" class="text-gray-400"><DocumentOutline /></n-icon>
+                                                <a :href="file.original_url" target="_blank" class="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-bold text-center break-all">
+                                                    Abrir Archivo <n-icon><CloudDownloadOutline/></n-icon>
+                                                </a>
                                             </div>
+
+                                            <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
+                                            
+                                            <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
+                                                <template #trigger>
+                                                    <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
+                                                        <n-icon><TrashOutline /></n-icon>
+                                                    </button>
+                                                </template>
+                                                ¿Eliminar evidencia?
+                                            </n-popconfirm>
                                         </div>
-                                    </n-image-group>
+                                    </div>
                                 </div>
 
                                 <div class="p-8 text-center" v-else>
