@@ -114,6 +114,42 @@ class SupplierController extends Controller
     }
 
     /**
+     * API Interna: Obtiene los productos ASIGNADOS a un proveedor (con precios pactados).
+     * Ruta esperada: suppliers.products.assigned
+     */
+    public function fetchAssignedProducts(Supplier $supplier)
+    {
+        // Seguridad Tenant
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($supplier->branch_id !== $branchId) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $assignedProducts = $supplier->products()
+            ->with('media')
+            // Seleccionamos campos base del producto
+            ->select('products.id', 'products.name', 'products.sku')
+            ->get()
+            ->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    // Priorizamos imagen de Spatie, fallback a path simple si existe
+                    'image_url' => $product->getFirstMediaUrl('product_images') ?: $product->image_path,
+                    
+                    // DATOS PIVOTE (Cruciales para la orden de compra)
+                    'purchase_price' => $product->pivot->purchase_price,
+                    'currency' => $product->pivot->currency,
+                    'supplier_sku' => $product->pivot->supplier_sku,
+                    'delivery_days' => $product->pivot->delivery_days,
+                ];
+            });
+
+        return response()->json($assignedProducts);
+    }
+
+    /**
      * NUEVO MÉTODO: API Interna para cargar productos disponibles asíncronamente.
      */
     public function fetchAvailableProducts(Supplier $supplier)

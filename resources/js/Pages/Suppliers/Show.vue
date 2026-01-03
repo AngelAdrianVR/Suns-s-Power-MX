@@ -153,7 +153,7 @@ const detachProduct = (product) => {
                 preserveScroll: true,
                 preserveState: true, // Mantiene el modal abierto
                 onSuccess: () => {
-                    notification.success({ title: 'Desvinculado', content: 'Producto removido.' });
+                    notification.success({ title: 'Desvinculado', content: 'Producto removido.', duration: 3000 });
                     // Opcional: Si quieres que vuelva a aparecer en disponibles, tendrías que recargar o agregarlo manualmente al array
                     // Por simplicidad, seteamos productsLoaded = false para forzar recarga si vuelve a abrir el editor en el futuro
                     productsLoaded.value = false; 

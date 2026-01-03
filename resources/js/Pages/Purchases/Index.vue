@@ -65,10 +65,10 @@ const updateStatus = (order, newStatus) => {
             router.patch(route('purchases.status', order.id), { status: newStatus }, {
                 preserveScroll: true,
                 onSuccess: () => {
-                    notification.success({ title: 'Estado Actualizado', content: `Orden OC-0${order.id} ahora está ${newStatus}` });
+                    notification.success({ title: 'Estado Actualizado', content: `Orden OC-0${order.id} ahora está ${newStatus}`, duration: 3000 });
                 },
                 onError: () => {
-                    notification.error({ title: 'Error', content: 'No se pudo actualizar el estado.' });
+                    notification.error({ title: 'Error', content: 'No se pudo actualizar el estado.', duration: 3000 });
                 }
             });
         }
@@ -83,7 +83,7 @@ const confirmDelete = (order) => {
         negativeText: 'Cancelar',
         onPositiveClick: () => {
             router.delete(route('purchases.destroy', order.id), {
-                onSuccess: () => notification.success({ content: 'Orden eliminada' })
+                onSuccess: () => notification.success({ content: 'Orden eliminada', duration: 3000 })
             });
         }
     });
