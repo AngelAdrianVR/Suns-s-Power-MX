@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\URL; // Importante para Signed Routes
 
 class ServiceOrderController extends Controller
 {
@@ -21,19 +22,41 @@ class ServiceOrderController extends Controller
      */
     public function index(Request $request)
     {
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        $user = Auth::user();
+        $branchId = session('current_branch_id') ?? $user->branch_id;
+        
+        // 1. Determinar permisos (Igual que en Show)
+        // Admin y Ventas ven todo. Los demás solo lo suyo y sin costos.
+        $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas']);
+
         $filters = $request->only(['search', 'status', 'date_range']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
 
-        $orders = ServiceOrder::query()
+        $query = ServiceOrder::query()
             ->with([
                 'client:id,name,branch_id',
                 'technician:id,name,profile_photo_path',
                 'salesRep:id,name,profile_photo_path'
             ])
             ->withCount('tasks')
-            ->where('branch_id', $branchId)
+            ->where('branch_id', $branchId);
+
+        // 2. Filtrar órdenes si NO tiene acceso total
+        if (!$hasFullAccess) {
+            $query->where(function ($q) use ($user) {
+                // Ver si es el técnico líder
+                $q->where('technician_id', $user->id)
+                  // O si está asignado a alguna tarea dentro de la orden
+                  ->orWhereHas('tasks', function ($tq) use ($user) {
+                      $tq->whereHas('assignees', function ($aq) use ($user) {
+                          $aq->where('users.id', $user->id);
+                      });
+                  });
+            });
+        }
+
+        $orders = $query
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
@@ -49,7 +72,7 @@ class ServiceOrderController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
-            ->through(function ($order) {
+            ->through(function ($order) use ($hasFullAccess) {
                 return [
                     'id' => $order->id,
                     'status' => $order->status,
@@ -67,7 +90,8 @@ class ServiceOrderController extends Controller
                         'name' => $order->salesRep->name,
                         'photo' => $order->salesRep->profile_photo_url,
                     ] : null,
-                    'total_amount' => $order->total_amount,
+                    // 3. Ocultar el total si no tiene permisos (envía null)
+                    'total_amount' => $hasFullAccess ? $order->total_amount : null,
                     'progress' => $order->progress ?? 0, 
                     'created_at_human' => $order->created_at->diffForHumans(),
                 ];
@@ -76,7 +100,8 @@ class ServiceOrderController extends Controller
         return Inertia::render('ServiceOrders/Index', [
             'orders' => $orders,
             'filters' => $filters,
-            'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado']
+            'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
+            'can_view_financials' => $hasFullAccess // Nueva prop para el Index
         ]);
     }
 
@@ -116,6 +141,11 @@ class ServiceOrderController extends Controller
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) abort(403);
+        
+        $user = Auth::user();
+
+        // 1. Determinar Permisos Financieros
+        $canViewFinancials = $user->hasAnyRole(['Admin', 'Ventas']);
 
         $serviceOrder->load([
             'client',
@@ -123,14 +153,31 @@ class ServiceOrderController extends Controller
             'salesRep',
             'items.product', 
             'tasks.assignees', 
-            'tasks.comments.user', // Cargar comentarios y usuario
+            'tasks.comments.user', 
             'media',
         ]);
 
-        $currentUserId = Auth::id();
+        // 2. Generar URL Firmada (Seguridad anti-modificación de ID)
+        // Esto genera una URL tipo: domain.com/service-orders/1?signature=abc1234...
+        // Si alguien cambia el "1" por un "2", la firma no coincidirá.
+        $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
+
+        // 3. Ocultar datos sensibles si no tiene permisos
+        if (!$canViewFinancials) {
+            $serviceOrder->total_amount = 0;
+            $serviceOrder->items->transform(function ($item) {
+                $item->price = 0;
+                if ($item->product) {
+                    $item->product->sale_price = 0;
+                    $item->product->purchase_price = 0;
+                }
+                return $item;
+            });
+        }
+
+        $currentUserId = $user->id;
 
         $diagramData = $serviceOrder->tasks->map(function ($task) use ($currentUserId) {
-            // Lógica simple de "No leídos": Si hay comentarios que NO son míos.
             $hasUnread = $task->comments->contains(function ($comment) use ($currentUserId) {
                 return $comment->user_id !== $currentUserId;
             });
@@ -144,7 +191,7 @@ class ServiceOrderController extends Controller
                 'finish_date' => $task->finish_date?->format('Y-m-d H:i:s'),
                 'end' => $task->due_date?->format('Y-m-d H:i:s'),
                 'status' => $task->status,
-                'has_unread_comments' => $hasUnread, // Indicador
+                'has_unread_comments' => $hasUnread,
                 'comments' => $task->comments->map(fn($c) => [
                     'id' => $c->id,
                     'body' => $c->body,
@@ -171,6 +218,13 @@ class ServiceOrderController extends Controller
             ->select('id', 'name', 'sku', 'sale_price', 'purchase_price') 
             ->orderBy('name')
             ->get();
+        
+        if (!$canViewFinancials) {
+            $availableProducts->transform(function ($p) {
+                $p->makeHidden(['sale_price', 'purchase_price']);
+                return $p;
+            });
+        }
 
         return Inertia::render('ServiceOrders/Show', [
             'order' => $serviceOrder,
@@ -181,7 +235,8 @@ class ServiceOrderController extends Controller
                 'pending_balance' => 0 
             ],
             'assignable_users' => $assignableUsers,
-            'available_products' => $availableProducts 
+            'available_products' => $availableProducts,
+            'can_view_financials' => $canViewFinancials
         ]);
     }
 

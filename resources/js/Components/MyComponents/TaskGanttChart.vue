@@ -1,10 +1,10 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
 import { 
     NAvatar, NTooltip, NTag, NEmpty, NButton, NIcon, NModal, NCard, NForm, 
     NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing, NBadge,
-    NScrollbar
+    NScrollbar, NDropdown 
 } from 'naive-ui';
 import { 
     format, parseISO, differenceInHours, addDays, startOfDay, endOfDay 
@@ -27,6 +27,10 @@ const props = defineProps({
     assignableUsers: {
         type: Array,
         default: () => [] 
+    },
+    secureUrl: { // NUEVA PROP: URL FIRMADA
+        type: String,
+        default: ''
     }
 });
 
@@ -35,6 +39,16 @@ const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedTask = ref(null);
 const isEditing = ref(false); 
+
+// --- REACTIVIDAD DE COMENTARIOS ---
+watch(() => props.tasks, (newTasks) => {
+    if (selectedTask.value) {
+        const updatedTask = newTasks.find(t => t.id === selectedTask.value.id);
+        if (updatedTask) {
+            selectedTask.value = updatedTask;
+        }
+    }
+}, { deep: true });
 
 // Formulario de Tarea
 const form = useForm({
@@ -76,7 +90,6 @@ const openCreate = () => {
     form.reset();
     form.service_order_id = props.orderId;
     form.user_ids = [];
-    // Aseguramos que start_date sea null al crear para no enviarlo
     form.start_date = null; 
     showCreateModal.value = true;
 };
@@ -98,14 +111,14 @@ const submitTask = () => {
     if (isEditing.value) {
         form.put(route('tasks.update', form.id), {
             onSuccess: () => {
-                notification.success({ title: 'Actualizado', content: 'Tarea modificada.' });
+                notification.success({ title: 'Actualizado', content: 'Tarea modificada.', duration: 3000 });
                 showCreateModal.value = false;
             }
         });
     } else {
         form.post(route('tasks.store'), {
             onSuccess: () => {
-                notification.success({ title: 'Éxito', content: 'Tarea creada.' });
+                notification.success({ title: 'Éxito', content: 'Tarea creada.', duration: 3000 });
                 showCreateModal.value = false;
                 form.reset();
             }
@@ -118,13 +131,13 @@ const updateTaskStatus = (task, newStatus) => {
     router.put(route('tasks.update', task.id), { status: newStatus }, {
         preserveScroll: true,
         preserveState: true, 
-        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.' })
+        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.', duration: 3000 })
     });
 };
 
 const deleteTask = (taskId) => {
     router.delete(route('tasks.destroy', taskId), {
-        onSuccess: () => notification.success({title: 'Tarea eliminada'}),
+        onSuccess: () => notification.success({title: 'Tarea eliminada', duration: 3000}),
         preserveScroll: true
     });
 };
@@ -143,19 +156,43 @@ const submitComment = () => {
         preserveState: true,
         onSuccess: () => {
             commentForm.reset('body');
-            notification.success({ title: 'Comentario agregado' });
+            notification.success({ title: 'Comentario agregado', duration: 3000 });
         }
     });
 };
 
-const sendWhatsapp = (user, taskTitle) => {
+// --- WHATSAPP LOGIC ---
+const whatsappOptions = [
+    { label: '🔔 Nueva Tarea + Link', key: 'new_task' },
+    { label: '⏰ Recordatorio', key: 'reminder' },
+    { label: '💬 Aviso Comentario', key: 'unread' }
+];
+
+const handleWhatsappSelect = (key, task) => {
+    const user = task.assignees[0]; 
     if (!user || !user.phone) {
         notification.error({ title: 'Error', content: 'El usuario no tiene teléfono registrado.' });
         return;
     }
+
     const phone = user.phone.replace(/\D/g, ''); 
-    const text = encodeURIComponent(`Hola ${user.name}, respecto a la tarea "${taskTitle}" de la Orden #${props.orderId}...`);
-    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+    // Usamos la secureUrl si existe, si no, el route normal por seguridad (aunque ya no debería pasar)
+    const orderUrl = props.secureUrl || route('service-orders.show', props.orderId); 
+    let message = '';
+
+    switch (key) {
+        case 'new_task':
+            message = `Hola ${user.name}, se te ha asignado una *Nueva Tarea*: "${task.name}".\n\n📌 Orden #${props.orderId}\n🔗 Ver detalles (Enlace Seguro): ${orderUrl}`;
+            break;
+        case 'reminder':
+            message = `Hola ${user.name}, paso a recordarte sobre la tarea pendiente: "${task.name}" de la Orden #${props.orderId}.\n\nPor favor actualiza el estatus cuando puedas.\n${orderUrl}`;
+            break;
+        case 'unread':
+            message = `Hola ${user.name}, tienes *comentarios no leídos* en la tarea "${task.name}" (Orden #${props.orderId}).\n\n🔗 Entra a revisarlos: ${orderUrl}`;
+            break;
+    }
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
 };
 
 // --- LÓGICA GANTT ---
@@ -168,11 +205,9 @@ const statusColors = {
 
 const timeRange = computed(() => {
     if (!props.tasks.length) return null;
-    // Solo consideramos tareas con fecha de inicio para el rango del gráfico
     const starts = props.tasks.map(t => t.start ? parseISO(t.start) : null).filter(Boolean);
     const ends = props.tasks.map(t => t.end ? parseISO(t.end) : null).filter(Boolean);
     
-    // Si no hay ninguna tarea iniciada, usamos el día de hoy por defecto para dibujar el grid
     if (!starts.length) {
         const now = new Date();
         return { minDate: startOfDay(now), maxDate: endOfDay(addDays(now, 3)), totalHours: 72 };
@@ -201,7 +236,6 @@ const timelineDays = computed(() => {
 const getTaskStyle = (task) => {
     const endDateStr = task.finish_date || task.end; 
     
-    // Si no tiene fecha de inicio, no mostramos la barra en el Gantt (o podríamos mostrarla gris)
     if (!task.start || !endDateStr || !timeRange.value) {
         return { display: 'none' };
     }
@@ -212,7 +246,6 @@ const getTaskStyle = (task) => {
     return { left: `${left}%`, width: `${width}%` };
 };
 
-// CAMBIO: Ahora solo retorna la fecha de finalización real, no la estimada
 const getDisplayEndDate = (task) => {
     return task.finish_date; 
 };
@@ -228,6 +261,7 @@ const getDisplayEndDate = (task) => {
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-gray-300"></span> Pendiente</span>
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-300"></span> En Proceso</span>
                     <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-300"></span> Completado</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-300"></span> Detenido</span>
                 </div>
                 <n-button type="primary" size="small" ghost @click="openCreate">
                     <template #icon><n-icon><AddOutline /></n-icon></template>
@@ -284,7 +318,6 @@ const getDisplayEndDate = (task) => {
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600 flex items-center gap-2" @click="openDetail(task)">
                                         {{ task.name }}
-                                        <n-badge dot type="error" v-if="task.has_unread_comments" />
                                     </span>
                                     
                                     <n-popselect 
@@ -316,9 +349,18 @@ const getDisplayEndDate = (task) => {
                                                 </n-badge>
                                             </template>
                                         </n-button>
-                                        <n-button v-if="task.assignees.length" size="tiny" circle type="success" ghost @click="sendWhatsapp(task.assignees[0], task.name)">
-                                            <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
-                                        </n-button>
+                                        <!-- BOTÓN WHATSAPP DESPLEGABLE -->
+                                        <n-dropdown 
+                                            v-if="task.assignees.length" 
+                                            trigger="click" 
+                                            :options="whatsappOptions" 
+                                            @select="(key) => handleWhatsappSelect(key, task)"
+                                        >
+                                            <n-button size="tiny" circle type="success" ghost>
+                                                <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
+                                            </n-button>
+                                        </n-dropdown>
+                                        
                                         <n-button size="tiny" circle secondary type="warning" @click="openEdit(task)">
                                             <template #icon><n-icon><PencilOutline /></n-icon></template>
                                         </n-button>
@@ -338,7 +380,6 @@ const getDisplayEndDate = (task) => {
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight">
                                 {{ task.start ? format(parseISO(task.start), 'dd MMM') : '-' }}
                             </div>
-                            <!-- CAMBIO: Ahora solo muestra la fecha real de fin -->
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight font-medium" :class="task.finish_date ? 'text-green-600' : ''">
                                 {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}
                             </div>
@@ -379,8 +420,6 @@ const getDisplayEndDate = (task) => {
                         <n-form-item label="Prioridad"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
                         <div class="col-span-2"><n-form-item label="Asignar a"><n-select v-model:value="form.user_ids" multiple :options="userOptions" filterable /></n-form-item></div>
                         
-                        <!-- Fechas -->
-                        <!-- CAMBIO: Ocultamos Fecha Inicio si NO estamos editando -->
                         <n-form-item label="Fecha Inicio" v-if="isEditing">
                             <n-date-picker v-model:formatted-value="form.start_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" />
                         </n-form-item>

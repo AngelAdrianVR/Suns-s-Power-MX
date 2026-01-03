@@ -220,7 +220,7 @@ const submitQuickAssign = async () => {
             delivery_days: quickAssignForm.value.delivery_days
         });
 
-        notification.success({ title: 'Éxito', content: 'Producto asignado y agregado a la orden.' });
+        notification.success({ title: 'Éxito', content: 'Producto asignado y agregado a la orden.', duration: 3000 });
 
         // 2. Agregarlo a la lista local "assignedProducts" para que aparezca en los selects
         const newProduct = {
@@ -261,8 +261,8 @@ const submit = () => {
                 return;
             }
             form.post(route('purchases.store'), {
-                onSuccess: () => notification.success({ title: 'Orden Generada' }),
-                onError: () => notification.error({ title: 'Error al guardar' })
+                onSuccess: () => notification.success({ title: 'Orden Generada', duration: 3000 }),
+                onError: () => notification.error({ title: 'Error al guardar', duration: 3000 })
             });
         }
     });

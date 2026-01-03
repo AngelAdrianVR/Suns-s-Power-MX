@@ -36,7 +36,7 @@ class ClientController extends Controller
             // Subconsultas para calcular saldo sin hidratar todos los modelos (Optimización SQL)
             ->withSum(['serviceOrders as total_debt' => function ($query) {
                 // Solo sumamos órdenes que generan deuda (ej. no canceladas)
-                $query->where('status', '!=', 'Cancelado');
+                $query->whereNotIn('status', ['Cancelado', 'Cotización']);
             }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
             ->orderBy('created_at', 'desc')
@@ -117,16 +117,18 @@ class ClientController extends Controller
                   ->orderBy('created_at', 'desc')
                   ->take(10);
             },
-            // Historial de pagos recientes
+            // Historial de pagos recientes (AGREGAMOS with('serviceOrder'))
             'payments' => function ($q) {
-                $q->orderBy('payment_date', 'desc')->take(10);
+                $q->with('serviceOrder:id,total_amount,created_at') // <--- CARGAMOS LA RELACIÓN AQUÍ
+                  ->orderBy('payment_date', 'desc')
+                  ->take(10);
             },
             // Documentos asociados (usando la relación polimórfica del esquema)
             'documents'
         ]);
 
         // Calcular estado de cuenta global
-        $totalDebt = $client->serviceOrders()->where('status', '!=', 'Cancelado')->sum('total_amount');
+        $totalDebt = $client->serviceOrders()->whereNotIn('status', ['Cancelado', 'Cotización'])->sum('total_amount');
         $totalPaid = $client->payments()->sum('amount');
         $balance = $totalDebt - $totalPaid;
 

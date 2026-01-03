@@ -4,6 +4,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ServiceOrderController;
@@ -57,6 +58,7 @@ Route::middleware([
 // ---------------------------- Rutas de productos --------------------------------
 Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
 Route::post('/products/{product}/adjust-stock', [ProductController::class, 'adjustStock'])->name('products.adjust_stock');
+Route::get('/products/{product}/history', [ProductController::class, 'getHistory'])->name('products.history');
 Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 
@@ -107,7 +109,14 @@ Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class
 
 // ---------------------------- Rutas de Clientes --------------------------------
 Route::resource('clientes', ClientController::class)->names('clients')
-    ->parameters(['clientes' => 'client'])->middleware('auth');
+->parameters(['clientes' => 'client'])->middleware('auth');
+// API interna para el componente Vue (obtener deudas)
+Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
+    ->name('api.clients.pending-orders');
+
+
+// ---------------------------- Rutas de Pagos --------------------------------
+Route::resource('/payments', PaymentController::class)->middleware('auth');
 
 
 // ---------------------------- Rutas de Usuarios --------------------------------
@@ -122,7 +131,7 @@ Route::delete('/media/{media}', function (Media $media) {
     try {
         $media->delete(); // Elimina el archivo y su registro
 
-        return response()->json(['message' => 'Archivo eliminado correctamente.'], 200);
+        // return response()->json(['message' => 'Archivo eliminado correctamente.'], 200);
     } catch (\Exception $e) {
         return response()->json(['error' => 'Error al eliminar el archivo.'], 500);
     }
