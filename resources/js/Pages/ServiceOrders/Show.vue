@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar hook de permisos
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
@@ -7,13 +8,14 @@ import {
     NButton, NTag, NCard, NGrid, NGridItem, NDescriptions, NDescriptionsItem, 
     NTabs, NTabPane, NIcon, NThing, NAvatar, NProgress, NStatistic, NNumberAnimation,
     createDiscreteApi, NEmpty, NPopselect, NModal, NForm, NFormItem, NInput, NSelect, NInputNumber,
-    NPopconfirm, NUpload, NImageGroup, NImage
+    NPopconfirm, NUpload, NImageGroup, NImage, NTooltip
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
-    AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline
+    AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline,
+    ChevronDownOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -22,8 +24,11 @@ const props = defineProps({
     stats: Object,
     assignable_users: Array,
     available_products: Array,
-    can_view_financials: Boolean // Nueva Prop
+    can_view_financials: Boolean 
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
 
@@ -58,6 +63,9 @@ const getStatusType = (status) => {
 };
 
 const handleStatusUpdate = (newStatus) => {
+    // Validación extra en cliente
+    if (!hasPermission('service_orders.change_status')) return;
+
     router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
         preserveScroll: true,
         onSuccess: () => notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}`, duration: 3000 })
@@ -72,7 +80,7 @@ const productForm = useForm({
 
 const productOptions = computed(() => {
     return props.available_products.map(p => ({
-        // Condicional en la etiqueta si no tiene permisos
+        // Condicional en la etiqueta si no tiene permisos financieros
         label: props.can_view_financials 
             ? `${p.name} (${p.sku}) - ${formatCurrency(p.sale_price)}` 
             : `${p.name} (${p.sku})`,
@@ -144,11 +152,9 @@ const confirmDelete = () => {
 
 // Función auxiliar para saber si es imagen
 const isImage = (file) => {
-    // Si la librería de Spatie guarda mime_type
     if (file.mime_type) {
         return file.mime_type.startsWith('image/');
     }
-    // Fallback por extensión
     return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
 };
 
@@ -169,16 +175,24 @@ const isImage = (file) => {
                             Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                         </h2>
                         <div class="flex items-center gap-2 mt-1">
+                            
+                            <!-- ESTATUS: Editable solo con permiso 'service_orders.change_status' -->
                             <n-popselect 
+                                v-if="hasPermission('service_orders.change_status')"
                                 :options="orderStatusOptions" 
                                 :value="order.status" 
                                 @update:value="handleStatusUpdate"
                                 trigger="click"
                             >
                                 <n-tag :type="getStatusType(order.status)" round size="small" class="cursor-pointer hover:opacity-80">
-                                    {{ order.status }} <n-icon class="ml-1"><CreateOutline /></n-icon>
+                                    {{ order.status }} <n-icon class="ml-1"><ChevronDownOutline /></n-icon>
                                 </n-tag>
                             </n-popselect>
+
+                            <!-- ESTATUS: Solo lectura -->
+                            <n-tag v-else :type="getStatusType(order.status)" round size="small" :bordered="false">
+                                {{ order.status }}
+                            </n-tag>
                             
                             <span class="text-xs text-gray-400 border-l pl-2 ml-2 border-gray-300">
                                 Creado {{ formatDate(order.created_at) }}
@@ -187,12 +201,25 @@ const isImage = (file) => {
                     </div>
                 </div>
 
-                <div v-if="can_view_financials" class="flex gap-2">
-                    <n-button quaternary type="warning" @click="() => router.visit(route('service-orders.edit', order.id))">
+                <div class="flex gap-2">
+                    <!-- BOTÓN EDITAR -->
+                    <n-button 
+                        v-if="hasPermission('service_orders.edit')" 
+                        quaternary 
+                        type="warning" 
+                        @click="() => router.visit(route('service-orders.edit', order.id))"
+                    >
                         <template #icon><n-icon><CreateOutline /></n-icon></template>
                         Editar
                     </n-button>
-                    <n-button quaternary type="error" @click="confirmDelete">
+
+                    <!-- BOTÓN ELIMINAR -->
+                    <n-button 
+                        v-if="hasPermission('service_orders.delete')" 
+                        quaternary 
+                        type="error" 
+                        @click="confirmDelete"
+                    >
                         <template #icon><n-icon><TrashOutline /></n-icon></template>
                         Eliminar
                     </n-button>
@@ -226,7 +253,7 @@ const isImage = (file) => {
                                     </div>
                                 </div>
                             </n-grid-item>
-                            <!-- VISIBILIDAD CONDICIONAL: Total Proyecto -->
+                            <!-- VISIBILIDAD CONDICIONAL: Total Proyecto (Solo si puede ver finanzas) -->
                             <n-grid-item v-if="can_view_financials">
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
@@ -269,7 +296,8 @@ const isImage = (file) => {
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4">
                         
-                        <n-tab-pane name="gantt" tab="Cronograma y Tareas">
+                        <!-- TAB GANTT: Protegido por 'tasks.view_board' -->
+                        <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt" tab="Cronograma y Tareas">
                             <div class="py-4 space-y-6">
                                 <TaskGanttChart 
                                     :tasks="diagram_data" 
@@ -283,7 +311,13 @@ const isImage = (file) => {
                              <div class="p-4">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="font-bold text-gray-700">Productos Asignados</h3>
-                                    <n-button type="primary" size="small" @click="showProductModal = true">
+                                    <!-- Botón agregar producto: Requiere 'service_orders.edit' -->
+                                    <n-button 
+                                        v-if="hasPermission('service_orders.edit')"
+                                        type="primary" 
+                                        size="small" 
+                                        @click="showProductModal = true"
+                                    >
                                         <template #icon><n-icon><AddOutline /></n-icon></template>
                                         Agregar Producto
                                     </n-button>
@@ -311,7 +345,8 @@ const isImage = (file) => {
                                                 <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
                                                 <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right">
-                                                    <n-popconfirm @positive-click="removeProduct(item.id)">
+                                                    <!-- Botón quitar: Requiere 'service_orders.edit' -->
+                                                    <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="removeProduct(item.id)">
                                                         <template #trigger>
                                                             <n-button circle size="tiny" type="error" tertiary>
                                                                 <template #icon><n-icon><RemoveCircleOutline /></n-icon></template>
@@ -371,7 +406,8 @@ const isImage = (file) => {
 
                         <n-tab-pane name="files" tab="Evidencias">
                             <div class="p-4">
-                                <div class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
+                                <!-- Subida de archivos: Requiere 'service_orders.edit' -->
+                                <div v-if="hasPermission('service_orders.edit')" class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
                                     <input 
                                         type="file" 
                                         ref="fileInput" 
@@ -412,7 +448,11 @@ const isImage = (file) => {
 
                                             <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
                                             
-                                            <n-popconfirm @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })">
+                                            <!-- Eliminar archivo: Requiere 'service_orders.edit' (o delete si quisieras separar) -->
+                                            <n-popconfirm 
+                                                v-if="hasPermission('service_orders.edit')"
+                                                @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })"
+                                            >
                                                 <template #trigger>
                                                     <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
                                                         <n-icon><TrashOutline /></n-icon>

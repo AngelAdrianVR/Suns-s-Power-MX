@@ -1,5 +1,6 @@
 <script>
 import { Link, router } from '@inertiajs/vue3';
+import { usePermissions } from '@/Composables/usePermissions'; // 1. Importar composable
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NCard, NIcon, NSteps, NStep, NTag, NButton, NDivider, NDataTable, 
@@ -27,6 +28,11 @@ export default {
             type: Object,
             required: true
         }
+    },
+    // 2. Usar setup para exponer hasPermission al template
+    setup() {
+        const { hasPermission } = usePermissions();
+        return { hasPermission };
     },
     data() {
         return {
@@ -204,10 +210,13 @@ export default {
                                 
                                 <!-- Si está en Borrador -->
                                 <template v-if="order.status === 'Borrador'">
-                                    <Link :href="route('purchases.edit', order.id)">
+                                    <!-- Editar: Requiere permiso purchases.edit -->
+                                    <Link v-if="hasPermission('purchases.edit')" :href="route('purchases.edit', order.id)">
                                         <n-button secondary>Editar</n-button>
                                     </Link>
-                                    <n-button type="info" @click="changeStatus('Solicitada')" :loading="loadingAction">
+                                    
+                                    <!-- Solicitar: Requiere permiso purchases.edit -->
+                                    <n-button v-if="hasPermission('purchases.edit')" type="info" @click="changeStatus('Solicitada')" :loading="loadingAction">
                                         <template #icon><n-icon><AirplaneOutline /></n-icon></template>
                                         Solicitar
                                     </n-button>
@@ -215,11 +224,14 @@ export default {
 
                                 <!-- Si está Solicitada -->
                                 <template v-if="order.status === 'Solicitada'">
-                                    <n-button type="error" ghost @click="changeStatus('Cancelada')" :loading="loadingAction">
+                                    <!-- Cancelar: Requiere permiso purchases.approve -->
+                                    <n-button v-if="hasPermission('purchases.approve')" type="error" ghost @click="changeStatus('Cancelada')" :loading="loadingAction">
                                         <template #icon><n-icon><CloseCircleOutline /></n-icon></template>
                                         Cancelar
                                     </n-button>
-                                    <n-button type="primary" @click="changeStatus('Recibida')" :loading="loadingAction">
+                                    
+                                    <!-- Recibir: Requiere permiso purchases.approve -->
+                                    <n-button v-if="hasPermission('purchases.approve')" type="primary" @click="changeStatus('Recibida')" :loading="loadingAction">
                                         <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
                                         Recibir
                                     </n-button>
@@ -227,14 +239,15 @@ export default {
 
                                 <!-- Si está Cancelada -->
                                 <template v-if="order.status === 'Cancelada'">
-                                    <n-button secondary type="warning" @click="changeStatus('Borrador')" :loading="loadingAction">
+                                    <!-- Reactivar: Requiere permiso purchases.edit -->
+                                    <n-button v-if="hasPermission('purchases.edit')" secondary type="warning" @click="changeStatus('Borrador')" :loading="loadingAction">
                                         Reactivar
                                     </n-button>
                                 </template>
 
                                 <p v-if="order.received_date" class="text-green-800 bg-green-100 rounded-md px-2 text-xs py-1">Recibida: {{ formatDate(order.received_date) }}</p>
 
-                                <!-- Común -->
+                                <!-- Común: Imprimir (Disponible para todos los que puedan ver) -->
                                 <n-button secondary circle @click="printOrder">
                                     <template #icon><n-icon><PrintOutline /></n-icon></template>
                                 </n-button>
@@ -330,9 +343,6 @@ export default {
                                 <div>
                                     <label class="text-xs font-bold text-gray-400 uppercase">Solicitado Por</label>
                                     <div class="flex items-center gap-2 mt-1">
-                                        <!-- <n-avatar round size="small" class="bg-indigo-100 text-indigo-600">
-                                            {{ order.requestor?.name?.charAt(0) || 'U' }}
-                                        </n-avatar> -->
                                         <n-avatar
                                             round
                                             :size="32"

@@ -1,12 +1,13 @@
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import FileView from "@/Components/MyComponents/FileView.vue"; // Importamos FileView
+import FileView from "@/Components/MyComponents/FileView.vue"; 
 import { Head, Link, router } from '@inertiajs/vue3';
-import axios from 'axios'; // Importamos axios para la petición de borrado
+import { usePermissions } from '@/Composables/usePermissions'; // 1. Importar composable
+import axios from 'axios'; 
 import { 
     NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem, NButton, NIcon, 
     NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, createDiscreteApi,
-    NSpin // Agregamos NSpin para feedback de carga
+    NSpin 
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, 
@@ -16,38 +17,12 @@ import {
 
 export default {
     components: {
-        AppLayout,
-        Head,
-        Link,
-        NCard,
-        NAvatar,
-        NTag,
-        NDescriptions,
-        NDescriptionsItem,
-        NButton,
-        NIcon,
-        NDivider,
-        NTabs,
-        NTabPane,
-        NList,
-        NListItem,
-        NThing,
-        NEmpty,
-        NSpin,
-        FileView, // Registramos el componente
+        AppLayout, Head, Link, NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem,
+        NButton, NIcon, NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, FileView,
         // Iconos
-        ArrowBackOutline,
-        CreateOutline,
-        MailOutline,
-        BusinessOutline,
-        CalendarOutline,
-        PowerOutline,
-        CheckmarkCircleOutline,
-        TimeOutline,
-        AlertCircleOutline,
-        CloudUploadOutline,
-        DocumentAttachOutline,
-        CallOutline
+        ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, CalendarOutline,
+        PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
+        CloudUploadOutline, DocumentAttachOutline, CallOutline
     },
     props: {
         user: {
@@ -59,12 +34,15 @@ export default {
             default: () => []
         }
     },
+    // 2. Usar setup como puente para Composition API
     setup() {
         const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
+        const { hasPermission } = usePermissions(); // Extraer permisos
         
         return { 
             notification,
             dialog,
+            hasPermission, // Exponer al template
             CheckmarkCircleOutline,
             AlertCircleOutline,
             CloudUploadOutline
@@ -79,10 +57,9 @@ export default {
     },
     methods: {
         goBack() {
-            this.$inertia.visit(route('users.index'));
+            router.visit(route('users.index'));
         },
         goToEdit() {
-            // Redirige a la vista de edición para subir archivos
             router.get(route('users.edit', this.user.id));
         },
         toggleStatus() {
@@ -99,8 +76,9 @@ export default {
             });
         },
         deleteFile(fileId) {
+            // Eliminar visualmente (la lógica real ya la maneja FileView internamente o el padre)
+            // Asumiendo que FileView emite el evento para que el padre actualice el estado local
             this.user.media = this.user.media.filter(m => m.id !== fileId);
-            
         },
         getTaskStatusType(status) {
             switch (status) {
@@ -180,7 +158,9 @@ export default {
                                     </p>
                                 </div>
                                 <div class="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                                    <Link :href="route('users.edit', user.id)" class="flex-1 md:flex-none">
+                                    
+                                    <!-- Botón Editar: Protegido por users.edit -->
+                                    <Link v-if="hasPermission('users.edit')" :href="route('users.edit', user.id)" class="flex-1 md:flex-none">
                                         <n-button type="warning" ghost round block class="md:w-auto">
                                             <template #icon>
                                                 <n-icon><CreateOutline /></n-icon>
@@ -189,7 +169,9 @@ export default {
                                         </n-button>
                                     </Link>
                                     
+                                    <!-- Botón Estado: Protegido por users.toggle_status -->
                                     <n-button 
+                                        v-if="hasPermission('users.toggle_status')"
                                         :type="user.is_active ? 'error' : 'success'" 
                                         secondary 
                                         round 
@@ -273,9 +255,13 @@ export default {
                             </div>
                             <div v-else class="flex flex-col items-center justify-center py-10">
                                 <n-empty description="Este usuario no tiene tareas asignadas recientemente.">
+                                    <!-- Solo mostrar botón de asignar si tiene permisos para gestionar tareas (opcional, o users.edit) -->
                                     <template #extra>
-                                        <n-button size="small" dashed>
+                                        <n-button v-if="hasPermission('users.assign_tasks')" size="small" dashed>
                                             Asignar Tarea
+                                        </n-button>
+                                        <n-button v-else size="small" dashed disabled>
+                                            Sin actividad reciente
                                         </n-button>
                                     </template>
                                 </n-empty>
@@ -288,16 +274,17 @@ export default {
                             <div v-if="user.media && user.media.length > 0" class="p-5">
                                 <div class="flex justify-between items-center mb-4">
                                     <h3 class="text-lg font-bold text-gray-700">Archivos ({{ user.media.length }})</h3>
-                                    <n-button @click="goToEdit" type="primary" ghost>Subir Documento</n-button>
+                                    <!-- Botón Subir: Protegido por users.edit -->
+                                    <n-button v-if="hasPermission('users.edit')" @click="goToEdit" type="primary" ghost>Subir Documento</n-button>
                                 </div>
 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <!-- Renderizamos el componente FileView para cada archivo -->
+                                    <!-- Renderizamos el componente FileView. Deletable protegido por users.edit -->
                                     <FileView 
                                         v-for="file in user.media" 
                                         :key="file.id" 
                                         :file="file" 
-                                        :deletable="true" 
+                                        :deletable="hasPermission('users.edit')" 
                                         @delete-file="deleteFile($event)" 
                                     />
                                 </div>
@@ -313,8 +300,9 @@ export default {
                                 <h3 class="text-lg font-medium text-gray-900">Documentación del Empleado</h3>
                                 <p class="text-gray-500 max-w-sm mt-2">Aquí podrás gestionar contratos, identificaciones y otros documentos legales.</p>
                                 
-                                <!-- Botón Funcional -->
+                                <!-- Botón Funcional: Protegido por users.edit -->
                                 <n-button 
+                                    v-if="hasPermission('users.edit')"
                                     class="mt-6" 
                                     type="primary" 
                                     ghost 
@@ -349,10 +337,3 @@ export default {
         </div>
     </AppLayout>
 </template>
-
-<style scoped>
-/* Estilos para asegurar que las tabs se vean bien en mobile */
-:deep(.n-tabs-nav-scroll-content) {
-    padding: 0 16px;
-}
-</style>

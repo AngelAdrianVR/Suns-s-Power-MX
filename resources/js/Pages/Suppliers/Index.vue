@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -14,6 +15,9 @@ const props = defineProps({
     suppliers: Object,
     filters: Object,
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 // Configuración de Notificaciones (Feedback visual idéntico a productos)
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -151,15 +155,17 @@ const createColumns = () => [
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
                 }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
 
-                h(NButton, {
+                // Botón Editar: Protegido por suppliers.edit
+                hasPermission('suppliers.edit') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'warning',
                     onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
+                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
 
-                h(NButton, {
+                // Botón Eliminar: Protegido por suppliers.delete
+                hasPermission('suppliers.delete') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'error',
                     onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
             ]);
         }
     }
@@ -191,8 +197,8 @@ const rowProps = (row) => {
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestiona tus aliados comerciales por sucursal</p>
                 </div>
-                <!-- Botón Crear -->
-                <Link :href="route('suppliers.create')">
+                <!-- Botón Crear: Protegido por suppliers.create -->
+                <Link v-if="hasPermission('suppliers.create')" :href="route('suppliers.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
@@ -294,12 +300,14 @@ const rowProps = (row) => {
                             <!-- Menú de Acciones (Botones flotantes) -->
                             <div class="absolute top-4 right-4 flex flex-col gap-2">
                                 <button 
+                                    v-if="hasPermission('suppliers.edit')"
                                     @click.stop="goToEdit(supplier.id)"
                                     class="text-amber-500 hover:bg-amber-50 p-2 rounded-full transition"
                                 >
                                     <n-icon size="20"><CreateOutline /></n-icon>
                                 </button>
                                 <button 
+                                    v-if="hasPermission('suppliers.delete')"
                                     @click.stop="confirmDelete(supplier)"
                                     class="text-red-500 hover:bg-red-50 p-2 rounded-full transition"
                                 >
