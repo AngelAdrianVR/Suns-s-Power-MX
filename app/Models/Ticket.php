@@ -5,46 +5,71 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-
-class Ticket extends Model
+class Ticket extends Model implements HasMedia
 {
     use HasFactory;
-    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
+    use InteractsWithMedia;
 
     protected $fillable = [
-        'client_id',
         'branch_id',
+        'client_id',
         'related_service_order_id',
         'title',
         'description',
-        'status',
         'priority',
+        'status',
         'resolution_notes',
-        'converted_to_order_id',
     ];
 
+    // ==========================================
+    // Relaciones Principales
+    // ==========================================
+
+    /**
+     * Sucursal a la que pertenece el ticket.
+     */
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Cliente que reporta el ticket.
+     */
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
     }
 
+    /**
+     * Orden de servicio relacionada (Origen: si el ticket proviene de una orden).
+     */
     public function serviceOrder(): BelongsTo
     {
         return $this->belongsTo(ServiceOrder::class, 'related_service_order_id');
     }
-    
-    // Si el ticket se convirtió en una nueva orden
-    public function convertedOrder(): BelongsTo
+
+    /**
+     * Orden de servicio generada a partir de este ticket (Destino: si el ticket se convirtió).
+     * Asume que en la tabla 'service_orders' existe un campo 'ticket_id' opcional.
+     */
+    public function convertedOrder(): HasOne
     {
-        return $this->belongsTo(ServiceOrder::class, 'converted_to_order_id');
+        return $this->hasOne(ServiceOrder::class, 'ticket_id');
     }
 
-    // Evidencias del fallo (fotos, videos)
-    public function documents(): MorphMany
+    /**
+     * Comentarios del ticket (Timeline/Respuestas).
+     * Se usa 'morphMany' asumiendo que tu tabla de comentarios tiene 
+     * 'commentable_id' y 'commentable_type' para usarse en Tickets, Tareas, etc.
+     */
+    public function comments(): MorphMany
     {
-        return $this->morphMany(Document::class, 'documentable');
+        return $this->morphMany(Comment::class, 'commentable');
     }
 }
