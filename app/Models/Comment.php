@@ -9,7 +9,14 @@ class Comment extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['body', 'user_id', 'is_read'];
+    // AGREGADO: 'commentable_type' y 'commentable_id' para permitir guardar estos datos
+    protected $fillable = [
+        'body', 
+        'user_id', 
+        'is_read', 
+        'commentable_type', 
+        'commentable_id'
+    ];
 
     public function commentable()
     {
