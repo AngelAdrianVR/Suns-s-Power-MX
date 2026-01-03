@@ -111,7 +111,7 @@ class DashboardController extends Controller
                 ->count(),
 
             'monthly_sales' => ServiceOrder::where('branch_id', $branchId)
-                ->where('status', 'Facturado')
+                ->whereNotIn('status', ['Cotización', 'Cancelado'])
                 ->whereMonth('created_at', now()->month)
                 ->sum('total_amount'),
         ];

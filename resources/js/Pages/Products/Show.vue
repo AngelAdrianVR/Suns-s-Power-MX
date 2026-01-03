@@ -1,15 +1,16 @@
 <script>
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h, ref, onMounted, watch } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
-    NTimeline, NTimelineItem, NCollapse, NCollapseItem, NModal, NForm, NFormItem, NInput, NInputNumber, createDiscreteApi
+    NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NInputNumber, createDiscreteApi, NDatePicker, NSkeleton,
+    NConfigProvider, esAR, dateEsAR // <--- IMPORTANTE: Importamos dateEsAR
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
-    TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline
+    TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline
 } from '@vicons/ionicons5';
 
 export default defineComponent({
@@ -17,29 +18,80 @@ export default defineComponent({
     components: {
         AppLayout, Head, Link,
         NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
-        NTimeline, NTimelineItem, NCollapse, NCollapseItem, NModal, NForm, NFormItem, NInput, NInputNumber,
+        NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NInputNumber, NDatePicker, NSkeleton, NConfigProvider,
         ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
-        TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline
+        TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline
     },
     props: {
         product: {
             type: Object,
             required: true
         },
-        stock_history: {
+        initial_movements: {
             type: Array,
             default: () => []
+        },
+        server_date: {
+            type: Number,
+            default: Date.now()
         }
     },
     setup(props) {
-        // Lógica de Notificaciones de Naive UI
+        // Lógica de Notificaciones
         const { notification } = createDiscreteApi(['notification']);
+
+        // --- Lógica del Historial por Mes ---
+        const selectedMonth = ref(props.server_date); // Inicia con la fecha del servidor
+        const movements = ref(props.initial_movements);
+        const loadingHistory = ref(false);
+        
+        // Configuración de localización
+        const locale = esAR; 
+        const dateLocale = dateEsAR; // <--- Usamos el objeto correcto para fechas
+
+        // Función para cargar historial
+        const fetchHistory = async (timestamp) => {
+            // Si el usuario limpia el input (null), recargamos el mes actual por defecto
+            const targetDate = timestamp ? new Date(timestamp) : new Date();
+            
+            // Si era null, actualizamos el v-model visualmente también para que no quede vacío
+            if (!timestamp) {
+                const now = Date.now();
+                selectedMonth.value = now;
+                return; // El watcher se disparará de nuevo al cambiar el valor, así que retornamos para evitar doble llamada
+            }
+
+            loadingHistory.value = true;
+            const month = targetDate.getMonth() + 1; // JS es 0-11
+            const year = targetDate.getFullYear();
+
+            try {
+                const response = await axios.get(route('products.history', props.product.id), {
+                    params: { month, year }
+                });
+                movements.value = response.data;
+            } catch (error) {
+                console.error("Error cargando historial:", error);
+                notification.error({ 
+                    title: 'Error de conexión', 
+                    content: 'No se pudo cargar el historial. Verifica tu conexión.' 
+                });
+            } finally {
+                loadingHistory.value = false;
+            }
+        };
+
+        // WATCHER: Detecta cambios en selectedMonth automáticamente
+        watch(selectedMonth, (newValue) => {
+            if (newValue) {
+                fetchHistory(newValue);
+            }
+        });
 
         // --- Lógica del Modal de Ajuste ---
         const showAdjustmentModal = ref(false);
         const adjustmentFormRef = ref(null);
         
-        // Formulario solo para el ajuste
         const adjustmentForm = useForm({
             current_stock: props.product.stock, 
             adjustment_note: '', 
@@ -59,7 +111,6 @@ export default defineComponent({
         const submitAdjustment = () => {
             adjustmentFormRef.value?.validate((errors) => {
                 if (!errors) {
-                    // CAMBIO: Ahora apuntamos a la ruta específica de ajuste
                     adjustmentForm.post(route('products.adjust_stock', props.product.id), {
                         preserveScroll: true,
                         onSuccess: () => {
@@ -69,6 +120,8 @@ export default defineComponent({
                                 content: 'El stock se ha actualizado y registrado en el historial.',
                                 duration: 3000
                             });
+                            // Recargar historial actual para ver el ajuste
+                            fetchHistory(selectedMonth.value);
                         },
                         onError: () => {
                             notification.error({ title: 'Error', content: 'No se pudo procesar el ajuste.' });
@@ -79,12 +132,18 @@ export default defineComponent({
         };
 
         return {
+            selectedMonth,
+            movements,
+            loadingHistory,
+            fetchHistory,
             showAdjustmentModal,
             adjustmentForm,
             adjustmentRules,
             adjustmentFormRef,
             openAdjustmentModal,
-            submitAdjustment
+            submitAdjustment,
+            locale,
+            dateLocale
         };
     },
     data() {
@@ -96,10 +155,7 @@ export default defineComponent({
     },
     computed: {
         formattedPrice() {
-            return new Intl.NumberFormat('es-MX', {
-                style: 'currency',
-                currency: 'MXN'
-            }).format(this.product.sale_price);
+            return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(this.product.sale_price);
         },
         stockStatus() {
             if (this.product.stock <= 0) return { type: 'error', text: 'Agotado', color: 'bg-red-100 text-red-600' };
@@ -223,7 +279,7 @@ export default defineComponent({
                             </div>
                         </div>
 
-                        <!-- Tarjeta de Inventario (Sucursal) -->
+                        <!-- Tarjeta de Inventario -->
                         <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
                             <div class="flex items-center justify-between mb-4">
                                 <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
@@ -300,54 +356,75 @@ export default defineComponent({
 
                         <!-- Sección de Historial de Movimientos -->
                         <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-                            <h3 class="font-bold text-xl text-gray-800 mb-6 flex items-center gap-2">
-                                <n-icon class="text-orange-500"><SwapHorizontalOutline /></n-icon>
-                                Historial de Movimientos
-                            </h3>
-
-                            <div v-if="stock_history.length === 0" class="text-center py-8 text-gray-400">
-                                <n-icon size="40" class="mb-2 opacity-50"><TimeOutline /></n-icon>
-                                <p>No hay movimientos registrados en esta sucursal.</p>
+                            
+                            <!-- Header del Historial con Selector de Fecha -->
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-100 pb-4">
+                                <h3 class="font-bold text-xl text-gray-800 flex items-center gap-2">
+                                    <n-icon class="text-orange-500"><SwapHorizontalOutline /></n-icon>
+                                    Movimientos
+                                </h3>
+                                
+                                <div class="w-full sm:w-48">
+                                    <!-- DatePicker envuelto en ConfigProvider para asegurar español CORRECTO -->
+                                    <n-config-provider :locale="locale" :date-locale="dateLocale">
+                                        <n-date-picker 
+                                            v-model:value="selectedMonth" 
+                                            type="month" 
+                                            clearable
+                                            format="MMM yyyy"
+                                            :actions="['now', 'confirm']"
+                                            placeholder="Filtrar por mes"
+                                            class="uppercase-input"
+                                        />
+                                    </n-config-provider>
+                                </div>
                             </div>
 
-                            <!-- Historial Agrupado -->
-                            <n-collapse v-else display-directive="show" class="max-h-96 overflow-auto" :default-expanded-names="[stock_history[0].group_label]">
-                                <n-collapse-item 
-                                    v-for="(group, index) in stock_history" 
-                                    :key="index" 
-                                    :title="group.group_label" 
-                                    :name="group.group_label"
-                                >
-                                    <n-timeline>
-                                        <n-timeline-item
-                                            v-for="movement in group.movements"
-                                            :key="movement.id"
-                                            :type="getTimelineType(movement.type)"
-                                            :title="movement.reference_text"
-                                            :time="movement.date"
-                                        >
-                                            <div class="flex flex-col gap-1 text-sm">
-                                                <div class="flex items-center gap-2 font-medium">
-                                                    <span :class="{
-                                                        'text-green-600': movement.type === 'Entrada',
-                                                        'text-red-600': movement.type === 'Salida',
-                                                        'text-blue-600': movement.type === 'Ajuste'
-                                                    }">
-                                                        {{ movement.type === 'Entrada' ? '+' : (movement.type === 'Salida' ? '-' : '') }}{{ movement.quantity }} uni.
-                                                    </span>
-                                                    <span class="text-gray-400 font-normal">&rarr; Stock final: {{ movement.stock_after }} uni.</span>
-                                                </div>
-                                                <div class="text-gray-500 text-xs">
-                                                    Por: {{ movement.user_name }}
-                                                </div>
-                                                <div v-if="movement.notes" class="text-gray-400 text-xs italic bg-gray-50 p-1 rounded mt-1">
-                                                    "{{ movement.notes }}"
-                                                </div>
+                            <!-- Estado de Carga -->
+                            <div v-if="loadingHistory" class="py-8 px-4">
+                                <n-space vertical>
+                                    <n-skeleton text :repeat="3" />
+                                    <n-skeleton text style="width: 60%" />
+                                </n-space>
+                            </div>
+
+                            <!-- Lista de Movimientos -->
+                            <div v-else class="max-h-96 overflow-y-auto">
+                                <div v-if="movements.length === 0" class="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                    <n-icon size="48" class="mb-3 opacity-30"><CalendarOutline /></n-icon>
+                                    <p class="font-medium">Sin movimientos</p>
+                                    <p class="text-xs">No hay registros en el mes seleccionado.</p>
+                                </div>
+
+                                <n-timeline v-else class="px-2">
+                                    <n-timeline-item
+                                        v-for="movement in movements"
+                                        :key="movement.id"
+                                        :type="getTimelineType(movement.type)"
+                                        :title="movement.reference_text"
+                                        :time="movement.date"
+                                    >
+                                        <div class="flex flex-col gap-1 text-sm bg-gray-50/50 p-3 rounded-lg border border-gray-100/50 hover:bg-gray-50 transition-colors">
+                                            <div class="flex items-center justify-between font-medium">
+                                                <span :class="{
+                                                    'text-green-600': movement.type === 'Entrada',
+                                                    'text-red-600': movement.type === 'Salida',
+                                                    'text-blue-600': movement.type === 'Ajuste'
+                                                }">
+                                                    {{ movement.type === 'Entrada' ? '+' : (movement.type === 'Salida' ? '-' : '') }}{{ movement.quantity }} uni.
+                                                </span>
+                                                <span class="text-gray-400 font-normal text-xs">Stock final: {{ movement.stock_after }}</span>
                                             </div>
-                                        </n-timeline-item>
-                                    </n-timeline>
-                                </n-collapse-item>
-                            </n-collapse>
+                                            <div class="text-gray-500 text-xs flex justify-between items-center mt-1">
+                                                <span>Por: {{ movement.user_name }}</span>
+                                            </div>
+                                            <div v-if="movement.notes" class="text-gray-500 text-xs italic mt-1 border-t border-gray-100 pt-1">
+                                                "{{ movement.notes }}"
+                                            </div>
+                                        </div>
+                                    </n-timeline-item>
+                                </n-timeline>
+                            </div>
                         </div>
 
                     </div>
@@ -417,3 +494,12 @@ export default defineComponent({
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+/* Estilo para poner mayúsculas en el datepicker (ej. ENE 2024) */
+:deep(.uppercase-input .n-input__input-el) {
+    text-transform: uppercase;
+    font-weight: bold;
+    color: #4f46e5; /* Un tono índigo para destacar */
+}
+</style>

@@ -26,7 +26,7 @@ const getStatusType = (status) => {
         
         <div v-if="orders.length > 0">
             <n-list hoverable clickable>
-                <n-list-item v-for="order in orders" :key="order.id">
+                <n-list-item v-for="order in orders" :key="order.id" @click="$inertia.visit(route('service-orders.show', order.id))">
                     <div class="flex justify-between items-center px-6 py-3">
                         <div>
                             <div class="font-medium text-gray-800">{{ order.client_name }}</div>

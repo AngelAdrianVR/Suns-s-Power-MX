@@ -23,6 +23,8 @@ defineProps({
                     type="info"
                     :title="order.supplier"
                     :time="order.expected_date"
+                    @click="$inertia.visit(route('purchases.show', order.id))"
+                    class="hover:bg-gray-50 cursor-pointer"
                 >
                     <div class="text-xs text-gray-500 mt-1">
                         Orden #{{ order.id }} - Total: ${{ new Intl.NumberFormat('es-MX').format(order.total_cost) }} {{ order.currency }}
