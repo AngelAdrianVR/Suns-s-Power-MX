@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -13,6 +14,8 @@ const props = defineProps({
     product: Object,
     categories: Array
 });
+
+const { hasPermission } = usePermissions();
 
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
@@ -182,7 +185,7 @@ const submit = () => {
                                     <span class="text-gray-600 font-semibold">Precios y Costos</span>
                                 </template>
                                 <n-grid x-gap="12" :cols="2">
-                                    <n-grid-item>
+                                    <n-grid-item v-if="hasPermission('products.view_costs')">
                                         <n-form-item 
                                             label="Precio de Compra" 
                                             path="purchase_price"
@@ -226,7 +229,7 @@ const submit = () => {
                             <n-card :bordered="false" class="shadow-sm rounded-2xl bg-indigo-50/50">
                                 <template #header>
                                     <span class="text-indigo-800 font-semibold flex items-center gap-2">
-                                        <n-icon :component="CubeOutline"/> Inventario Actual
+                                        <n-icon :component="CubeOutline"/> Inventario actual
                                     </span>
                                 </template>
                                 
@@ -248,6 +251,7 @@ const submit = () => {
                                                 :precision="0"
                                                 button-placement="both"
                                                 class="w-full text-center"
+                                                :disabled="!hasPermission('products.adjust_stock')"
                                             />
                                         </n-form-item>
                                     </n-grid-item>

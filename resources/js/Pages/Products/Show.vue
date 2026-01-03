@@ -1,5 +1,6 @@
 <script>
 import { defineComponent, h, ref, onMounted, watch } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -39,6 +40,7 @@ export default defineComponent({
     setup(props) {
         // Lógica de Notificaciones
         const { notification } = createDiscreteApi(['notification']);
+        const { hasPermission } = usePermissions();
 
         // --- Lógica del Historial por Mes ---
         const selectedMonth = ref(props.server_date); // Inicia con la fecha del servidor
@@ -143,7 +145,8 @@ export default defineComponent({
             openAdjustmentModal,
             submitAdjustment,
             locale,
-            dateLocale
+            dateLocale,
+            hasPermission
         };
     },
     data() {
@@ -287,7 +290,7 @@ export default defineComponent({
                                     Inventario
                                 </h3>
                                 <!-- Botón Ajuste Rápido -->
-                                <n-button size="small" secondary circle type="info" @click="openAdjustmentModal">
+                                <n-button v-if="hasPermission('products.adjust_stock')" size="small" secondary circle type="info" @click="openAdjustmentModal">
                                     <template #icon><n-icon><ClipboardOutline /></n-icon></template>
                                 </n-button>
                             </div>
@@ -308,7 +311,7 @@ export default defineComponent({
                                     </div>
                                 </div>
                             </div>
-                            <n-button type="warning" block secondary class="mt-4" @click="goToEdit">
+                            <n-button v-if="hasPermission('products.edit')" type="warning" block secondary class="mt-4" @click="goToEdit">
                                 Editar Producto
                             </n-button>
                         </div>
@@ -338,6 +341,20 @@ export default defineComponent({
                                         ref="numberAnimationInstRef"
                                         :from="0" 
                                         :to="product.sale_price" 
+                                        :active="true" 
+                                        :precision="2" 
+                                        show-separator
+                                    />
+                                </span>
+                                <template #suffix>MXN</template>
+                            </n-statistic>
+                            <n-statistic v-if="hasPermission('products.view_costs')" label="Precio de compra" class="mb-6">
+                                <template #prefix>$</template>
+                                <span class="text-xl font-bold text-emerald-600">
+                                    <n-number-animation 
+                                        ref="numberAnimationInstRef"
+                                        :from="0" 
+                                        :to="product.purchase_price" 
                                         :active="true" 
                                         :precision="2" 
                                         show-separator

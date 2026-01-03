@@ -1,8 +1,9 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; // <--- IMPORTANTE: Ajusta la ruta según donde guardes el archivo
+import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; 
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NTooltip 
 } from 'naive-ui';
@@ -15,6 +16,9 @@ const props = defineProps({
     clients: Object, // Paginado
     filters: Object,
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 // Configuración de Notificaciones
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -144,7 +148,7 @@ const createColumns = () => [
         width: 180,
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                // Botón Rápido de Cobranza (Si tiene deuda)
+                // Botón Rápido de Cobranza (Si tiene deuda) - Podrías protegerlo con un permiso de finanzas si deseas
                 row.has_debt ? h(NTooltip, { trigger: 'hover' }, {
                     trigger: () => h(NButton, {
                         circle: true, size: 'small', quaternary: true, type: 'success',
@@ -154,20 +158,23 @@ const createColumns = () => [
                     default: () => 'Registrar Abono'
                 }) : null,
 
+                // Ver Detalle (Siempre visible)
                 h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'info',
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
                 }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
 
-                h(NButton, {
+                // Editar (Protegido)
+                hasPermission('clients.edit') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'warning',
                     onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
+                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
 
-                h(NButton, {
+                // Eliminar (Protegido)
+                hasPermission('clients.delete') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'error',
                     onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
             ]);
         }
     }
@@ -196,8 +203,8 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión de expedientes y estado de cuenta por sucursal</p>
                 </div>
-                <!-- Botón Crear -->
-                <Link :href="route('clients.create')">
+                <!-- Botón Crear (Protegido) -->
+                <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
@@ -288,10 +295,23 @@ const rowProps = (row) => ({
                                 </div>
                             </div>
 
-                            <!-- Menú Acciones -->
+                            <!-- Menú Acciones Móvil -->
                             <div class="absolute top-4 right-4 flex flex-col gap-2">
-                                <button @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
+                                <!-- Editar -->
+                                <button 
+                                    v-if="hasPermission('clients.edit')"
+                                    @click.stop="goToEdit(client.id)" 
+                                    class="text-amber-500 hover:bg-amber-50 p-2 rounded-full"
+                                >
                                     <n-icon size="20"><CreateOutline /></n-icon>
+                                </button>
+                                <!-- Eliminar -->
+                                <button 
+                                    v-if="hasPermission('clients.delete')"
+                                    @click.stop="confirmDelete(client)" 
+                                    class="text-red-500 hover:bg-red-50 p-2 rounded-full"
+                                >
+                                    <n-icon size="20"><TrashOutline /></n-icon>
                                 </button>
                             </div>
                         </div>

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -16,8 +17,10 @@ const props = defineProps({
     orders: Object, // Paginado
     filters: Object,
     statuses: Array,
-    can_view_financials: Boolean // Nueva Prop (Actúa como check de admin)
+    can_view_financials: Boolean // Check para ver montos/dinero
 });
+
+const { hasPermission } = usePermissions();
 
 // Configuración de Notificaciones
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -45,10 +48,13 @@ watch(statusFilter, applyFilters);
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
 const goToShow = (id) => router.visit(route('service-orders.show', id));
 
-// Lógica para cambiar estatus (NUEVO)
+// Lógica para cambiar estatus
 const handleStatusUpdate = (row, newStatus) => {
-    // Doble verificación de seguridad en el cliente
-    if (!props.can_view_financials) return;
+    // Verificación de permiso específico para cambiar estatus
+    if (!hasPermission('service_orders.change_status')) {
+        notification.error({ title: 'Sin permiso', content: 'No tienes permisos para cambiar el estatus.' });
+        return;
+    }
 
     router.patch(route('service-orders.update-status', row.id), {
         status: newStatus
@@ -129,6 +135,9 @@ const createColumns = () => {
             key: 'status',
             width: 220, 
             render(row) {
+                // Verificar si tiene permiso para cambiar el estatus
+                const canChangeStatus = hasPermission('service_orders.change_status');
+
                 // Renderizado condicional del Tag de estatus
                 const statusTag = h(NTag, { 
                     type: getStatusColor(row.status), 
@@ -136,31 +145,30 @@ const createColumns = () => {
                     bordered: false, 
                     round: true,
                     style: { 
-                        cursor: props.can_view_financials ? 'pointer' : 'default', 
+                        cursor: canChangeStatus ? 'pointer' : 'default', 
                         width: 'fit-content' 
                     },
                     // Solo detenemos la propagación del click si es editable (para abrir el popselect)
-                    // Si no es editable, el click pasa a la fila y abre el detalle
-                    onClick: (e) => props.can_view_financials && e.stopPropagation(),
+                    onClick: (e) => canChangeStatus && e.stopPropagation(),
                 }, { 
                     default: () => [
                         row.status,
-                        // Solo mostramos el icono de flecha si es editable
-                        props.can_view_financials 
+                        // Solo mostramos el icono de flecha si tiene permiso
+                        canChangeStatus 
                             ? h(NIcon, { class: 'ml-1 text-xs opacity-70' }, { default: () => h(ChevronDownOutline) }) 
                             : null
                     ] 
                 });
 
                 return h('div', { class: 'flex flex-col gap-2 w-full' }, [
-                    // Si puede ver finanzas (Admin), envolvemos en Popselect
-                    props.can_view_financials ? h(NPopselect, {
+                    // Si tiene permiso, envolvemos en Popselect
+                    canChangeStatus ? h(NPopselect, {
                         options: statusOptions,
                         trigger: 'click',
                         onUpdateValue: (val) => handleStatusUpdate(row, val)
                     }, {
                         default: () => statusTag
-                    }) : statusTag, // Si no, solo mostramos el tag
+                    }) : statusTag, // Si no, solo mostramos el tag estático
                     
                     h('div', { class: 'w-full pr-4' }, [
                         h(NProgress, { 
@@ -193,7 +201,7 @@ const createColumns = () => {
         }
     ];
 
-    // Condicional para columna Total
+    // Condicional para columna Total (Protegida por can_view_financials)
     if (props.can_view_financials) {
         columns.push({
             title: 'Total',
@@ -206,28 +214,34 @@ const createColumns = () => {
     }
 
     // Columna de Acciones siempre al final
-    if (props.can_view_financials) {
-        columns.push({
-            title: '',
-            key: 'actions',
-            width: 140,
-            render(row) {
-                return h(NSpace, { justify: 'end' }, () => [
-                    h(NTooltip, { trigger: 'hover' }, {
-                        trigger: () => h(NButton, {
-                            circle: true, size: 'small', quaternary: true, type: 'info',
-                            onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
-                        }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
-                        default: () => 'Ver Detalles'
-                    }),
-                    h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'warning',
-                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
-                ]);
-            }
-        });
-    }
+    columns.push({
+        title: '',
+        key: 'actions',
+        width: 140,
+        render(row) {
+            const canEdit = hasPermission('service_orders.edit');
+            const canDelete = hasPermission('service_orders.delete');
+
+            return h(NSpace, { justify: 'end' }, () => [
+                h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'info',
+                        onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
+                    default: () => 'Ver Detalles'
+                }),
+                    canEdit ? h(NButton, {
+                    circle: true, size: 'small', quaternary: true, type: 'warning',
+                    onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
+                
+                canDelete ? h(NButton, {
+                    circle: true, size: 'small', quaternary: true, type: 'error',
+                    onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
+            ]);
+        }
+    });
 
     return columns;
 };
@@ -255,8 +269,8 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión operativa e instalaciones</p>
                 </div>
-                <!-- Botón Crear -->
-                <Link :href="route('service-orders.create')">
+                <!-- Botón Crear (Permiso: service_orders.create) -->
+                <Link v-if="hasPermission('service_orders.create')" :href="route('service-orders.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
@@ -333,9 +347,9 @@ const rowProps = (row) => ({
                                 <span class="text-xs text-gray-400">{{ order.created_at_human }}</span>
                             </div>
                             
-                            <!-- Estado: Editable solo si es admin -->
+                            <!-- Estado: Editable solo si tiene permiso service_orders.change_status -->
                             <n-popselect 
-                                v-if="can_view_financials"
+                                v-if="hasPermission('service_orders.change_status')"
                                 :options="statusOptions" 
                                 trigger="click"
                                 @update:value="(val) => handleStatusUpdate(order, val)"
@@ -347,7 +361,7 @@ const rowProps = (row) => ({
                                 </n-tag>
                             </n-popselect>
 
-                            <!-- Estado: Solo lectura para no admins -->
+                            <!-- Estado: Solo lectura para quienes no tienen permiso -->
                             <n-tag 
                                 v-else
                                 :type="getStatusColor(order.status)" 
@@ -385,6 +399,7 @@ const rowProps = (row) => ({
 
                         <!-- Footer Actions -->
                         <div class="flex justify-between items-center border-t border-gray-100 pt-3">
+                            <!-- Montos: Solo visibles con permiso can_view_financials -->
                             <span v-if="can_view_financials" class="font-bold text-gray-800">{{ formatCurrency(order.total_amount) }}</span>
                             <span v-else class="text-xs text-gray-400 italic">Confidencial</span>
                             
@@ -392,8 +407,13 @@ const rowProps = (row) => ({
                                 <n-button circle size="small" quaternary type="info" @click.stop="goToShow(order.id)">
                                     <template #icon><n-icon :component="EyeOutline" /></template>
                                 </n-button>
-                                <n-button circle size="small" quaternary type="warning" @click.stop="goToEdit(order.id)">
+                                
+                                <n-button v-if="hasPermission('service_orders.edit')" circle size="small" quaternary type="warning" @click.stop="goToEdit(order.id)">
                                     <template #icon><n-icon :component="CreateOutline" /></template>
+                                </n-button>
+
+                                <n-button v-if="hasPermission('service_orders.delete')" circle size="small" quaternary type="error" @click.stop="confirmDelete(order)">
+                                    <template #icon><n-icon :component="TrashOutline" /></template>
                                 </n-button>
                             </div>
                         </div>

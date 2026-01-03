@@ -95,7 +95,6 @@ export default defineComponent({
             replyFormRef,
             openReplyModal,
             submitReply,
-            // CORRECCIÓN 2: Retornar hasPermission para que esté disponible en el template y en 'this'
             hasPermission
         };
     },

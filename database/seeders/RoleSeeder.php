@@ -92,6 +92,16 @@ class RoleSeeder extends Seeder
                 'module' => 'Compras'
             ],
             [
+                'name' => 'purchases.edit',
+                'description' => 'Editar órdenes de compra existentes',
+                'module' => 'Compras'
+            ],
+            [
+                'name' => 'purchases.delete',
+                'description' => 'Eliminar órdenes de compra',
+                'module' => 'Compras'
+            ],
+            [
                 'name' => 'purchases.approve',
                 'description' => 'Aprobar y procesar órdenes de compra',
                 'module' => 'Compras'
@@ -182,6 +192,11 @@ class RoleSeeder extends Seeder
                 'description' => 'Activar o desactivar acceso a usuarios',
                 'module' => 'Usuarios'
             ],
+            [
+                'name' => 'users.assign_tasks',
+                'description' => 'Asignar tareas a usuarios',
+                'module' => 'Usuarios'
+            ],
 
             // --- Módulo: Configuraciones ---
             [
@@ -253,7 +268,7 @@ class RoleSeeder extends Seeder
             'products.adjust_stock',
             'purchases.index',
             'purchases.create',
-            'suppliers.manage',
+            'suppliers.create',
         ]);
     }
 }
