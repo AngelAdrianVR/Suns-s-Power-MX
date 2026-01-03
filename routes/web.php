@@ -7,6 +7,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaskController;
@@ -53,6 +54,14 @@ Route::middleware([
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
     Route::post('/notifications/destroy-selected', [NotificationController::class, 'destroySelected'])->name('notifications.destroy-selected');
 
+    // ---------------------------- NUEVO: RUTAS DE CONFIGURACIÓN / ROLES ----------------------------
+    // Se recomienda proteger esto con un middleware tipo 'role:admin' o similar
+    Route::resource('roles', RoleController::class)->except(['show', 'create', 'edit']);
+    
+    // Rutas extra para CRUD de permisos (Solo Developer ID 1 validado en controlador)
+    Route::post('/permissions', [RoleController::class, 'storePermission'])->name('permissions.store');
+    Route::put('/permissions/{permission}', [RoleController::class, 'updatePermission'])->name('permissions.update');
+    Route::delete('/permissions/{permission}', [RoleController::class, 'destroyPermission'])->name('permissions.destroy');
 });
 
 

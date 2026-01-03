@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -11,6 +12,8 @@ import {
 } from '@vicons/ionicons5';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+const { hasPermission } = usePermissions();
 
 // Props desde el controlador
 const props = defineProps({
@@ -263,7 +266,7 @@ const rowProps = (row) => {
 <template>
     <AppLayout title="Soporte y Tickets">
         <template #header>
-            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="lg:flex flex-col md:flex-row justify-between items-center w-11/12 mx-auto gap-4">
                 <div>
                     <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
                         Tickets de Soporte
@@ -271,8 +274,8 @@ const rowProps = (row) => {
                     <p class="text-sm text-gray-500 mt-1">Gestiona reportes e incidencias de clientes</p>
                 </div>
                 <!-- Botón Crear -->
-                <Link :href="route('tickets.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                <Link v-if="hasPermission('tickets.create')" :href="route('tickets.create')">
+                    <n-button type="primary" round size="large" class="mt-2 lg:mt-0 shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
                         </template>
@@ -363,13 +366,13 @@ const rowProps = (row) => {
                             
                             <!-- Botones Acción -->
                             <div class="flex gap-1">
-                                <button 
+                                <button v-if="hasPermission('tickets.edit')"
                                     @click.stop="goToEdit(ticket.id)"
                                     class="text-amber-500 hover:bg-amber-50 p-1.5 rounded-full transition"
                                 >
                                     <n-icon size="18"><CreateOutline /></n-icon>
                                 </button>
-                                <button 
+                                <button v-if="hasPermission('tickets.delete')"
                                     @click.stop="confirmDelete(ticket)"
                                     class="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition"
                                 >

@@ -1,5 +1,6 @@
 <script>
 import { defineComponent, h, ref, computed } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -13,7 +14,7 @@ import {
     CreateOutline, SearchOutline, ChatboxEllipsesOutline, AttachOutline, CheckmarkCircleOutline,
     CloseCircleOutline, HardwareChipOutline, DocumentTextOutline, SendOutline
 } from '@vicons/ionicons5';
-import { format, parse } from 'date-fns'; // Importamos 'parse' para corregir la lectura de fechas
+import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default defineComponent({
@@ -37,8 +38,11 @@ export default defineComponent({
             default: () => []
         }
     },
+    // El método setup sirve de puente para usar Composables en Options API
     setup(props) {
-        // Lógica de Notificaciones
+        // 1. Extraemos la función del composable
+        const { hasPermission } = usePermissions();
+        
         const { notification } = createDiscreteApi(['notification']);
 
         // --- Lógica del Modal de Respuesta Rápida ---
@@ -90,7 +94,9 @@ export default defineComponent({
             replyRules,
             replyFormRef,
             openReplyModal,
-            submitReply
+            submitReply,
+            // CORRECCIÓN 2: Retornar hasPermission para que esté disponible en el template y en 'this'
+            hasPermission
         };
     },
     data() {
@@ -131,24 +137,18 @@ export default defineComponent({
         goToEdit() {
             router.visit(route('tickets.edit', this.ticket.id));
         },
-        // FUNCIÓN MEJORADA: Parsea correctamente las fechas ambiguas
         formatDateLong(dateStr) {
             if (!dateStr) return 'Fecha desconocida';
             
             let dateObj = new Date(dateStr);
 
-            // CORRECCIÓN: Si es string con barras "02/01/2026", forzamos lectura como Día/Mes/Año
             if (typeof dateStr === 'string' && dateStr.includes('/')) {
-                // Intentamos parsear con formato d/M/yyyy HH:mm (formato común de Laravel)
                 const parsed = parse(dateStr, 'd/M/yyyy HH:mm', new Date());
-                
-                // Si el parseo es válido, usamos esa fecha corregida
                 if (!isNaN(parsed.getTime())) {
                     dateObj = parsed;
                 }
             }
             
-            // Si después de todo la fecha no es válida, devolvemos el string original
             if (isNaN(dateObj.getTime())) return dateStr; 
 
             return format(dateObj, "d 'de' MMMM yyyy, h:mm a", { locale: es });
@@ -237,7 +237,7 @@ export default defineComponent({
                                     </div>
                                 </div>
 
-                                <div class="mt-6 grid grid-cols-2 gap-3">
+                                <div v-if="hasPermission('tickets.manage')" class="mt-6 grid grid-cols-2 gap-3">
                                     <n-button type="warning" secondary block @click="goToEdit">
                                         <template #icon><n-icon><CreateOutline /></n-icon></template>
                                         Editar
@@ -359,7 +359,6 @@ export default defineComponent({
                                         :time="formatDateLong(item.created_at)"
                                     >
                                         <template #icon v-if="item.user?.profile_photo_url">
-                                            <!-- CAMBIO: Avatar a 48px para que se vea más grande -->
                                             <n-avatar round :size="28" :src="item.user.profile_photo_url" />
                                         </template>
                                         
