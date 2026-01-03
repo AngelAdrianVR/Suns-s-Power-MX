@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue';
-import axios from 'axios'; // Importar Axios para la petición async
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
+import axios from 'axios'; 
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -15,21 +16,24 @@ import {
 
 const props = defineProps({
     supplier: Object,
-    assigned_products: Array, // Lista inicial ligera
+    assigned_products: Array, 
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
 // --- ESTADO LOCAL ---
-const availableProducts = ref([]); // Se llenará asíncronamente
+const availableProducts = ref([]); 
 const isLoadingProducts = ref(false);
-const showEditorModal = ref(false); // Controla la visibilidad del componente de edición
-const productsLoaded = ref(false); // Flag para no recargar si ya se cargaron
-const isEditing = ref(false); // Flag para saber si estamos editando o agregando
+const showEditorModal = ref(false); 
+const productsLoaded = ref(false); 
+const isEditing = ref(false); 
 
 // Filtros y formularios
 const searchQuery = ref('');
-const showConfigModal = ref(false); // Modal pequeño para precio/días
+const showConfigModal = ref(false); 
 const selectedProduct = ref(null);
 
 const assignForm = useForm({
@@ -49,8 +53,6 @@ const currencyOptions = [
 const openProductEditor = async () => {
     showEditorModal.value = true;
 
-    // Si ya cargamos los productos antes, no volvemos a llamar a la API
-    // (Opcional: puedes quitar este if si quieres refrescar siempre)
     if (productsLoaded.value) return;
 
     isLoadingProducts.value = true;
@@ -83,7 +85,6 @@ const filteredAvailable = computed(() => {
 
 // --- ACCIONES DE ASIGNACIÓN ---
 
-// Abre modal para AGREGAR uno nuevo de la lista de disponibles
 const openConfigModal = (product) => {
     isEditing.value = false;
     selectedProduct.value = product;
@@ -95,12 +96,10 @@ const openConfigModal = (product) => {
     showConfigModal.value = true;
 };
 
-// Abre modal para EDITAR uno ya asignado
 const openEditModal = (product) => {
     isEditing.value = true;
     selectedProduct.value = product;
     assignForm.product_id = product.id;
-    // Precargamos los datos pivot existentes
     assignForm.purchase_price = parseFloat(product.purchase_price); 
     assignForm.supplier_sku = product.supplier_sku;
     assignForm.currency = product.currency;
@@ -111,7 +110,6 @@ const openEditModal = (product) => {
 const submitAssignment = () => {
     assignForm.post(route('suppliers.products.assign', props.supplier.id), {
         preserveScroll: true,
-        // IMPORTANTE: preserveState mantiene el modal grande abierto tras la recarga de Inertia
         preserveState: true, 
         onSuccess: () => {
             showConfigModal.value = false;
@@ -127,11 +125,8 @@ const submitAssignment = () => {
             });
             
             if (!isEditing.value) {
-                // Si estamos agregando, lo quitamos de la lista local de disponibles
                 availableProducts.value = availableProducts.value.filter(p => p.id !== selectedProduct.value.id);
             }
-            // Nota: Si es edición, 'assigned_products' (prop) se actualiza automáticamente 
-            // gracias a que Inertia recarga los props con la respuesta del servidor.
             
             selectedProduct.value = null;
             assignForm.reset();
@@ -151,11 +146,9 @@ const detachProduct = (product) => {
         onPositiveClick: () => {
             router.delete(route('suppliers.products.detach', { supplier: props.supplier.id, product: product.id }), {
                 preserveScroll: true,
-                preserveState: true, // Mantiene el modal abierto
+                preserveState: true, 
                 onSuccess: () => {
                     notification.success({ title: 'Desvinculado', content: 'Producto removido.', duration: 3000 });
-                    // Opcional: Si quieres que vuelva a aparecer en disponibles, tendrías que recargar o agregarlo manualmente al array
-                    // Por simplicidad, seteamos productsLoaded = false para forzar recarga si vuelve a abrir el editor en el futuro
                     productsLoaded.value = false; 
                 }
             });
@@ -207,7 +200,8 @@ const formatCurrency = (amount, currency) => {
                                 </div>
                             </div>
                         </div>
-                        <Link :href="route('suppliers.edit', supplier.id)">
+                        <!-- Botón Editar: Protegido por suppliers.edit -->
+                        <Link v-if="hasPermission('suppliers.edit')" :href="route('suppliers.edit', supplier.id)">
                             <n-button secondary round type="warning">Editar Datos</n-button>
                         </Link>
                     </div>
@@ -226,8 +220,8 @@ const formatCurrency = (amount, currency) => {
                             <p class="text-sm text-gray-500">Productos habilitados para compra</p>
                         </div>
                         
-                        <!-- Botón Principal de Acción -->
-                        <div v-if="assigned_products.length > 0">
+                        <!-- Botón Principal de Acción: Protegido por suppliers.edit -->
+                        <div v-if="assigned_products.length > 0 && hasPermission('suppliers.edit')">
                             <n-button type="info" round @click="openProductEditor">
                                 <template #icon><n-icon><CreateOutline /></n-icon></template>
                                 Editar Productos
@@ -246,7 +240,8 @@ const formatCurrency = (amount, currency) => {
                             <p class="text-gray-500 max-w-md mb-8">
                                 Este proveedor aún no tiene productos vinculados. Agrega productos de tu inventario general para poder generar órdenes de compra.
                             </p>
-                            <n-button type="primary" size="large" round @click="openProductEditor">
+                            <!-- Botón Agregar: Protegido por suppliers.edit -->
+                            <n-button v-if="hasPermission('suppliers.edit')" type="primary" size="large" round @click="openProductEditor">
                                 <template #icon><n-icon><AddOutline /></n-icon></template>
                                 Agregar Productos a este Proveedor
                             </n-button>
@@ -284,8 +279,8 @@ const formatCurrency = (amount, currency) => {
                                     </div>
                                 </div>
 
-                                <!-- Botón rápido de desvincular (solo visible en hover) -->
-                                <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <!-- Botón rápido de desvincular (solo visible en hover y con permiso) -->
+                                <div v-if="hasPermission('suppliers.edit')" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <n-button circle size="tiny" type="error" quaternary @click="detachProduct(product)">
                                         <template #icon><n-icon><TrashOutline /></n-icon></template>
                                     </n-button>
@@ -313,14 +308,13 @@ const formatCurrency = (amount, currency) => {
                         </template>
                         <template #header-extra>
                             <n-button circle quaternary @click="showEditorModal = false">
-                                <template #icon>X</template> <!-- Fallback icon if needed or just use default close -->
+                                <template #icon>X</template> 
                             </n-button>
                         </template>
 
                         <!-- CONTENIDO DEL MODAL (GRID 2 COLUMNAS) -->
                         <div class="flex flex-col h-full overflow-hidden">
                             
-                            <!-- Spinner de Carga -->
                             <div v-if="isLoadingProducts" class="flex flex-col items-center justify-center h-full space-y-4">
                                 <n-spin size="large" />
                                 <p class="text-gray-500 animate-pulse">Cargando catálogo de productos...</p>
@@ -442,7 +436,6 @@ const formatCurrency = (amount, currency) => {
 </template>
 
 <style scoped>
-/* Asegura que el contenido del modal ocupe el alto disponible */
 :deep(.n-card__content) {
     padding: 0;
     height: 100%;

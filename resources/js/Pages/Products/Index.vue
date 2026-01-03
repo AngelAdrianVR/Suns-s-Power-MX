@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importamos el composable
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -14,6 +15,9 @@ const props = defineProps({
     products: Object,
     filters: Object,
 });
+
+// Permisos
+const { hasPermission } = usePermissions();
 
 // Configuración de Notificaciones
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -169,8 +173,13 @@ const createColumns = () => [
         key: 'actions',
         width: 100,
         render(row) {
+            const canEdit = hasPermission('products.edit');
+            const canDelete = hasPermission('products.delete');
+
+            if (!canEdit && !canDelete) return null;
+
             return h(NSpace, { justify: 'end' }, () => [
-                h(
+                canEdit ? h(
                     NButton,
                     {
                         circle: true,
@@ -183,8 +192,8 @@ const createColumns = () => [
                         }
                     },
                     { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }
-                ),
-                h(
+                ) : null,
+                canDelete ? h(
                     NButton,
                     {
                         circle: true,
@@ -197,7 +206,7 @@ const createColumns = () => [
                         }
                     },
                     { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }
-                )
+                ) : null
             ]);
         }
     }
@@ -230,7 +239,7 @@ const rowProps = (row) => {
                     <p class="text-sm text-gray-500 mt-1">Gestiona el inventario por sucursal</p>
                 </div>
                 <!-- Botón Crear -->
-                <Link :href="route('products.create')">
+                <Link v-if="hasPermission('products.create')" :href="route('products.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
@@ -321,12 +330,14 @@ const rowProps = (row) => {
                                 <!-- Botones de Acción (Móvil): Editar y Eliminar -->
                                 <div class="flex gap-1 absolute top-4 right-4 md:static">
                                     <button 
+                                        v-if="hasPermission('products.edit')"
                                         @click.stop="goToEdit(product.id)"
                                         class="text-amber-500 hover:bg-amber-50 p-2 rounded-full transition"
                                     >
                                         <n-icon size="20"><CreateOutline /></n-icon>
                                     </button>
                                     <button 
+                                        v-if="hasPermission('products.delete')"
                                         @click.stop="confirmDelete(product)"
                                         class="text-red-500 hover:bg-red-50 p-2 rounded-full transition"
                                     >

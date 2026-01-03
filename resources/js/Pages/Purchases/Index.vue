@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -15,6 +16,9 @@ const props = defineProps({
     orders: Object,
     filters: Object,
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
@@ -94,13 +98,12 @@ const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
 
-// Formato de Fecha (ej: 26 dic 2025)
+// Formato de Fecha
 const formatDate = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return dateString; 
     
-    // SOLUCIÓN: Forzamos UTC
     return new Intl.DateTimeFormat('es-MX', { 
         day: '2-digit', 
         month: 'short', 
@@ -109,7 +112,7 @@ const formatDate = (dateString) => {
     }).format(date);
 };
 
-// Configuración de Estilos de Estado (Reutilizable para tabla y móvil)
+// Configuración de Estilos de Estado
 const getStatusStyles = (status) => {
     const styles = {
         'Borrador': { type: 'default', icon: CreateOutline, class: 'bg-gray-100 text-gray-600' },
@@ -120,7 +123,6 @@ const getStatusStyles = (status) => {
     return styles[status] || styles['Borrador'];
 };
 
-// Renderizado de Estado (Tags con color para Tabla)
 const renderStatus = (status) => {
     const style = getStatusStyles(status);
     return h(NTag, { type: style.type, bordered: false, round: true, size: 'small' }, {
@@ -131,17 +133,27 @@ const renderStatus = (status) => {
     });
 };
 
-// Opciones del Dropdown (Reutilizable)
+// Opciones del Dropdown CON PERMISOS
 const getDropdownOptions = (row) => {
     const dropdownOptions = [];
     
     if (row.status === 'Borrador') {
-        dropdownOptions.push({ label: 'Solicitar (Enviar)', key: 'Solicitada' });
-        dropdownOptions.push({ label: 'Eliminar', key: 'delete', props: { style: 'color: red' } });
+        // Enviar/Solicitar requiere permiso de edición
+        if (hasPermission('purchases.edit')) {
+            dropdownOptions.push({ label: 'Solicitar (Enviar)', key: 'Solicitada' });
+        }
+        // Eliminar requiere permiso de eliminación
+        if (hasPermission('purchases.delete')) {
+            dropdownOptions.push({ label: 'Eliminar', key: 'delete', props: { style: 'color: red' } });
+        }
     }
+    
     if (['Borrador', 'Solicitada'].includes(row.status)) {
-        dropdownOptions.push({ label: 'Recibir Mercancía', key: 'Recibida' });
-        dropdownOptions.push({ label: 'Cancelar Orden', key: 'Cancelada', props: { style: 'color: red' } });
+        // Recibir y Cancelar requieren permiso de aprobación (autoridad)
+        if (hasPermission('purchases.approve')) {
+            dropdownOptions.push({ label: 'Recibir Mercancía', key: 'Recibida' });
+            dropdownOptions.push({ label: 'Cancelar Orden', key: 'Cancelada', props: { style: 'color: red' } });
+        }
     }
     return dropdownOptions;
 };
@@ -181,7 +193,7 @@ const createColumns = () => [
         }
     },
     {
-        title: 'Recepción', // Agregado
+        title: 'Recepción', 
         key: 'received_date',
         width: 110,
         render(row) {
@@ -205,7 +217,7 @@ const createColumns = () => [
         render(row) {
             const buttons = [];
 
-            // 1. Ver Detalle
+            // 1. Ver Detalle (Siempre visible)
             buttons.push(
                 h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'info',
@@ -214,8 +226,8 @@ const createColumns = () => [
                 }, { icon: () => h(NIcon, { component: EyeOutline }) })
             );
 
-            // 2. Editar
-            if (!['Recibida', 'Cancelada'].includes(row.status)) {
+            // 2. Editar (Requiere permiso y que no esté finalizada)
+            if (!['Recibida', 'Cancelada'].includes(row.status) && hasPermission('purchases.edit')) {
                 buttons.push(
                     h(NButton, {
                         circle: true, size: 'small', quaternary: true, type: 'warning',
@@ -225,7 +237,7 @@ const createColumns = () => [
                 );
             }
 
-            // 3. Dropdown
+            // 3. Dropdown (Opciones dinámicas según permisos)
             const dropdownOptions = getDropdownOptions(row);
 
             if (dropdownOptions.length > 0) {
@@ -274,7 +286,8 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Administra tus adquisiciones y recepciones de stock</p>
                 </div>
-                <Link :href="route('purchases.create')" class="w-full md:w-auto">
+                <!-- Botón Crear: Protegido por purchases.create -->
+                <Link v-if="hasPermission('purchases.create')" :href="route('purchases.create')" class="w-full md:w-auto">
                     <n-button type="primary" round size="large" class="shadow-md w-full md:w-auto">
                         <template #icon><n-icon><AddOutline /></n-icon></template>
                         Nueva Orden
@@ -339,7 +352,7 @@ const rowProps = (row) => ({
                                 </n-tag>
                             </div>
 
-                            <!-- Información Detalles (Grid actualizado) -->
+                            <!-- Información Detalles -->
                             <div class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm mb-4">
                                 <!-- Creada -->
                                 <div class="flex flex-col">
@@ -378,15 +391,17 @@ const rowProps = (row) => ({
                                     <n-button circle size="small" quaternary type="info" @click.stop="goToShow(order.id)">
                                         <template #icon><n-icon :component="EyeOutline" /></template>
                                     </n-button>
+                                    
+                                    <!-- Editar: Protegido por purchases.edit -->
                                     <n-button 
-                                        v-if="!['Recibida', 'Cancelada'].includes(order.status)"
+                                        v-if="!['Recibida', 'Cancelada'].includes(order.status) && hasPermission('purchases.edit')"
                                         circle size="small" quaternary type="warning" @click.stop="goToEdit(order.id)"
                                     >
                                         <template #icon><n-icon :component="CreateOutline" /></template>
                                     </n-button>
                                 </div>
 
-                                <!-- Dropdown de acciones extra -->
+                                <!-- Dropdown de acciones extra (Protegido internamente) -->
                                 <n-dropdown 
                                     v-if="getDropdownOptions(order).length > 0"
                                     trigger="click" 

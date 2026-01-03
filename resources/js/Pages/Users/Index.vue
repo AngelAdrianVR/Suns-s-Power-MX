@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -14,6 +15,9 @@ const props = defineProps({
     users: Object,
     filters: Object,
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 // Configuración de Notificaciones (API Discreta para usar fuera del setup si es necesario o dentro sin provider directo)
 const { notification } = createDiscreteApi(['notification']);
@@ -47,8 +51,7 @@ const toggleStatus = (user) => {
     router.patch(route('users.toggle-status', user.id), {}, {
         preserveScroll: true,
         onSuccess: () => {
-            const statusText = !user.is_active ? 'activado' : 'desactivado'; // El valor aun no se actualiza en el objeto local instantáneamente sin reload, pero la logica asume el cambio
-            // Para el mensaje usamos la lógica inversa del estado actual visual
+            const statusText = !user.is_active ? 'activado' : 'desactivado'; 
             const newStatus = user.is_active ? 'Inactivo' : 'Activo';
             const type = user.is_active ? 'warning' : 'success';
             
@@ -132,22 +135,27 @@ const createColumns = () => [
         key: 'actions',
         width: 160,
         render(row) {
-            return h(NSpace, {}, () => [
-                 h(
-                    NButton,
-                    {
-                        circle: true,
-                        size: 'small',
-                        type: 'info',
-                        ghost: true,
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            goToShow(row.id);
-                        }
-                    },
-                    { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }
-                ),
-                h(
+            const buttons = [];
+
+            // Botón Ver Detalle (Siempre visible)
+            buttons.push(h(
+                NButton,
+                {
+                    circle: true,
+                    size: 'small',
+                    type: 'info',
+                    ghost: true,
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        goToShow(row.id);
+                    }
+                },
+                { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }
+            ));
+
+            // Botón Editar (Protegido por users.edit)
+            if (hasPermission('users.edit')) {
+                buttons.push(h(
                     NButton,
                     {
                         circle: true,
@@ -160,8 +168,12 @@ const createColumns = () => [
                         }
                     },
                     { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }
-                ),
-                h(
+                ));
+            }
+
+            // Botón Toggle Status (Protegido por users.toggle_status)
+            if (hasPermission('users.toggle_status')) {
+                buttons.push(h(
                     NButton,
                     {
                         circle: true,
@@ -171,8 +183,10 @@ const createColumns = () => [
                         onClick: (e) => toggleStatus(row)
                     },
                     { icon: () => h(NIcon, null, { default: () => h(PowerOutline) }) }
-                )
-            ]);
+                ));
+            }
+
+            return h(NSpace, {}, () => buttons);
         }
     }
 ];
@@ -201,8 +215,8 @@ const rowProps = (row) => {
                 <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
                     Usuarios
                 </h2>
-                <!-- Botón Registrar (Estilo iOS) -->
-                <Link :href="route('users.create')">
+                <!-- Botón Registrar (Protegido por users.create) -->
+                <Link v-if="hasPermission('users.create')" :href="route('users.create')">
                     <n-button type="primary" round class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
                             <n-icon><AddOutline /></n-icon>
@@ -296,12 +310,14 @@ const rowProps = (row) => {
                                         <n-icon size="20"><EyeOutline /></n-icon>
                                     </button>
                                      <button 
+                                        v-if="hasPermission('users.edit')"
                                         @click.stop="router.get(route('users.edit', user.id))"
                                         class="text-amber-500 hover:bg-amber-50 p-1 rounded-full transition"
                                     >
                                         <n-icon size="20"><CreateOutline /></n-icon>
                                     </button>
                                     <button 
+                                        v-if="hasPermission('users.toggle_status')"
                                         @click.stop="toggleStatus(user)"
                                         :class="user.is_active ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'"
                                         class="p-1 rounded-full transition"

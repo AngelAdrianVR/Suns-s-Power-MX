@@ -1,5 +1,6 @@
 <script setup>
 import { ref, h } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
@@ -18,6 +19,9 @@ const props = defineProps({
     client: Object,
     stats: Object, // { total_debt, total_paid, balance, services_count }
 });
+
+// Inicializar permisos
+const { hasPermission } = usePermissions();
 
 // Configuración Global de Notificaciones
 const { notification } = createDiscreteApi(['notification'], {
@@ -148,7 +152,9 @@ const createServiceOrder = () => {
                             <span class="hidden xs:inline">Volver</span>
                         </n-button>
                     </Link>
-                    <Link :href="route('clients.edit', client.id)">
+                    
+                    <!-- Botón Editar: Protegido por clients.edit -->
+                    <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
                         <n-button secondary round type="warning" size="small">
                             <template #icon><n-icon><CreateOutline /></n-icon></template>
                             Editar
@@ -157,7 +163,6 @@ const createServiceOrder = () => {
                 </div>
 
                 <!-- CABECERA PRINCIPAL -->
-                <!-- Se redujo el padding en móvil de p-6 a p-4 y gap ajustado -->
                 <div class="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
                     <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-60 pointer-events-none"></div>
 
@@ -165,7 +170,6 @@ const createServiceOrder = () => {
                         
                         <!-- Columna Identidad -->
                         <div class="flex items-start gap-3 sm:gap-5">
-                            <!-- Avatar responsive: Se ajusta un poco en móvil -->
                             <n-avatar 
                                 :size="60" 
                                 class="bg-indigo-100 text-indigo-600 shadow-inner flex-shrink-0 sm:w-20 sm:h-20"
@@ -174,7 +178,7 @@ const createServiceOrder = () => {
                                 <n-icon :size="30" class="sm:text-[40px]"><PersonOutline /></n-icon>
                             </n-avatar>
                             
-                            <div class="flex-1 min-w-0"> <!-- min-w-0 ayuda a que el texto flex trunque correctamente -->
+                            <div class="flex-1 min-w-0">
                                 <h1 class="text-xl sm:text-3xl font-black text-gray-800 tracking-tight leading-tight mb-2 break-words">
                                     {{ client.name }}
                                 </h1>
@@ -202,7 +206,6 @@ const createServiceOrder = () => {
                         </div>
 
                         <!-- Columna Estado Financiero -->
-                        <!-- En móvil se convierte en columna de ancho completo -->
                         <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             
                             <!-- Tarjeta de Saldo Principal -->
@@ -224,7 +227,7 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
                             
-                            <!-- Stats secundarios: Ahora visibles en móvil como grid -->
+                            <!-- Stats secundarios -->
                             <div class="grid grid-cols-2 sm:flex sm:flex-col gap-2 w-full sm:w-auto">
                                 <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
                                     <div class="text-[10px] text-gray-400 uppercase truncate">Facturado</div>
@@ -257,7 +260,6 @@ const createServiceOrder = () => {
                         justify-content="space-between"
                         class="custom-tabs"
                     >
-                        <!-- Ajuste en justify-content para que las pestañas se distribuyan mejor en móvil -->
                         
                         <!-- PESTAÑA 1: SERVICIOS -->
                         <n-tab-pane name="services" tab="Servicios">
@@ -275,13 +277,20 @@ const createServiceOrder = () => {
                                     <h3 class="text-base sm:text-lg font-bold text-gray-800">Historial</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Gestión operativa</p>
                                 </div>
-                                <n-button type="primary" round size="small" class="w-full sm:w-auto" @click="createServiceOrder">
+                                <!-- Botón Nueva Orden: Protegido por service_orders.create -->
+                                <n-button 
+                                    v-if="hasPermission('service_orders.create')"
+                                    type="primary" 
+                                    round 
+                                    size="small" 
+                                    class="w-full sm:w-auto" 
+                                    @click="createServiceOrder"
+                                >
                                     <template #icon><n-icon><AddOutline /></n-icon></template>
                                     Nueva Orden
                                 </n-button>
                             </div>
 
-                            <!-- Wrapper Scroll Edge-to-Edge en Móvil -->
                             <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
                                 <div class="min-w-[500px] sm:min-w-full">
                                     <n-data-table
@@ -354,7 +363,8 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
 
-                            <div class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-gray-50 transition-colors cursor-pointer group">
+                            <!-- Opcional: Proteger subida de documentos con clients.edit si se desea -->
+                            <div v-if="hasPermission('clients.edit')" class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-gray-50 transition-colors cursor-pointer group">
                                 <div class="bg-blue-50 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
                                     <n-icon size="20" class="text-blue-500"><CloudDownloadOutline /></n-icon>
                                 </div>
