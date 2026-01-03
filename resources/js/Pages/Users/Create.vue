@@ -29,37 +29,28 @@ export default {
         NP,
         NDivider,
         NAlert,
-        // Iconos como componentes (para usar <Icon />)
         ArrowBackOutline,
         CloudUploadOutline, 
         SaveOutline,
         CallOutline
     },
-    props: {
-        branches: {
-            type: Array,
-            default: () => []
-        }
-    },
+    // Eliminamos props de branches ya que no se usan
+    props: {},
     setup() {
-        // Inicializamos el formulario de Inertia
         const form = useForm({
             name: '',
             email: '',
-            phone: '', // Nuevo campo
+            phone: '',
             password: '',
-            branch_id: null,
+            // Eliminamos branch_id del formulario frontend
             documents: [] 
         });
 
         const { message } = createDiscreteApi(['message']);
 
-        // IMPORTANTE: Retornamos los iconos que se usan en :component="Variable"
-        // para que el template pueda acceder a las definiciones de los objetos.
         return { 
             form, 
             message,
-            // Iconos expuestos al template
             PersonOutline,
             MailOutline,
             KeyOutline,
@@ -67,29 +58,22 @@ export default {
             RefreshOutline,
             SaveOutline,
             ArrowBackOutline,
-            CallOutline // Nuevo icono
+            CallOutline
         };
     },
     data() {
         return {
-            // Reglas de validación para el frontend (Naive UI)
             rules: {
                 name: { required: true, message: 'El nombre es obligatorio', trigger: ['input', 'blur'] },
                 email: { required: true, message: 'El correo es obligatorio', trigger: ['input', 'blur'] },
-                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] }, // Regla nueva
+                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] },
                 password: { required: true, message: 'La contraseña es obligatoria', trigger: ['input', 'blur'] },
-                branch_id: { required: true, type: 'number', message: 'Selecciona una sucursal', trigger: ['blur', 'change'] }
+                // Eliminamos regla de branch_id
             }
         };
     },
     computed: {
-        // Mapeamos las sucursales para el NSelect
-        branchOptions() {
-            return this.branches.map(branch => ({
-                label: branch.name,
-                value: branch.id
-            }));
-        }
+        // Eliminamos branchOptions
     },
     methods: {
         goBack() {
@@ -102,14 +86,11 @@ export default {
                 password += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             this.form.password = password;
-            // Limpiamos el error si existía uno previo en el campo contraseña
             this.form.clearErrors('password');
             this.message.success("Contraseña generada exitosamente");
         },
         handleFileListChange(data) {
-            // Actualizamos el array de documentos del formulario
             this.form.documents = data.fileList.map(file => file.file);
-            // Limpiamos errores de validación de documentos si el usuario agrega archivos
             this.form.clearErrors('documents');
         },
         submit() {
@@ -155,7 +136,7 @@ export default {
                     
                     <div class="mb-6">
                         <h1 class="text-2xl font-bold text-gray-800">Información del Empleado</h1>
-                        <p class="text-gray-500 text-sm mt-1">Completa el formulario para dar de alta un nuevo usuario en el ERP.</p>
+                        <p class="text-gray-500 text-sm mt-1">Completa el formulario para dar de alta un nuevo usuario en la sucursal actual.</p>
                     </div>
 
                     <n-divider />
@@ -206,7 +187,7 @@ export default {
                                 </n-input>
                             </n-form-item>
 
-                            <!-- Teléfono (Nuevo Campo) -->
+                            <!-- Teléfono -->
                             <n-form-item 
                                 label="Teléfono (Con whatsapp)" 
                                 path="phone"
@@ -222,26 +203,6 @@ export default {
                                         <n-icon :component="CallOutline" />
                                     </template>
                                 </n-input>
-                            </n-form-item>
-
-                            <!-- Sucursal -->
-                            <n-form-item 
-                                label="Sucursal Asignada" 
-                                path="branch_id"
-                                :validation-status="form.errors.branch_id ? 'error' : undefined"
-                                :feedback="form.errors.branch_id"
-                            >
-                                <n-select
-                                    v-model:value="form.branch_id"
-                                    :options="branchOptions"
-                                    placeholder="Selecciona una sucursal"
-                                    filterable
-                                    @update:value="form.clearErrors('branch_id')"
-                                >
-                                    <template #arrow>
-                                        <n-icon :component="BusinessOutline" />
-                                    </template>
-                                </n-select>
                             </n-form-item>
 
                             <!-- Contraseña -->
@@ -261,7 +222,6 @@ export default {
                                     <template #prefix>
                                         <n-icon :component="KeyOutline" />
                                     </template>
-                                    <!-- Botón para generar contraseña -->
                                     <template #suffix>
                                         <n-button 
                                             quaternary 

@@ -68,6 +68,7 @@ Route::middleware([
 // ---------------------------- Rutas de productos --------------------------------
 Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
 Route::post('/products/{product}/adjust-stock', [ProductController::class, 'adjustStock'])->name('products.adjust_stock');
+Route::get('/products/{product}/history', [ProductController::class, 'getHistory'])->name('products.history');
 Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 
@@ -132,6 +133,7 @@ Route::resource('clientes', ClientController::class)->names('clients')
 // API interna para el componente Vue (obtener deudas)
 Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
     ->name('api.clients.pending-orders');
+
 
 // ---------------------------- Rutas de Pagos --------------------------------
 Route::resource('/payments', PaymentController::class)->middleware('auth');
