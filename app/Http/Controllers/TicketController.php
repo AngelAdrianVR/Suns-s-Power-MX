@@ -29,8 +29,8 @@ class TicketController extends Controller
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('title', 'like', "%{$search}%")
-                      ->orWhere('description', 'like', "%{$search}%") // Agregado: Búsqueda en descripción
-                      ->orWhere('id', 'like', "%{$search}%") // Búsqueda por folio
+                      ->orWhere('description', 'like', "%{$search}%")
+                      ->orWhere('id', 'like', "%{$search}%")
                       ->orWhereHas('client', function ($cq) use ($search) {
                           $cq->where('name', 'like', "%{$search}%");
                       });
@@ -42,7 +42,7 @@ class TicketController extends Controller
             ->when($priority, function ($query, $priority) {
                 $query->where('priority', $priority);
             })
-            ->orderBy('created_at', 'desc') // Los más recientes primero
+            ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
             ->through(function ($ticket) {
@@ -73,11 +73,26 @@ class TicketController extends Controller
      */
     public function create()
     {
-        // Cargamos clientes para el select. 
         $clients = Client::select('id', 'name')->orderBy('name')->get();
+        
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        $serviceOrders = ServiceOrder::with('client:id,name')
+            ->where('branch_id', $branchId)
+            ->select('id', 'client_id', 'created_at', 'total_amount', 'status')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'label' => "Orden #{$order->id} - {$order->client->name} ({$order->created_at->format('d/m/Y')})",
+                    'client_id' => $order->client_id
+                ];
+            });
         
         return Inertia::render('Ticket/Create', [
             'clients' => $clients,
+            'serviceOrders' => $serviceOrders,
         ]);
     }
 
@@ -93,7 +108,7 @@ class TicketController extends Controller
             'description' => 'required|string',
             'priority' => 'required|in:Baja,Media,Alta,Urgente',
             'status' => 'required|in:Abierto,En Análisis,Resuelto,Cerrado',
-            'evidence.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,mp4|max:10240', // 10MB max
+            'evidence.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,mp4|max:10240',
         ]);
 
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -108,7 +123,6 @@ class TicketController extends Controller
             'status' => $validated['status'],
         ]);
 
-        // Manejo de Evidencias (Múltiples archivos)
         if ($request->hasFile('evidence')) {
             foreach ($request->file('evidence') as $file) {
                 $ticket->addMedia($file)->toMediaCollection('ticket_evidence');
@@ -119,23 +133,20 @@ class TicketController extends Controller
     }
 
     /**
-     * Muestra el detalle del ticket con funcionalidad de búsqueda en comentarios.
+     * Muestra el detalle del ticket.
      */
     public function show(Request $request, Ticket $ticket)
     {
-        // Eager Loading de relaciones principales
-        $ticket->load(['client', 'serviceOrder', 'media', 'convertedOrder']);
+        $ticket->load(['client', 'serviceOrder', 'media']);
         
-        // Obtener búsqueda de comentarios (si existe)
         $searchComment = $request->input('search_comment');
 
-        // Cargar comentarios/respuestas con filtro opcional
         $comments = $ticket->comments()
-            ->with(['user', 'media']) // Asumiendo relación 'comments' en el modelo Ticket
+            ->with(['user']) 
             ->when($searchComment, function ($query, $search) {
                 $query->where('body', 'like', "%{$search}%");
             })
-            ->orderBy('created_at', 'asc') // Historial cronológico
+            ->orderBy('created_at', 'asc')
             ->get()
             ->map(function ($comment) {
                 return [
@@ -143,19 +154,12 @@ class TicketController extends Controller
                     'user' => $comment->user ? [
                         'id' => $comment->user->id,
                         'name' => $comment->user->name,
-                        'profile_photo_url' => $comment->user->profile_photo_url, // Compatible con Jetstream
+                        'profile_photo_url' => $comment->user->profile_photo_url,
                     ] : null,
                     'body' => $comment->body,
-                    'created_at' => $comment->created_at->format('d/m/Y H:i'),
-                    'is_staff' => true, // Bandera por si quieres diferenciar estilos
-                    'attachments' => $comment->getMedia('comment_attachments')->map(function ($media) {
-                         return [
-                            'id' => $media->id,
-                            'url' => $media->getUrl(),
-                            'name' => $media->file_name,
-                            'mime_type' => $media->mime_type,
-                         ];
-                    }),
+                    'created_at' => $comment->created_at, 
+                    'is_staff' => true, 
+                    'attachments' => [],
                 ];
             });
 
@@ -167,12 +171,10 @@ class TicketController extends Controller
                 'status' => $ticket->status,
                 'priority' => $ticket->priority,
                 'resolution_notes' => $ticket->resolution_notes,
-                'created_at' => $ticket->created_at->format('d/m/Y H:i'),
-                'updated_at' => $ticket->updated_at->format('d/m/Y H:i'),
+                'created_at' => $ticket->created_at,
+                'updated_at' => $ticket->updated_at,
                 'client' => $ticket->client,
                 'service_order' => $ticket->serviceOrder,
-                'converted_order' => $ticket->convertedOrder,
-                // Mapeamos los medios del ticket principal
                 'media' => $ticket->getMedia('ticket_evidence')->map(function ($media) {
                     return [
                         'id' => $media->id,
@@ -183,7 +185,7 @@ class TicketController extends Controller
                     ];
                 }),
             ],
-            'comments' => $comments, // Pasamos los comentarios (timeline)
+            'conversation_history' => $comments,
             'filters' => [
                 'search_comment' => $searchComment,
             ],
@@ -197,30 +199,20 @@ class TicketController extends Controller
     {
         $validated = $request->validate([
             'body' => 'required|string',
-            'attachments.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx|max:10240',
+            'new_status' => 'nullable|in:Abierto,En Análisis,Resuelto,Cerrado', 
         ]);
 
-        // Crear el comentario asociado al ticket y al usuario actual
-        // Asumiendo relación polimórfica o directa. Ajusta según tu modelo Comment.
         $comment = $ticket->comments()->create([
             'body' => $validated['body'],
             'user_id' => Auth::id(),
-            // 'branch_id' => ... si los comentarios pertenecen a sucursal
         ]);
 
-        // Manejo de adjuntos en el comentario
-        if ($request->hasFile('attachments')) {
-            foreach ($request->file('attachments') as $file) {
-                $comment->addMedia($file)->toMediaCollection('comment_attachments');
-            }
+        if (!empty($validated['new_status']) && $validated['new_status'] !== $ticket->status) {
+            $ticket->status = $validated['new_status'];
+            $ticket->save();
+        } else {
+            $ticket->touch(); 
         }
-
-        // Opcional: Actualizar el estatus del ticket si estaba cerrado y se recibe respuesta
-        // if ($ticket->status === 'Cerrado') {
-        //     $ticket->update(['status' => 'Abierto']);
-        // }
-        // O actualizar el 'updated_at' del ticket para que suba en la lista
-        $ticket->touch();
 
         return redirect()->back()->with('success', 'Respuesta agregada correctamente.');
     }
@@ -233,16 +225,21 @@ class TicketController extends Controller
         $ticket->load(['media']);
         $clients = Client::select('id', 'name')->orderBy('name')->get();
         
-        $relatedOrders = [];
-        if ($ticket->client_id) {
-            $relatedOrders = ServiceOrder::where('client_id', $ticket->client_id)
-                ->select('id', 'created_at')
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function($order) {
-                    return ['value' => $order->id, 'label' => 'Orden #' . $order->id . ' - ' . $order->created_at->format('d/m/Y')];
-                });
-        }
+        // Replicamos la carga de órdenes de servicio como en 'create' para permitir cambiarla
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        $serviceOrders = ServiceOrder::with('client:id,name')
+            ->where('branch_id', $branchId)
+            ->select('id', 'client_id', 'created_at', 'status')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'label' => "Orden #{$order->id} - {$order->client->name} ({$order->created_at->format('d/m/Y')})",
+                    'client_id' => $order->client_id
+                ];
+            });
 
         return Inertia::render('Ticket/Edit', [
             'ticket' => [
@@ -263,7 +260,8 @@ class TicketController extends Controller
                 }),
             ],
             'clients' => $clients,
-            'client_orders' => $relatedOrders,
+            // Enviamos 'serviceOrders' (todas las disponibles) en lugar de solo 'client_orders'
+            'serviceOrders' => $serviceOrders, 
         ]);
     }
 
@@ -312,7 +310,7 @@ class TicketController extends Controller
     }
 
     /**
-     * Actualización rápida de estatus (útil para Kanban o listas rápidas).
+     * Actualización rápida de estatus.
      */
     public function updateStatus(Request $request, Ticket $ticket)
     {

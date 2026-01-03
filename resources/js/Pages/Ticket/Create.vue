@@ -1,16 +1,17 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NForm, NFormItem, NInput, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi 
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline
+    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
-    clients: Array
+    clients: Array,
+    serviceOrders: Array // Nueva prop con las órdenes disponibles
 });
 
 const { notification } = createDiscreteApi(['notification']);
@@ -20,6 +21,12 @@ const formRef = ref(null);
 const clientOptions = props.clients.map(client => ({
     label: client.name,
     value: client.id
+}));
+
+// Mapeo de órdenes de servicio para el select
+const serviceOrderOptions = props.serviceOrders.map(order => ({
+    label: order.label,
+    value: order.id
 }));
 
 // Opciones estáticas según la migración
@@ -41,11 +48,32 @@ const form = useForm({
     title: '',
     description: '',
     client_id: null,
-    related_service_order_id: null, // Opcional, por ahora nulo
+    related_service_order_id: null, 
     priority: 'Media', // Valor por defecto
     status: 'Abierto', // Valor por defecto
     evidence: [], // Array para múltiples archivos
 });
+
+// Variable computada para saber si deshabilitar el selector de cliente
+const isClientDisabled = ref(false);
+
+// Watcher: Si selecciona una orden de servicio, autocompletar y bloquear cliente
+watch(
+    () => form.related_service_order_id,
+    (newOrderId) => {
+        if (newOrderId) {
+            const selectedOrder = props.serviceOrders.find(o => o.id === newOrderId);
+            if (selectedOrder) {
+                form.client_id = selectedOrder.client_id;
+                isClientDisabled.value = true;
+            }
+        } else {
+            // Si deselecciona la orden, desbloqueamos el cliente (opcional: ¿limpiar cliente?)
+            isClientDisabled.value = false;
+            // No limpiamos el cliente automáticamente para no molestar al usuario si solo se equivocó de orden
+        }
+    }
+);
 
 const rules = {
     title: { required: true, message: 'El asunto es obligatorio', trigger: 'blur' },
@@ -141,26 +169,46 @@ const submit = () => {
                                             <n-input v-model:value="form.title" placeholder="Ej. Falla en inversor central" />
                                         </n-form-item>
                                     </n-grid-item>
-
+                                    
+                                    <!-- Nueva fila para Orden de Servicio y Cliente -->
                                     <n-grid-item>
-                                        <n-form-item 
-                                            label="Cliente Afectado" 
-                                            path="client_id"
-                                            :validation-status="form.errors.client_id ? 'error' : undefined"
-                                            :feedback="form.errors.client_id"
-                                        >
-                                            <n-select 
-                                                v-model:value="form.client_id" 
-                                                :options="clientOptions" 
-                                                placeholder="Buscar cliente..."
-                                                filterable
-                                                clearable
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            
+                                            <!-- Selector de Orden de Servicio (Opcional) -->
+                                            <n-form-item label="Relacionar Orden de Servicio (Opcional)" path="related_service_order_id">
+                                                <n-select
+                                                    v-model:value="form.related_service_order_id"
+                                                    :options="serviceOrderOptions"
+                                                    placeholder="Buscar orden..."
+                                                    filterable
+                                                    clearable
+                                                >
+                                                    <template #prefix>
+                                                        <n-icon :component="DocumentTextOutline" />
+                                                    </template>
+                                                </n-select>
+                                            </n-form-item>
+
+                                            <n-form-item 
+                                                label="Cliente Afectado" 
+                                                path="client_id"
+                                                :validation-status="form.errors.client_id ? 'error' : undefined"
+                                                :feedback="form.errors.client_id"
                                             >
-                                                <template #prefix>
-                                                    <n-icon :component="PersonOutline" />
-                                                </template>
-                                            </n-select>
-                                        </n-form-item>
+                                                <n-select 
+                                                    v-model:value="form.client_id" 
+                                                    :options="clientOptions" 
+                                                    placeholder="Buscar cliente..."
+                                                    filterable
+                                                    clearable
+                                                    :disabled="isClientDisabled"
+                                                >
+                                                    <template #prefix>
+                                                        <n-icon :component="PersonOutline" />
+                                                    </template>
+                                                </n-select>
+                                            </n-form-item>
+                                        </div>
                                     </n-grid-item>
 
                                     <n-grid-item>

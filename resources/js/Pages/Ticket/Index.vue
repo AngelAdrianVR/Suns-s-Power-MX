@@ -9,6 +9,8 @@ import {
     SearchOutline, AddOutline, CreateOutline, TrashOutline, 
     TicketOutline, PersonOutline, ConstructOutline, TimeOutline, AlertCircleOutline
 } from '@vicons/ionicons5';
+import { format, parse } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 // Props desde el controlador
 const props = defineProps({
@@ -105,6 +107,25 @@ const getStatusType = (status) => {
     }
 };
 
+// Función para formatear fechas (Idéntica a Show.vue)
+const formatDateLong = (dateStr) => {
+    if (!dateStr) return 'Fecha desconocida';
+    
+    let dateObj = new Date(dateStr);
+
+    // Si viene en formato string con barras (dd/mm/yyyy HH:mm), lo parseamos manualmente
+    if (typeof dateStr === 'string' && dateStr.includes('/')) {
+        const parsed = parse(dateStr, 'd/M/yyyy HH:mm', new Date());
+        if (!isNaN(parsed.getTime())) {
+            dateObj = parsed;
+        }
+    }
+    
+    if (isNaN(dateObj.getTime())) return dateStr; 
+
+    return format(dateObj, "d 'de' MMMM yyyy, h:mm a", { locale: es });
+};
+
 // --- Configuración de Columnas (Naive UI DataTable) ---
 const createColumns = () => [
     {
@@ -120,9 +141,16 @@ const createColumns = () => [
         title: 'Asunto / Descripción',
         key: 'title',
         render(row) {
-            return h('div', { class: 'flex flex-col' }, [
+            return h('div', { class: 'flex flex-col gap-1' }, [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.title),
-                h('span', { class: 'text-xs text-gray-400 mt-0.5 truncate max-w-xs' }, row.description_preview)
+                h('span', { class: 'text-xs text-gray-400 truncate max-w-xs' }, row.description_preview),
+                // Indicador de Orden de Servicio Relacionada
+                row.service_order_id ? h(NTag, { type: 'info', size: 'tiny', bordered: false, class: 'w-max mt-1' }, {
+                    default: () => h('div', { class: 'flex items-center gap-1' }, [
+                        h(NIcon, { component: ConstructOutline }),
+                        h('span', `Orden #${row.service_order_id}`)
+                    ])
+                }) : null
             ]);
         }
     },
@@ -167,7 +195,8 @@ const createColumns = () => [
         render(row) {
             return h('div', { class: 'flex items-center gap-1 text-gray-500 text-xs' }, [
                 h(NIcon, { component: TimeOutline }),
-                h('span', row.created_at)
+                // Usamos la función formatDateLong para el formato consistente
+                h('span', { class: 'capitalize' }, formatDateLong(row.created_at))
             ]);
         }
     },
@@ -362,7 +391,8 @@ const rowProps = (row) => {
                             </n-avatar>
                             <div class="flex flex-col">
                                 <span class="text-xs font-semibold text-gray-700">{{ ticket.client?.name || 'Sin Cliente' }}</span>
-                                <span class="text-[10px] text-gray-400">{{ ticket.created_at }}</span>
+                                <!-- Fecha formateada también en móvil -->
+                                <span class="text-[10px] text-gray-400 capitalize">{{ formatDateLong(ticket.created_at) }}</span>
                             </div>
                             <div class="ml-auto">
                                 <n-tag :type="getStatusType(ticket.status)" size="small" round>

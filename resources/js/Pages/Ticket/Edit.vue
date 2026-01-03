@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -12,7 +12,7 @@ import {
 const props = defineProps({
     ticket: Object,
     clients: Array,
-    client_orders: Array
+    serviceOrders: Array // Ahora recibimos todas las órdenes disponibles
 });
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -22,6 +22,11 @@ const formRef = ref(null);
 const clientOptions = props.clients.map(client => ({
     label: client.name,
     value: client.id
+}));
+
+const serviceOrderOptions = props.serviceOrders.map(order => ({
+    label: order.label,
+    value: order.id
 }));
 
 const priorityOptions = [
@@ -50,6 +55,29 @@ const form = useForm({
     resolution_notes: props.ticket.resolution_notes || '',
     evidence: [], // Nuevos archivos
 });
+
+// Lógica de control de cliente (Bloqueo si hay orden seleccionada)
+const isClientDisabled = ref(!!form.related_service_order_id);
+
+watch(
+    () => form.related_service_order_id,
+    (newOrderId) => {
+        if (newOrderId) {
+            const selectedOrder = props.serviceOrders.find(o => o.id === newOrderId);
+            if (selectedOrder) {
+                form.client_id = selectedOrder.client_id;
+                isClientDisabled.value = true;
+                notification.info({ 
+                    content: 'Cliente actualizado según la orden seleccionada',
+                    duration: 2000
+                });
+            }
+        } else {
+            // Si desvincula la orden, permitimos cambiar el cliente libremente
+            isClientDisabled.value = false;
+        }
+    }
+);
 
 const rules = {
     title: { required: true, message: 'El asunto es obligatorio', trigger: 'blur' },
@@ -162,23 +190,38 @@ const submit = () => {
                                             <n-input v-model:value="form.title" />
                                         </n-form-item>
                                     </n-grid-item>
-
+                                    
+                                    <!-- Selectores Reorganizados para permitir cambio -->
                                     <n-grid-item>
-                                        <n-form-item label="Cliente" path="client_id">
-                                            <n-select v-model:value="form.client_id" :options="clientOptions" filterable disabled placeholder="El cliente no se puede cambiar" />
-                                        </n-form-item>
-                                    </n-grid-item>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <n-form-item label="Orden de Servicio Relacionada" path="related_service_order_id">
+                                                <n-select 
+                                                    v-model:value="form.related_service_order_id" 
+                                                    :options="serviceOrderOptions" 
+                                                    placeholder="Vincular con una instalación..."
+                                                    filterable
+                                                    clearable
+                                                >
+                                                    <template #prefix>
+                                                        <n-icon :component="DocumentTextOutline" />
+                                                    </template>
+                                                </n-select>
+                                            </n-form-item>
 
-                                    <!-- Si hay órdenes relacionadas, aquí se podrían mostrar/seleccionar -->
-                                    <n-grid-item v-if="props.client_orders && props.client_orders.length > 0">
-                                        <n-form-item label="Orden de Servicio Relacionada" path="related_service_order_id">
-                                            <n-select 
-                                                v-model:value="form.related_service_order_id" 
-                                                :options="props.client_orders" 
-                                                placeholder="Vincular con una instalación..."
-                                                clearable
-                                            />
-                                        </n-form-item>
+                                            <n-form-item label="Cliente" path="client_id">
+                                                <n-select 
+                                                    v-model:value="form.client_id" 
+                                                    :options="clientOptions" 
+                                                    filterable 
+                                                    :disabled="isClientDisabled"
+                                                    placeholder="Selecciona un cliente" 
+                                                >
+                                                    <template #prefix>
+                                                        <n-icon :component="PersonOutline" />
+                                                    </template>
+                                                </n-select>
+                                            </n-form-item>
+                                        </div>
                                     </n-grid-item>
 
                                     <n-grid-item>
