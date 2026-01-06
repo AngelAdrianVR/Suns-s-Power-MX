@@ -19,7 +19,7 @@ const props = defineProps({
 // Inicializar permisos
 const { hasPermission } = usePermissions();
 
-// Configuración de Notificaciones (API Discreta para usar fuera del setup si es necesario o dentro sin provider directo)
+// Configuración de Notificaciones
 const { notification } = createDiscreteApi(['notification']);
 
 // Estado para búsqueda
@@ -45,7 +45,6 @@ const openImageModal = (url) => {
 
 // Función para alternar estado (Activar/Desactivar)
 const toggleStatus = (user) => {
-    // Detenemos la propagación para que no dispare el click de la fila/tarjeta
     event.stopPropagation(); 
 
     router.patch(route('users.toggle-status', user.id), {}, {
@@ -83,7 +82,7 @@ const createColumns = () => [
                 src: row.profile_photo_url,
                 class: 'cursor-pointer hover:opacity-80 transition-opacity',
                 onClick: (e) => {
-                    e.stopPropagation(); // Evitar navegar al hacer clic en la foto
+                    e.stopPropagation();
                     openImageModal(row.profile_photo_url);
                 }
             });
@@ -102,6 +101,17 @@ const createColumns = () => [
         key: 'email',
         render(row) {
             return h('span', { class: 'text-gray-500' }, row.email);
+        }
+    },
+    {
+        title: 'Rol',
+        key: 'role',
+        render(row) {
+            // Asumimos que viene 'roles' con Spatie y tomamos el primero
+            if (row.roles && row.roles.length > 0) {
+                return h(NTag, { type: 'default', size: 'small', bordered: false, round: true }, () => row.roles[0].name);
+            }
+            return h('span', { class: 'text-gray-400 italic text-xs' }, 'Sin rol');
         }
     },
     {
@@ -137,7 +147,7 @@ const createColumns = () => [
         render(row) {
             const buttons = [];
 
-            // Botón Ver Detalle (Siempre visible)
+            // Botón Ver Detalle
             buttons.push(h(
                 NButton,
                 {
@@ -153,7 +163,7 @@ const createColumns = () => [
                 { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }
             ));
 
-            // Botón Editar (Protegido por users.edit)
+            // Botón Editar
             if (hasPermission('users.edit')) {
                 buttons.push(h(
                     NButton,
@@ -171,7 +181,7 @@ const createColumns = () => [
                 ));
             }
 
-            // Botón Toggle Status (Protegido por users.toggle_status)
+            // Botón Toggle Status
             if (hasPermission('users.toggle_status')) {
                 buttons.push(h(
                     NButton,
@@ -193,19 +203,18 @@ const createColumns = () => [
 
 const columns = createColumns();
 
-// Paginación manual para Naive UI (conectada a Laravel Pagination)
+// Paginación manual para Naive UI
 const handlePageChange = (page) => {
     router.get(props.users.path + '?page=' + page, { search: search.value }, { preserveState: true });
 };
 
-// Propiedades de la fila para hacerla clicable
+// Propiedades de la fila
 const rowProps = (row) => {
   return {
     style: 'cursor: pointer;',
     onClick: () => goToShow(row.id)
   }
 }
-
 </script>
 
 <template>
@@ -215,7 +224,7 @@ const rowProps = (row) => {
                 <h2 class="font-semibold text-2xl text-gray-800 leading-tight">
                     Usuarios
                 </h2>
-                <!-- Botón Registrar (Protegido por users.create) -->
+                <!-- Botón Registrar -->
                 <Link v-if="hasPermission('users.create')" :href="route('users.create')">
                     <n-button type="primary" round class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
@@ -230,7 +239,7 @@ const rowProps = (row) => {
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 
-                <!-- Barra de búsqueda y Filtros -->
+                <!-- Barra de búsqueda -->
                 <div class="mb-6 px-4 sm:px-0">
                     <n-input 
                         v-model:value="search" 
@@ -258,7 +267,7 @@ const rowProps = (row) => {
                         :row-props="rowProps"
                         class="iphone-table"
                     />
-                    <!-- Paginación Personalizada al pie de la tabla -->
+                    <!-- Paginación Personalizada -->
                     <div class="p-4 flex justify-end border-t border-gray-100" v-if="users.total > 0">
                         <n-pagination
                             :page="users.current_page"
@@ -280,7 +289,7 @@ const rowProps = (row) => {
                         class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-4 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform duration-200"
                         @click="goToShow(user.id)"
                     >
-                        <!-- Indicador visual de estado (borde izquierdo) -->
+                        <!-- Indicador visual -->
                         <div 
                             class="absolute left-0 top-0 bottom-0 w-1.5"
                             :class="user.is_active ? 'bg-green-400' : 'bg-red-400'"
@@ -301,7 +310,7 @@ const rowProps = (row) => {
                         <div class="flex-grow min-w-0">
                             <div class="flex justify-between items-start">
                                 <h3 class="text-lg font-bold text-gray-800 truncate">{{ user.name }}</h3>
-                                <!-- Botón de menú o acciones rápidas -->
+                                <!-- Botones móvil -->
                                 <div class="flex gap-2">
                                      <button 
                                         @click.stop="goToShow(user.id)"
@@ -327,14 +336,21 @@ const rowProps = (row) => {
                                 </div>
                             </div>
                             <p class="text-sm text-gray-500 truncate">{{ user.email }}</p>
-                            <div class="mt-2 flex items-center gap-2">
+                            
+                            <!-- Rol y Sucursal en móvil -->
+                            <div class="mt-2 flex items-center gap-2 flex-wrap">
+                                <span 
+                                    class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-medium"
+                                    v-if="user.roles && user.roles.length"
+                                >
+                                    {{ user.roles[0].name }}
+                                </span>
                                 <span 
                                     class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium"
                                     v-if="user.branch"
                                 >
                                     {{ user.branch.name }}
                                 </span>
-                                <span class="text-xs text-gray-400 italic" v-else>Sin sucursal</span>
                             </div>
                         </div>
                     </div>
@@ -353,7 +369,7 @@ const rowProps = (row) => {
             </div>
         </div>
 
-        <!-- Modal para ver foto en grande -->
+        <!-- Modal para ver foto -->
         <n-modal v-model:show="showImageModal">
             <n-card
                 style="width: 90%; max-width: 500px; padding: 0; overflow: hidden; border-radius: 16px;"
@@ -368,11 +384,10 @@ const rowProps = (row) => {
 </template>
 
 <style scoped>
-/* Ajustes finos para que la tabla de Naive se sienta más "Apple" */
 :deep(.n-data-table .n-data-table-th) {
     background-color: transparent;
     font-weight: 600;
-    color: #6b7280; /* gray-500 */
+    color: #6b7280;
     border-bottom: 1px solid #f3f4f6;
 }
 :deep(.n-data-table .n-data-table-td) {
@@ -382,6 +397,6 @@ const rowProps = (row) => {
     padding-bottom: 16px;
 }
 :deep(.n-data-table:hover .n-data-table-td) {
-    background-color: rgba(249, 250, 251, 0.5); /* hover muy sutil */
+    background-color: rgba(249, 250, 251, 0.5);
 }
 </style>

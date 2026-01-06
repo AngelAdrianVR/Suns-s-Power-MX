@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Auth;
+use Spatie\Permission\Models\Role; // Importamos el modelo Role de Spatie
 
 class UserController extends Controller
 {
@@ -26,16 +27,17 @@ class UserController extends Controller
 
         $users = User::query()
             ->where('branch_id', $branchId) // Filtramos por la sucursal actual
-            ->with('branch') // Cargamos la relación (opcional si ya sabemos la sucursal, pero útil para mostrar el nombre)
+            ->where('id', '!=', 1) // Ocultamos al usuario de soporte (ID 1)
+            ->with(['branch', 'roles']) // Cargamos roles y sucursal
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%");
                 });
             })
-            ->latest() // Ordenar por creación descendente
-            ->paginate(15) // Paginación de 15 elementos
-            ->withQueryString(); // Mantener parámetros de búsqueda en la URL
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
 
         return Inertia::render('Users/Index', [
             'users' => $users,
@@ -47,23 +49,33 @@ class UserController extends Controller
 
     public function create()
     {
-        // Ya no necesitamos enviar las sucursales porque se asignará automáticamente
-        return Inertia::render('Users/Create');
+        // Obtenemos los roles y los mapeamos para el Select de Naive UI
+        $roles = Role::all()->map(function ($role) {
+            return [
+                'label' => $role->name,
+                'value' => $role->name
+            ];
+        });
+
+        return Inertia::render('Users/Create', [
+            'roles' => $roles
+        ]);
     }
 
     public function store(Request $request)
     {
-        // Validamos los datos (eliminamos branch_id de la validación del request)
+        // Validamos los datos
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'phone' => ['nullable', 'string', 'max:20'],
             'password' => ['required', 'string', 'min:8'],
+            'role' => ['required', 'exists:roles,name'], // Validación del rol
             'documents' => ['nullable', 'array'],
-            'documents.*' => ['file', 'max:10240'], // Máx 10MB por archivo
+            'documents.*' => ['file', 'max:10240'],
         ]);
 
-        // Obtenemos el ID de la sucursal actual para asignarlo
+        // Obtenemos el ID de la sucursal actual
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         $user = User::create([
@@ -71,11 +83,14 @@ class UserController extends Controller
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
             'password' => Hash::make($validated['password']),
-            'branch_id' => $branchId, // Asignación automática
+            'branch_id' => $branchId,
             'is_active' => true,
         ]);
 
-        // Procesar archivos con Spatie Media Library
+        // Asignamos el rol utilizando Spatie
+        $user->assignRole($validated['role']);
+
+        // Procesar archivos
         if ($request->hasFile('documents')) {
             foreach ($request->file('documents') as $file) {
                 $user->addMedia($file)->toMediaCollection('documents');
@@ -84,22 +99,19 @@ class UserController extends Controller
 
         return redirect()->route('users.index')->with('flash', [
             'type' => 'success',
-            'message' => 'Usuario creado exitosamente en la sucursal actual.'
+            'message' => 'Usuario creado exitosamente con rol asignado.'
         ]);
     }
 
     public function show(User $user)
     {        
-        // Verificación de seguridad: asegurar que el usuario pertenece a la sucursal actual
         $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($user->branch_id !== $currentBranchId) {
             abort(403, 'No tienes permiso para ver este usuario.');
         }
 
-        // Cargamos la sucursal
-        $user->load(['branch', 'media']);
+        $user->load(['branch', 'media', 'roles']);
         
-        // Cargamos las últimas 20 tareas asignadas
         $lastTasks = $user->tasks()
             ->orderBy('created_at', 'desc')
             ->limit(20)
@@ -115,25 +127,30 @@ class UserController extends Controller
     {
         $user = User::findOrFail($user);
         
-        // Verificación de seguridad
         $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($user->branch_id !== $currentBranchId) {
             abort(403, 'No tienes permiso para editar este usuario.');
         }
 
-        $user->load('branch', 'media');
+        // Cargamos roles actuales del usuario
+        $user->load(['branch', 'media', 'roles']);
         
-        // En Edit también quitamos la selección de sucursales si queremos restringirlo
-        // o las enviamos si permites mover usuarios (aquí asumo restricción)
+        // Obtenemos los roles para el select
+        $roles = Role::all()->map(function ($role) {
+            return [
+                'label' => $role->name,
+                'value' => $role->name
+            ];
+        });
         
         return Inertia::render('Users/Edit', [
-            'user' => $user
+            'user' => $user,
+            'roles' => $roles
         ]);
     }
 
     public function update(Request $request, User $user)
     {
-        // Verificación de seguridad
         $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($user->branch_id !== $currentBranchId) {
             abort(403, 'No tienes permiso para actualizar este usuario.');
@@ -149,7 +166,7 @@ class UserController extends Controller
                 Rule::unique('users')->ignore($user->id)
             ],
             'phone' => ['nullable', 'string', 'max:20'],
-            // Eliminamos branch_id de la validación para no permitir cambiarlo vía form
+            'role' => ['required', 'exists:roles,name'], // Validación del rol
             'password' => ['nullable', 'string', 'min:8'],
             'documents' => ['nullable', 'array'],
             'documents.*' => ['file', 'max:10240'],
@@ -158,14 +175,15 @@ class UserController extends Controller
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->phone = $validated['phone'] ?? $user->phone;
-        // No actualizamos branch_id para mantenerlo en su sucursal original
-        // o forzamos $currentBranchId si esa es la lógica deseada.
 
         if (!empty($validated['password'])) {
             $user->password = Hash::make($validated['password']);
         }
 
         $user->save();
+
+        // Sincronizamos el rol (quita los anteriores y pone el nuevo)
+        $user->syncRoles([$validated['role']]);
 
         if ($request->hasFile('documents')) {
             foreach ($request->file('documents') as $file) {
@@ -175,13 +193,10 @@ class UserController extends Controller
 
         return redirect()->route('users.show', $user->id)->with('flash', [
             'type' => 'success',
-            'message' => 'Usuario actualizado correctamente.'
+            'message' => 'Usuario y rol actualizados correctamente.'
         ]);
     }
 
-    /**
-     * Activa o desactiva un usuario.
-     */
     public function toggleStatus(User $user)
     {
         $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
