@@ -25,7 +25,7 @@ class DatabaseSeeder extends Seeder
 
         // 3. Crear Usuario ADMINISTRADOR
         $admin = User::create([
-            'name' => 'Super Admin',
+            'name' => 'Soporte',
             'email' => 'angel@gmail.com',
             'password' => Hash::make('321321321'), // Contraseña segura
             'branch_id' => $mainBranch->id,

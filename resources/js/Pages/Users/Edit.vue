@@ -1,6 +1,5 @@
 <script>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import FileView from "@/Components/MyComponents/FileView.vue";
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { 
     NCard, NForm, NFormItem, NInput, NButton, NIcon, NSelect, NUpload, 
@@ -8,8 +7,8 @@ import {
 } from 'naive-ui';
 import { 
     ArrowBackOutline, SaveOutline, PersonOutline, MailOutline, 
-    KeyOutline, BusinessOutline, CloudUploadOutline, RefreshOutline, 
-    DocumentAttachOutline, CallOutline
+    KeyOutline, CloudUploadOutline, RefreshOutline, 
+    CallOutline, ShieldCheckmarkOutline
 } from '@vicons/ionicons5';
 
 export default {
@@ -30,51 +29,51 @@ export default {
         NP,
         NDivider,
         NAlert,
-        // Iconos
         ArrowBackOutline,
-        CloudUploadOutline,
+        CloudUploadOutline, 
         SaveOutline,
-        FileView,
         CallOutline,
+        ShieldCheckmarkOutline
     },
     props: {
         user: {
             type: Object,
             required: true
         },
-        branches: {
+        roles: {
             type: Array,
             default: () => []
         }
     },
     setup(props) {
-        // Inicializamos el formulario con los datos del usuario.
-        // TRUCO IMPORTANTE: Para subir archivos en una actualización (PUT/PATCH),
-        // Laravel/Inertia recomiendan usar POST simulando el método PUT con _method.
+        // Obtenemos el rol actual del usuario (si tiene alguno asignado)
+        const currentRole = props.user.roles && props.user.roles.length > 0 
+            ? props.user.roles[0].name 
+            : null;
+
         const form = useForm({
-            _method: 'PUT',
+            _method: 'PUT', // Truco para permitir envío de archivos en actualización
             name: props.user.name,
             email: props.user.email,
             phone: props.user.phone,
-            password: '', // Vacío por defecto para no cambiarla
-            branch_id: props.user.branch_id,
+            role: currentRole,
+            password: '', // Vacío por defecto, solo se actualiza si el usuario escribe algo
             documents: [] 
         });
 
         const { message } = createDiscreteApi(['message']);
 
-        // Retornamos iconos para uso en :component
         return { 
             form, 
             message,
             PersonOutline,
             MailOutline,
             KeyOutline,
-            BusinessOutline,
             RefreshOutline,
             SaveOutline,
             ArrowBackOutline,
-            CallOutline // Nuevo icono
+            CallOutline,
+            ShieldCheckmarkOutline
         };
     },
     data() {
@@ -82,19 +81,11 @@ export default {
             rules: {
                 name: { required: true, message: 'El nombre es obligatorio', trigger: ['input', 'blur'] },
                 email: { required: true, message: 'El correo es obligatorio', trigger: ['input', 'blur'] },
-                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] }, // Regla nueva
-                // La contraseña NO es obligatoria en edición
-                branch_id: { required: true, type: 'number', message: 'Selecciona una sucursal', trigger: ['blur', 'change'] }
+                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] },
+                role: { required: true, message: 'Selecciona un rol', trigger: ['blur', 'change'] }
+                // Password es opcional en edición, no agregamos regla required
             }
         };
-    },
-    computed: {
-        branchOptions() {
-            return this.branches.map(branch => ({
-                label: branch.name,
-                value: branch.id
-            }));
-        }
     },
     methods: {
         goBack() {
@@ -107,29 +98,26 @@ export default {
                 password += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             this.form.password = password;
-            // Limpiamos error de contraseña si existía alguno previo
-            this.form.clearErrors('password');
-            this.message.success("Nueva contraseña generada");
+            // No limpiamos error porque password no es obligatorio aquí, pero por si acaso
+            if(this.form.errors.password) this.form.clearErrors('password');
+            this.message.success("Nueva contraseña generada (debes guardar para aplicar)");
         },
         handleFileListChange(data) {
             this.form.documents = data.fileList.map(file => file.file);
-            // Limpiamos el error de documentos si el usuario agrega nuevos archivos
             this.form.clearErrors('documents');
-        },
-        deleteFile(fileId) {
-            this.user.media = this.user.media.filter(m => m.id !== fileId);
         },
         submit() {
             this.$refs.formRef?.validate((errors) => {
                 if (!errors) {
-                    // Usamos post hacia la ruta update, gracias al _method: 'PUT'
+                    // Usamos post hacia la ruta update debido al _method: 'PUT'
+                    // Esto es necesario si permites subir archivos al editar
                     this.form.post(route('users.update', this.user.id), {
                         preserveScroll: true,
                         onSuccess: () => {
                             this.message.success('Usuario actualizado correctamente');
                         },
                         onError: () => {
-                            this.message.error('Error al actualizar. Revisa los campos marcados en rojo.');
+                            this.message.error('Hubo un error al actualizar. Revisa los campos.');
                         }
                     });
                 } else {
@@ -142,7 +130,7 @@ export default {
 </script>
 
 <template>
-    <AppLayout :title="`Editar: ${user.name}`">
+    <AppLayout title="Editar Usuario">
         <template #header>
             <div class="flex items-center gap-4">
                 <n-button circle secondary @click="goBack">
@@ -163,7 +151,7 @@ export default {
                     
                     <div class="mb-6">
                         <h1 class="text-2xl font-bold text-gray-800">Actualizar Información</h1>
-                        <p class="text-gray-500 text-sm mt-1">Modifica los datos del empleado o agrega nueva documentación.</p>
+                        <p class="text-gray-500 text-sm mt-1">Modifica los datos del empleado o asigna un nuevo rol.</p>
                     </div>
 
                     <n-divider />
@@ -179,7 +167,6 @@ export default {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             
                             <!-- Nombre -->
-                            <!-- Agregamos validation-status y feedback para errores de servidor -->
                             <n-form-item 
                                 label="Nombre Completo" 
                                 path="name"
@@ -215,7 +202,7 @@ export default {
                                 </n-input>
                             </n-form-item>
 
-                            <!-- Teléfono (Nuevo Campo) -->
+                            <!-- Teléfono -->
                             <n-form-item 
                                 label="Teléfono (Con whatsapp)" 
                                 path="phone"
@@ -233,29 +220,25 @@ export default {
                                 </n-input>
                             </n-form-item>
 
-                            <!-- Sucursal -->
+                            <!-- Selector de Rol -->
                             <n-form-item 
-                                label="Sucursal Asignada" 
-                                path="branch_id"
-                                :validation-status="form.errors.branch_id ? 'error' : undefined"
-                                :feedback="form.errors.branch_id"
+                                label="Rol de Usuario" 
+                                path="role"
+                                :validation-status="form.errors.role ? 'error' : undefined"
+                                :feedback="form.errors.role"
                             >
-                                <n-select
-                                    v-model:value="form.branch_id"
-                                    :options="branchOptions"
-                                    placeholder="Selecciona una sucursal"
-                                    filterable
-                                    @update:value="form.clearErrors('branch_id')"
-                                >
-                                    <template #arrow>
-                                        <n-icon :component="BusinessOutline" />
-                                    </template>
-                                </n-select>
+                                <n-select 
+                                    v-model:value="form.role" 
+                                    :options="roles"
+                                    placeholder="Selecciona un rol"
+                                    clearable
+                                    @update:value="form.clearErrors('role')"
+                                />
                             </n-form-item>
 
-                            <!-- Contraseña (Opcional) -->
+                            <!-- Contraseña -->
                             <n-form-item 
-                                label="Actualizar Contraseña (Opcional)" 
+                                label="Nueva Contraseña (Opcional)" 
                                 path="password"
                                 :validation-status="form.errors.password ? 'error' : undefined"
                                 :feedback="form.errors.password"
@@ -263,7 +246,7 @@ export default {
                                 <n-input
                                     v-model:value="form.password"
                                     type="text"
-                                    placeholder="Dejar vacío para mantener la actual"
+                                    placeholder="Dejar en blanco para mantener la actual"
                                     show-password-on="mousedown"
                                     @input="form.clearErrors('password')"
                                 >
@@ -276,7 +259,7 @@ export default {
                                             circle 
                                             size="small" 
                                             @click="generatePassword"
-                                            title="Generar nueva contraseña aleatoria"
+                                            title="Generar nueva aleatoria"
                                         >
                                             <template #icon>
                                                 <n-icon :component="RefreshOutline" />
@@ -288,27 +271,20 @@ export default {
                         </div>
 
                         <!-- Nota sobre contraseña -->
-                        <div class="mb-8 mt-2" v-if="form.password">
-                            <n-alert type="warning" :show-icon="true" class="rounded-xl">
+                        <div class="mb-8 mt-2">
+                            <n-alert type="info" :show-icon="true" class="rounded-xl">
                                 <template #icon>
                                     <n-icon :component="KeyOutline" />
                                 </template>
-                                <strong>Cambio de Contraseña:</strong> Estás a punto de cambiar la contraseña de este usuario. 
-                                Asegúrate de comunicarle la nueva clave temporal.
+                                <strong>Nota:</strong> Si no deseas cambiar la contraseña del usuario, deja el campo en blanco.
                             </n-alert>
-                        </div>
-
-                        <div v-if="user.media?.length" class="grid grid-cols-2 lg:grid-cols-3 gap-3 col-span-full mb-3">
-                            <label class="col-span-full text-gray-700 dark:text-white text-sm">Archivos adjuntos</label>
-                            <FileView v-for="file in user.media" :key="file" :file="file" :deletable="true"
-                                @delete-file="deleteFile($event)" />
                         </div>
 
                         <n-divider>Agregar Documentación</n-divider>
 
                         <!-- Subida de Archivos -->
                         <n-form-item 
-                            label="Adjuntar Archivos Nuevos"
+                            label="Subir nuevos archivos"
                             :validation-status="form.errors.documents ? 'error' : undefined"
                             :feedback="form.errors.documents"
                         >
@@ -326,10 +302,10 @@ export default {
                                         </n-icon>
                                     </div>
                                     <n-text style="font-size: 16px">
-                                        Haz clic o arrastra archivos aquí para agregar
+                                        Haz clic o arrastra archivos adicionales aquí
                                     </n-text>
                                     <n-p depth="3" style="margin: 8px 0 0 0">
-                                        Los archivos subidos se añadirán a los existentes.
+                                        Los archivos que subas se agregarán a los existentes.
                                     </n-p>
                                 </n-upload-dragger>
                             </n-upload>

@@ -110,8 +110,8 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         return Inertia::render('ServiceOrders/Create', [
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            'technicians' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']), 
-            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
+            'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
         ]);
     }
 
@@ -209,10 +209,11 @@ class ServiceOrderController extends Controller
         });
 
         $assignableUsers = User::where('branch_id', $branchId)
-             ->where('is_active', true)
-             ->select('id', 'name', 'phone')
-             ->orderBy('name')
-             ->get();
+            ->where('id', '!=', 1) // Ocultamos al usuario de soporte (ID 1)
+            ->where('is_active', true)
+            ->select('id', 'name', 'phone')
+            ->orderBy('name')
+            ->get();
 
         $availableProducts = Product::where('category_id', '!=', null) 
             ->select('id', 'name', 'sku', 'sale_price', 'purchase_price') 
@@ -249,9 +250,9 @@ class ServiceOrderController extends Controller
             'order' => $serviceOrder,
             // AGREGA ESTAS LÍNEAS:
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
             // -------------------
-            'technicians' => User::where('branch_id', $branchId)->get(['id', 'name']),
+            'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->get(['id', 'name']),
         ]);
     }
 

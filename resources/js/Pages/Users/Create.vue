@@ -7,8 +7,8 @@ import {
 } from 'naive-ui';
 import { 
     ArrowBackOutline, SaveOutline, PersonOutline, MailOutline, 
-    KeyOutline, BusinessOutline, CloudUploadOutline, RefreshOutline, 
-    DocumentAttachOutline, CallOutline
+    KeyOutline, CloudUploadOutline, RefreshOutline, 
+    CallOutline, ShieldCheckmarkOutline // Icono para Rol
 } from '@vicons/ionicons5';
 
 export default {
@@ -32,17 +32,23 @@ export default {
         ArrowBackOutline,
         CloudUploadOutline, 
         SaveOutline,
-        CallOutline
+        CallOutline,
+        ShieldCheckmarkOutline
     },
-    // Eliminamos props de branches ya que no se usan
-    props: {},
+    // Recibimos los roles desde el controlador
+    props: {
+        roles: {
+            type: Array,
+            default: () => []
+        }
+    },
     setup() {
         const form = useForm({
             name: '',
             email: '',
             phone: '',
             password: '',
-            // Eliminamos branch_id del formulario frontend
+            role: null, // Campo para el rol
             documents: [] 
         });
 
@@ -54,11 +60,11 @@ export default {
             PersonOutline,
             MailOutline,
             KeyOutline,
-            BusinessOutline,
             RefreshOutline,
             SaveOutline,
             ArrowBackOutline,
-            CallOutline
+            CallOutline,
+            ShieldCheckmarkOutline
         };
     },
     data() {
@@ -68,12 +74,9 @@ export default {
                 email: { required: true, message: 'El correo es obligatorio', trigger: ['input', 'blur'] },
                 phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] },
                 password: { required: true, message: 'La contraseña es obligatoria', trigger: ['input', 'blur'] },
-                // Eliminamos regla de branch_id
+                role: { required: true, message: 'Selecciona un rol', trigger: ['blur', 'change'] }
             }
         };
-    },
-    computed: {
-        // Eliminamos branchOptions
     },
     methods: {
         goBack() {
@@ -203,6 +206,24 @@ export default {
                                         <n-icon :component="CallOutline" />
                                     </template>
                                 </n-input>
+                            </n-form-item>
+
+                            <!-- Selector de Rol -->
+                            <n-form-item 
+                                label="Rol de Usuario" 
+                                path="role"
+                                :validation-status="form.errors.role ? 'error' : undefined"
+                                :feedback="form.errors.role"
+                            >
+                                <n-select 
+                                    v-model:value="form.role" 
+                                    :options="roles"
+                                    placeholder="Selecciona un rol"
+                                    clearable
+                                    @update:value="form.clearErrors('role')"
+                                >
+                                    <!-- No es soportado prefix slot en NSelect, pero se puede customizar si fuera necesario -->
+                                </n-select>
                             </n-form-item>
 
                             <!-- Contraseña -->
