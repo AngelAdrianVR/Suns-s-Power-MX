@@ -37,27 +37,27 @@ class DatabaseSeeder extends Seeder
         $admin->assignRole('Admin');
 
 
-        // 4. Crear Usuario EMPLEADO (Técnico o Ventas)
-        $empleado = User::create([
-            'name' => 'Juan Técnico',
-            'email' => 'tecnico@sunspower.mx',
-            'password' => Hash::make('321321321'),
-            'branch_id' => $mainBranch->id,
-            'is_active' => true,
-            'email_verified_at' => now(),
-        ]);
+        // // 4. Crear Usuario EMPLEADO (Técnico o Ventas)
+        // $empleado = User::create([
+        //     'name' => 'Juan Técnico',
+        //     'email' => 'tecnico@sunspower.mx',
+        //     'password' => Hash::make('321321321'),
+        //     'branch_id' => $mainBranch->id,
+        //     'is_active' => true,
+        //     'email_verified_at' => now(),
+        // ]);
 
-        // Asignar rol de Técnico
-        $empleado->assignRole('Técnico'); // O 'Ventas' o 'Almacén' según prefieras
+        // // Asignar rol de Técnico
+        // $empleado->assignRole('Técnico'); // O 'Ventas' o 'Almacén' según prefieras
 
 
-        // 5. Llenar catálogos del sistema
-        $this->call([
-            CategorySeeder::class,
-            SupplierSeeder::class,
-            ProductSeeder::class, // Esto también llena el inventario por sucursal
-            ClientSeeder::class,
-        ]);
+        // // 5. Llenar catálogos del sistema
+        // $this->call([
+        //     CategorySeeder::class,
+        //     SupplierSeeder::class,
+        //     ProductSeeder::class, // Esto también llena el inventario por sucursal
+        //     ClientSeeder::class,
+        // ]);
         
         // Opcional: Si tienes factories para generar volumen
         // User::factory(10)->create(); 

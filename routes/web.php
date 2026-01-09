@@ -17,6 +17,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Support\Facades\Artisan;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -156,3 +157,10 @@ Route::delete('/media/{media}', function (Media $media) {
         return response()->json(['error' => 'Error al eliminar el archivo.'], 500);
     }
 })->name('media.delete-file');
+
+
+// Ruta para crear el enlace simbólico de storage (si no se ha creado aún)
+Route::get('/storage-link', function () {
+    Artisan::call('storage:link');
+    return 'storage:link ejecutado correctamente';
+});
