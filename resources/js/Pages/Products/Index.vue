@@ -162,7 +162,14 @@ const createColumns = () => [
         }
     },
     {
-        title: 'Precio',
+        title: 'Costo',
+        key: 'purchase_price',
+        render(row) {
+            return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
+        }
+    },
+    {
+        title: 'Precio Venta',
         key: 'sale_price',
         render(row) {
             return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.sale_price));

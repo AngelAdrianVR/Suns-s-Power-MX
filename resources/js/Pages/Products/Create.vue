@@ -1,12 +1,14 @@
 <script setup>
-import { ref } from 'vue';
-import { useForm, Link } from '@inertiajs/vue3';
+import { ref, computed } from 'vue'; // Agregamos computed
+import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi 
+    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, 
+    createDiscreteApi, NModal, NList, NListItem, NThing, NPopconfirm, NInputGroup 
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, LocationOutline, AlertCircleOutline
+    SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, LocationOutline, AlertCircleOutline,
+    AddOutline, TrashOutline, ListOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -16,10 +18,53 @@ const props = defineProps({
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
 
-const categoryOptions = props.categories.map(cat => ({
-    label: cat.name,
-    value: cat.id
-}));
+// --- GESTIÓN DE CATEGORÍAS (Lógica Nueva) ---
+const showCategoryModal = ref(false);
+const categoryForm = useForm({
+    name: ''
+});
+
+// Convertimos a computed para que se actualice automáticamente al agregar/borrar categorías
+const categoryOptions = computed(() => {
+    return props.categories.map(cat => ({
+        label: cat.name,
+        value: cat.id
+    }));
+});
+
+const createCategory = () => {
+    categoryForm.post(route('categories.store'), {
+        preserveScroll: true,
+        preserveState: true, // Mantiene los datos del formulario de producto
+        onSuccess: () => {
+            notification.success({ title: 'Éxito', content: 'Categoría agregada', duration: 2000 });
+            categoryForm.reset();
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo crear la categoría' });
+        }
+    });
+};
+
+const deleteCategory = (id) => {
+    router.delete(route('categories.destroy', id), {
+        preserveScroll: true,
+        preserveState: true, // Mantiene los datos del formulario de producto
+        onSuccess: () => {
+            notification.success({ title: 'Éxito', content: 'Categoría eliminada', duration: 2000 });
+            // Si la categoría eliminada estaba seleccionada, limpiar el campo
+            if (form.category_id === id) {
+                form.category_id = null;
+            }
+        },
+        onError: (errors) => {
+            // Manejo de errores que vienen del backend (ej. integridad referencial)
+            const msg = errors?.error || 'No se pudo eliminar la categoría.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+        }
+    });
+};
+// --------------------------------------------
 
 const form = useForm({
     name: '',
@@ -28,7 +73,7 @@ const form = useForm({
     purchase_price: 0,
     sale_price: 0,
     initial_stock: 0,
-    min_stock_alert: 5, // Nuevo campo por defecto
+    min_stock_alert: 5, 
     location: '', 
     description: '',
     image: null,
@@ -141,6 +186,7 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
 
+                                    <!-- SELECTOR DE CATEGORÍA CON BOTÓN DE GESTIÓN -->
                                     <n-grid-item>
                                         <n-form-item 
                                             label="Categoría" 
@@ -148,12 +194,17 @@ const submit = () => {
                                             :validation-status="form.errors.category_id ? 'error' : undefined"
                                             :feedback="form.errors.category_id"
                                         >
-                                            <n-select 
-                                                v-model:value="form.category_id" 
-                                                :options="categoryOptions" 
-                                                placeholder="Seleccionar..."
-                                                filterable
-                                            />
+                                            <n-input-group>
+                                                <n-select 
+                                                    v-model:value="form.category_id" 
+                                                    :options="categoryOptions" 
+                                                    placeholder="Seleccionar..."
+                                                    filterable
+                                                />
+                                                <n-button type="primary" secondary @click="showCategoryModal = true">
+                                                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                                                </n-button>
+                                            </n-input-group>
                                         </n-form-item>
                                     </n-grid-item>
 
@@ -251,7 +302,7 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
 
-                                    <!-- NUEVO CAMPO: Alerta de Stock Mínimo -->
+                                    <!-- Alerta de Stock Mínimo -->
                                     <n-grid-item>
                                         <n-form-item 
                                             label="Alerta de Stock Mínimo" 
@@ -336,8 +387,77 @@ const submit = () => {
 
                     </div>
                 </n-form>
-
             </div>
         </div>
+
+        <!-- MODAL GESTIÓN DE CATEGORÍAS -->
+        <n-modal v-model:show="showCategoryModal">
+            <n-card
+                style="width: 500px"
+                title="Gestionar Categorías"
+                :bordered="false"
+                size="huge"
+                role="dialog"
+                aria-modal="true"
+            >
+                <template #header-extra>
+                    <n-icon size="24"><ListOutline /></n-icon>
+                </template>
+
+                <div class="space-y-4">
+                    <!-- Formulario de Creación -->
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <n-input-group>
+                            <n-input 
+                                v-model:value="categoryForm.name" 
+                                placeholder="Nueva Categoría (Ej. Inversores)"
+                                @keydown.enter.prevent="createCategory"
+                            />
+                            <n-button type="primary" @click="createCategory" :loading="categoryForm.processing" :disabled="!categoryForm.name">
+                                <template #icon><n-icon><AddOutline /></n-icon></template>
+                                Agregar
+                            </n-button>
+                        </n-input-group>
+                        <span v-if="categoryForm.errors.name" class="text-red-500 text-xs mt-1 block">
+                            {{ categoryForm.errors.name }}
+                        </span>
+                    </div>
+
+                    <!-- Lista de Categorías Existentes -->
+                    <div class="max-h-64 overflow-y-auto pr-2">
+                        <n-list hoverable clickable>
+                            <n-list-item v-for="cat in props.categories" :key="cat.id">
+                                <template #suffix>
+                                    <n-popconfirm
+                                        @positive-click="deleteCategory(cat.id)"
+                                        positive-text="Sí, eliminar"
+                                        negative-text="Cancelar"
+                                    >
+                                        <template #trigger>
+                                            <n-button size="tiny" type="error" ghost circle>
+                                                <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                            </n-button>
+                                        </template>
+                                        ¿Estás seguro de eliminar "{{ cat.name }}"?
+                                    </n-popconfirm>
+                                </template>
+                                <n-thing :title="cat.name" />
+                            </n-list-item>
+                            
+                            <div v-if="props.categories.length === 0" class="text-center text-gray-400 py-4">
+                                No hay categorías registradas.
+                            </div>
+                        </n-list>
+                    </div>
+                </div>
+
+                <template #footer>
+                    <div class="flex justify-end">
+                        <n-button @click="showCategoryModal = false">Cerrar</n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
     </AppLayout>
 </template>
