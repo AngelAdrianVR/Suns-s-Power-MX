@@ -257,12 +257,12 @@ export default {
                                 <n-empty description="Este usuario no tiene tareas asignadas recientemente.">
                                     <!-- Solo mostrar botón de asignar si tiene permisos para gestionar tareas (opcional, o users.edit) -->
                                     <template #extra>
-                                        <n-button v-if="hasPermission('users.assign_tasks')" size="small" dashed>
+                                        <!-- <n-button v-if="hasPermission('users.assign_tasks')" size="small" dashed>
                                             Asignar Tarea
                                         </n-button>
                                         <n-button v-else size="small" dashed disabled>
                                             Sin actividad reciente
-                                        </n-button>
+                                        </n-button> -->
                                     </template>
                                 </n-empty>
                             </div>

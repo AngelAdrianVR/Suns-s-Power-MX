@@ -7,10 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
-
-class Client extends Model 
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+ 
+class Client extends Model implements HasMedia
 {
     use HasFactory;
+    use InteractsWithMedia;
     use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
 
     protected $fillable = [

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
@@ -133,7 +134,12 @@ Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
 // API interna para el componente Vue (obtener deudas)
 Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
-    ->name('api.clients.pending-orders');
+->name('api.clients.pending-orders');
+Route::post('/clients/{client}/documents', [ClientController::class, 'uploadDocument'])->name('clients.documents.store');
+
+
+// ---------------------------- Rutas de categorías --------------------------------
+Route::resource('categories', CategoryController::class);
 
 
 // ---------------------------- Rutas de Pagos --------------------------------

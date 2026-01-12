@@ -1,7 +1,7 @@
 <script setup>
 import { ref, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
 import { 
@@ -34,6 +34,7 @@ const { notification } = createDiscreteApi(['notification'], {
 // --- ESTADO Y UTILIDADES ---
 const activeTab = ref('services');
 const showPaymentModal = ref(false);
+const fileInput = ref(null); // Referencia al input de archivo
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
@@ -115,7 +116,14 @@ const docColumns = [
         align: 'right',
         render(row) {
             return h(NButton, { 
-                circle: true, size: 'small', quaternary: true, type: 'info',
+                circle: true, 
+                size: 'small', 
+                quaternary: true, 
+                type: 'info',
+                tag: 'a',           // Renderizar como enlace
+                href: row.url,      // URL del archivo (backend)
+                target: '_blank',   // Abrir en nueva pestaña
+                download: row.name  // Sugerir nombre al descargar
             }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) });
         }
     }
@@ -136,6 +144,44 @@ const openPaymentModal = () => {
 
 const createServiceOrder = () => {
     router.visit(route('service-orders.create', { client_id: props.client.id }));
+};
+
+// --- LÓGICA DE SUBIDA DE ARCHIVOS ---
+const uploadForm = useForm({
+    file: null,
+    category: 'General'
+});
+
+const triggerFileInput = () => {
+    fileInput.value.click();
+};
+
+const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Asignar archivo al formulario
+    uploadForm.file = file;
+
+    // Enviar formulario automáticamente al seleccionar
+    uploadForm.post(route('clients.documents.store', props.client.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ 
+                title: 'Éxito', 
+                content: 'Documento subido correctamente.' 
+            });
+            uploadForm.reset();
+            // Limpiar el input file por si quieren subir el mismo archivo de nuevo
+            if (fileInput.value) fileInput.value.value = '';
+        },
+        onError: () => {
+            notification.error({ 
+                title: 'Error', 
+                content: 'Hubo un problema al subir el documento.' 
+            });
+        }
+    });
 };
 </script>
 
@@ -363,13 +409,31 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
 
-                            <!-- Opcional: Proteger subida de documentos con clients.edit si se desea -->
-                            <div v-if="hasPermission('clients.edit')" class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-gray-50 transition-colors cursor-pointer group">
+                            <!-- Input oculto para subir archivos -->
+                            <input 
+                                type="file" 
+                                ref="fileInput" 
+                                class="hidden" 
+                                @change="handleFileChange"
+                            >
+
+                            <!-- Zona de Clic para subir -->
+                            <!-- Agregamos @click="triggerFileInput" -->
+                            <div 
+                                v-if="hasPermission('clients.edit')" 
+                                @click="triggerFileInput"
+                                class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer group relative"
+                            >
+                                <!-- Loading overlay opcional -->
+                                <div v-if="uploadForm.processing" class="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-xl">
+                                    <span class="text-indigo-600 font-bold animate-pulse">Subiendo...</span>
+                                </div>
+
                                 <div class="bg-blue-50 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
                                     <n-icon size="20" class="text-blue-500"><CloudDownloadOutline /></n-icon>
                                 </div>
                                 <h4 class="font-bold text-gray-700 text-sm">Subir documento</h4>
-                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar archivos</p>
+                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar archivos (Max 10MB)</p>
                             </div>
 
                             <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">

@@ -43,6 +43,7 @@ class ProductController extends Controller
                     'sku' => $product->sku,
                     'name' => $product->name,
                     'description' => $product->description,
+                    'purchase_price' => $product->purchase_price,
                     'sale_price' => $product->sale_price,
                     'category' => $product->category ? $product->category->name : 'Sin Categoría',
                     'image_url' => $product->getFirstMediaUrl('product_images'),
@@ -95,7 +96,7 @@ class ProductController extends Controller
         }
 
         $initialStock = $request->input('initial_stock', 0);
-        $minStock = $request->input('min_stock_alert', 5);
+        $minStock = $request->input('min_stock_alert');
         $location = $request->input('location', 'Recepción'); 
         
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
