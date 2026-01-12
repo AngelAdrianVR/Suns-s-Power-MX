@@ -140,7 +140,7 @@ class ServiceOrderController extends Controller
     public function show(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) abort(403);
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
         
         $user = Auth::user();
 
@@ -244,7 +244,7 @@ class ServiceOrderController extends Controller
     public function edit(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) abort(403);
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
@@ -259,7 +259,7 @@ class ServiceOrderController extends Controller
     public function update(Request $request, ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) abort(403);
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id', // Faltaba este
@@ -280,7 +280,7 @@ class ServiceOrderController extends Controller
     public function updateStatus(Request $request, ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) abort(403);
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         $validated = $request->validate([
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado'
@@ -363,7 +363,7 @@ class ServiceOrderController extends Controller
     public function destroy(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) abort(403);
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
             return back()->with('error', 'No se puede eliminar una orden completada o facturada.');

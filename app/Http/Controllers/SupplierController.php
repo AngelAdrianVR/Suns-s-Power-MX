@@ -187,7 +187,7 @@ class SupplierController extends Controller
         // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403);
+            return inertia('Forbidden403');
         }
 
         return Inertia::render('Suppliers/Edit', [
@@ -200,7 +200,7 @@ class SupplierController extends Controller
         // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403);
+            return inertia('Forbidden403');
         }
 
         $validated = $request->validate([
@@ -220,7 +220,7 @@ class SupplierController extends Controller
         // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403);
+            return inertia('Forbidden403');
         }
 
         if ($supplier->purchaseOrders()->exists()) {
@@ -241,7 +241,7 @@ class SupplierController extends Controller
         // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403);
+            return inertia('Forbidden403');
         }
 
         $validated = $request->validate([
@@ -269,7 +269,7 @@ class SupplierController extends Controller
         // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403);
+            return inertia('Forbidden403');
         }
 
         $supplier->products()->detach($product->id);
