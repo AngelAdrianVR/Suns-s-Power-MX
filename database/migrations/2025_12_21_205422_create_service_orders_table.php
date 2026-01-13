@@ -15,18 +15,29 @@ return new class extends Migration
             $table->id();
             $table->foreignId('branch_id')->default(1)->constrained();
             $table->foreignId('client_id')->constrained()->onDelete('restrict');
-            $table->foreignId('technician_id')->nullable()->constrained('users'); // Puede asignarse después
-            $table->foreignId('sales_rep_id')->constrained('users'); // Representante de ventas que creó la orden
+            $table->foreignId('technician_id')->nullable()->constrained('users'); 
+            $table->foreignId('sales_rep_id')->constrained('users'); 
             
             $table->enum('status', [
                 'Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'
             ])->default('Cotización');
             
-            $table->dateTime('start_date')->nullable(); // Fecha de inicio del servicio
-            $table->dateTime('completion_date')->nullable(); // Fecha de finalización del servicio
-            $table->decimal('total_amount', 12, 2)->default(0); // Monto total del servicio
-            $table->text('installation_address')->nullable(); // Dirección de instalación
-            $table->text('notes')->nullable(); // Notas adicionales
+            $table->dateTime('start_date')->nullable();
+            $table->dateTime('completion_date')->nullable();
+            $table->decimal('total_amount', 12, 2)->default(0); 
+            
+            // Dirección de Instalación (Específica de la orden)
+            // Usamos prefijos para distinguirla de la dirección fiscal del cliente
+            $table->string('installation_street')->nullable(); // Calle
+            $table->string('installation_exterior_number')->nullable(); // Número Exterior
+            $table->string('installation_interior_number')->nullable(); // Número Interior
+            $table->string('installation_neighborhood')->nullable(); // Colonia
+            $table->string('installation_municipality')->nullable(); // Municipio / Alcaldía
+            $table->string('installation_state')->nullable();   // Estado
+            $table->string('installation_zip_code')->nullable(); // Código Postal
+            $table->string('installation_country')->default('México');  // País
+
+            $table->text('notes')->nullable(); 
             $table->timestamps();
         });
     }

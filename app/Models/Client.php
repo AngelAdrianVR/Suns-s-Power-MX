@@ -2,11 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
+use App\Traits\BelongsToBranchTrait;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
  
@@ -14,7 +15,7 @@ class Client extends Model implements HasMedia
 {
     use HasFactory;
     use InteractsWithMedia;
-    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
+    use BelongsToBranchTrait; 
 
     protected $fillable = [
         'name',
@@ -23,10 +24,42 @@ class Client extends Model implements HasMedia
         'email',
         'phone',
         'tax_id',
-        'address',
+        
+        // Address Fields
+        'street',
+        'exterior_number',
+        'interior_number',
+        'neighborhood',
+        'municipality',
+        'state',
+        'zip_code',
+        'country',
+        
         'coordinates',
+        'email_secondary',
+        'phone_secondary',
         'notes',
     ];
+
+    // --- Accessors ---
+
+    /**
+     * Obtener la dirección completa concatenada para facilitar su visualización en listas.
+     */
+    protected function fullAddress(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => implode(' ', array_filter([
+                $this->street,
+                $this->exterior_number ? "#{$this->exterior_number}" : null,
+                $this->interior_number ? "Int. {$this->interior_number}" : null,
+                $this->neighborhood ? ", Col. {$this->neighborhood}" : null,
+                $this->zip_code ? "CP {$this->zip_code}" : null,
+                $this->municipality,
+                $this->state
+            ]))
+        );
+    }
 
     // --- Relaciones ---
 
@@ -45,7 +78,6 @@ class Client extends Model implements HasMedia
         return $this->hasMany(Payment::class);
     }
 
-    // Relación polimórfica con Documentos (Expediente del cliente)
     public function documents(): MorphMany
     {
         return $this->morphMany(Document::class, 'documentable');

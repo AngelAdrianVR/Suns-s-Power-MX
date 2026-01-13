@@ -1,5 +1,5 @@
 <script setup>
-import { ref, h } from 'vue';
+import { ref, h, computed } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -12,7 +12,7 @@ import {
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
-    CreateOutline, AddOutline, EyeOutline
+    CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -44,6 +44,37 @@ const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+// --- COMPUTED: DIRECCIÓN Y MAPAS ---
+const formattedAddress = computed(() => {
+    const c = props.client;
+    // Unimos las partes lógicamente
+    const parts = [
+        c.street ? (c.street + (c.exterior_number ? ` #${c.exterior_number}` : '')) : null,
+        c.interior_number ? `Int. ${c.interior_number}` : null,
+        c.neighborhood ? `Col. ${c.neighborhood}` : null,
+        c.zip_code ? `CP ${c.zip_code}` : null,
+        c.municipality,
+        c.state
+    ];
+    return parts.filter(Boolean).join(', ');
+});
+
+const googleMapsUrl = computed(() => {
+    // Si no hay calle ni municipio, probablemente no valga la pena el link
+    if (!props.client.street && !props.client.municipality) return null;
+    
+    const addressQuery = [
+        props.client.street,
+        props.client.exterior_number,
+        props.client.neighborhood,
+        props.client.municipality,
+        props.client.state,
+        props.client.country || 'México'
+    ].filter(Boolean).join(', ');
+    
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
+});
 
 // --- COLUMNAS SERVICIOS ---
 const serviceColumns = [
@@ -215,7 +246,7 @@ const handleFileChange = (event) => {
                     <div class="flex flex-col lg:flex-row justify-between gap-6 relative z-10">
                         
                         <!-- Columna Identidad -->
-                        <div class="flex items-start gap-3 sm:gap-5">
+                        <div class="flex items-start gap-3 sm:gap-5 max-w-4xl">
                             <n-avatar 
                                 :size="60" 
                                 class="bg-indigo-100 text-indigo-600 shadow-inner flex-shrink-0 sm:w-20 sm:h-20"
@@ -225,27 +256,60 @@ const handleFileChange = (event) => {
                             </n-avatar>
                             
                             <div class="flex-1 min-w-0">
+                                <!-- Nombre y Contacto Principal -->
                                 <h1 class="text-xl sm:text-3xl font-black text-gray-800 tracking-tight leading-tight mb-2 break-words">
                                     {{ client.name }}
                                 </h1>
-                                <div class="flex flex-col gap-1 text-xs sm:text-sm text-gray-500">
-                                    <div v-if="client.contact_person" class="font-medium text-gray-600 flex items-center gap-1">
-                                        <n-icon><PersonOutline/></n-icon> {{ client.contact_person }}
+                                
+                                <div class="flex flex-col gap-2 text-xs sm:text-sm text-gray-600">
+                                    
+                                    <!-- Persona de Contacto y RFC -->
+                                    <div class="flex flex-wrap gap-x-4 gap-y-1 items-center">
+                                        <div v-if="client.contact_person" class="font-medium flex items-center gap-1.5">
+                                            <n-icon class="text-gray-400"><PersonOutline/></n-icon> {{ client.contact_person }}
+                                        </div>
+                                        <div v-if="client.tax_id" class="flex items-center gap-1.5 uppercase bg-gray-100 px-2 py-0.5 rounded text-gray-500 text-[10px] font-bold tracking-wide">
+                                            <n-icon><ReceiptOutline /></n-icon> {{ client.tax_id }}
+                                        </div>
                                     </div>
-                                    <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                                        <span v-if="client.email" class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors break-all">
-                                            <n-icon class="text-indigo-400 flex-shrink-0"><MailOutline /></n-icon> {{ client.email }}
-                                        </span>
-                                        <span v-if="client.phone" class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
-                                            <n-icon class="text-green-500 flex-shrink-0"><CallOutline /></n-icon> {{ client.phone }}
-                                        </span>
-                                        <span v-if="client.tax_id" class="flex items-center gap-1.5 whitespace-nowrap">
-                                            <n-icon class="text-gray-400 flex-shrink-0"><ReceiptOutline /></n-icon> {{ client.tax_id }}
-                                        </span>
+
+                                    <!-- Datos de Contacto (Emails y Teléfonos) -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                                        <!-- Emails -->
+                                        <div v-if="client.email || client.email_secondary" class="flex flex-col">
+                                            <span v-if="client.email" class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
+                                                <n-icon class="text-indigo-400"><MailOutline /></n-icon> {{ client.email }}
+                                            </span>
+                                            <span v-if="client.email_secondary" class="flex items-center gap-1.5 text-gray-400 text-[11px] ml-5">
+                                                {{ client.email_secondary }}
+                                            </span>
+                                        </div>
+                                        
+                                        <!-- Teléfonos -->
+                                        <div v-if="client.phone || client.phone_secondary" class="flex flex-col">
+                                            <span v-if="client.phone" class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
+                                                <n-icon class="text-green-500"><CallOutline /></n-icon> {{ client.phone }}
+                                            </span>
+                                            <span v-if="client.phone_secondary" class="flex items-center gap-1.5 text-gray-400 text-[11px] ml-5">
+                                                <n-icon class="text-gray-300"><PhonePortraitOutline/></n-icon> {{ client.phone_secondary }}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div v-if="client.address" class="flex items-start gap-1.5 mt-1 max-w-xl text-gray-400">
-                                        <n-icon class="mt-0.5 flex-shrink-0"><LocationOutline /></n-icon> 
-                                        <span class="leading-snug">{{ client.address }}</span>
+
+                                    <!-- Dirección Atomizada -->
+                                    <div v-if="formattedAddress" class="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                                        <div class="flex items-start gap-1.5 text-gray-500">
+                                            <n-icon class="mt-0.5 text-red-500 flex-shrink-0"><LocationOutline /></n-icon> 
+                                            <span class="leading-snug">{{ formattedAddress }}</span>
+                                        </div>
+                                        
+                                        <!-- Botón Google Maps -->
+                                        <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-block">
+                                            <n-button size="tiny" secondary round type="info">
+                                                <template #icon><n-icon><MapOutline/></n-icon></template>
+                                                Ver en Mapa
+                                            </n-button>
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -418,7 +482,6 @@ const handleFileChange = (event) => {
                             >
 
                             <!-- Zona de Clic para subir -->
-                            <!-- Agregamos @click="triggerFileInput" -->
                             <div 
                                 v-if="hasPermission('clients.edit')" 
                                 @click="triggerFileInput"

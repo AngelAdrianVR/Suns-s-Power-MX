@@ -1,14 +1,14 @@
 <script setup>
-import { ref, computed } from 'vue'; // Agregamos computed
+import { ref, computed } from 'vue'; 
 import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, 
-    createDiscreteApi, NModal, NList, NListItem, NThing, NPopconfirm, NInputGroup 
+    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NUploadDragger, NIcon, NGrid, NGridItem, 
+    createDiscreteApi, NModal, NList, NListItem, NThing, NPopconfirm, NInputGroup, NText, NP 
 } from 'naive-ui';
 import { 
     SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, LocationOutline, AlertCircleOutline,
-    AddOutline, TrashOutline, ListOutline
+    AddOutline, TrashOutline, ListOutline, CloudUploadOutline, AttachOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -24,7 +24,6 @@ const categoryForm = useForm({
     name: ''
 });
 
-// Convertimos a computed para que se actualice automáticamente al agregar/borrar categorías
 const categoryOptions = computed(() => {
     return props.categories.map(cat => ({
         label: cat.name,
@@ -35,7 +34,7 @@ const categoryOptions = computed(() => {
 const createCategory = () => {
     categoryForm.post(route('categories.store'), {
         preserveScroll: true,
-        preserveState: true, // Mantiene los datos del formulario de producto
+        preserveState: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Categoría agregada', duration: 2000 });
             categoryForm.reset();
@@ -49,16 +48,14 @@ const createCategory = () => {
 const deleteCategory = (id) => {
     router.delete(route('categories.destroy', id), {
         preserveScroll: true,
-        preserveState: true, // Mantiene los datos del formulario de producto
+        preserveState: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Categoría eliminada', duration: 2000 });
-            // Si la categoría eliminada estaba seleccionada, limpiar el campo
             if (form.category_id === id) {
                 form.category_id = null;
             }
         },
         onError: (errors) => {
-            // Manejo de errores que vienen del backend (ej. integridad referencial)
             const msg = errors?.error || 'No se pudo eliminar la categoría.';
             notification.error({ title: 'Error', content: msg, duration: 4000 });
         }
@@ -77,6 +74,7 @@ const form = useForm({
     location: '', 
     description: '',
     image: null,
+    attachments: [], // Nuevo campo para múltiples archivos
 });
 
 const rules = {
@@ -87,12 +85,19 @@ const rules = {
     initial_stock: { required: true, type: 'number', message: 'Ingresa el stock inicial', trigger: 'blur' }
 };
 
+// Manejo de imagen principal
 const handleUploadChange = (data) => {
     if (data.fileList && data.fileList.length > 0) {
         form.image = data.fileList[0].file;
     } else {
         form.image = null;
     }
+};
+
+// Manejo de archivos adjuntos múltiples
+const handleAttachmentsChange = (data) => {
+    // NaiveUI devuelve una lista de objetos envoltorios, necesitamos extraer el archivo JS puro
+    form.attachments = data.fileList.map(item => item.file).filter(f => f);
 };
 
 const submit = () => {
@@ -267,12 +272,48 @@ const submit = () => {
                                     </n-grid-item>
                                 </n-grid>
                             </n-card>
+
+                            <!-- NUEVA SECCIÓN: Documentos Adjuntos -->
+                            <n-card :bordered="false" class="shadow-sm rounded-2xl">
+                                <template #header>
+                                    <span class="text-gray-600 font-semibold flex items-center gap-2">
+                                        <n-icon :component="AttachOutline" /> Documentos y Archivos Extra
+                                    </span>
+                                </template>
+                                <p class="text-xs text-gray-500 mb-3">
+                                    Puedes subir fichas técnicas, manuales o fotos adicionales.
+                                </p>
+                                
+                                <n-form-item :show-label="false" :feedback="form.errors['attachments.0'] || form.errors.attachments" :validation-status="form.errors.attachments ? 'error' : undefined">
+                                    <n-upload
+                                        multiple
+                                        directory-dnd
+                                        @change="handleAttachmentsChange"
+                                        :default-upload="false"
+                                    >
+                                        <n-upload-dragger>
+                                            <div style="margin-bottom: 12px">
+                                                <n-icon size="48" :depth="3">
+                                                    <cloud-upload-outline />
+                                                </n-icon>
+                                            </div>
+                                            <n-text style="font-size: 16px">
+                                                Haz clic o arrastra archivos aquí
+                                            </n-text>
+                                            <n-p depth="3" style="margin: 8px 0 0 0">
+                                                PDF, DOCX, imágenes adicionales, etc.
+                                            </n-p>
+                                        </n-upload-dragger>
+                                    </n-upload>
+                                </n-form-item>
+                            </n-card>
+
                         </div>
 
                         <!-- Columna Derecha: Imagen y Stock -->
                         <div class="space-y-6">
                             
-                            <!-- Nueva Tarjeta: Inventario -->
+                            <!-- Tarjeta: Inventario -->
                             <n-card :bordered="false" class="shadow-sm rounded-2xl bg-indigo-50/50">
                                 <template #header>
                                     <span class="text-indigo-800 font-semibold flex items-center gap-2">
@@ -345,7 +386,7 @@ const submit = () => {
 
                             <n-card :bordered="false" class="shadow-sm rounded-2xl">
                                 <template #header>
-                                    <span class="text-gray-600 font-semibold">Imagen del Producto</span>
+                                    <span class="text-gray-600 font-semibold">Imagen Principal</span>
                                 </template>
                                 
                                 <n-form-item :show-label="false" :feedback="form.errors.image" :validation-status="form.errors.image ? 'error' : undefined">
@@ -358,7 +399,7 @@ const submit = () => {
                                     >
                                         <div class="flex flex-col items-center justify-center text-gray-400">
                                             <n-icon size="30" :component="ImageOutline" />
-                                            <span class="text-xs mt-2">Click para subir</span>
+                                            <span class="text-xs mt-2">Portada</span>
                                         </div>
                                     </n-upload>
                                 </n-form-item>
