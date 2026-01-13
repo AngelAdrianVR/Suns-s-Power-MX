@@ -2,20 +2,21 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use App\Traits\BelongsToBranchTrait; // trait para manejo de sucursales hecho por mi
+use App\Traits\BelongsToBranchTrait;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 class ServiceOrder extends Model implements HasMedia
 {
     use HasFactory;
-    use BelongsToBranchTrait; // Usar el trait para manejo de sucursales
+    use BelongsToBranchTrait; 
     use InteractsWithMedia;
 
     protected $fillable = [
@@ -23,18 +24,46 @@ class ServiceOrder extends Model implements HasMedia
         'branch_id',
         'technician_id',
         'sales_rep_id',
-        'status', // 'Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'
+        'status', 
         'start_date',
         'completion_date',
-        'completion_date',
         'total_amount',
-        'installation_address',
+        
+        // Installation Address Fields
+        'installation_street',
+        'installation_exterior_number',
+        'installation_interior_number',
+        'installation_neighborhood',
+        'installation_municipality',
+        'installation_state',
+        'installation_zip_code',
+        'installation_country',
+
+        'notes',
     ];
 
     protected $casts = [
         'start_date' => 'datetime',
         'completion_date' => 'datetime',
     ];
+
+    // --- Accessors ---
+
+    /**
+     * Helper para mostrar dirección de instalación completa
+     */
+    protected function fullInstallationAddress(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => implode(' ', array_filter([
+                $this->installation_street,
+                $this->installation_exterior_number ? "#{$this->installation_exterior_number}" : null,
+                $this->installation_neighborhood ? ", Col. {$this->installation_neighborhood}" : null,
+                $this->installation_municipality,
+                $this->installation_state
+            ]))
+        );
+    }
 
     // --- Relaciones ---
 
@@ -68,13 +97,11 @@ class ServiceOrder extends Model implements HasMedia
         return $this->hasMany(Payment::class);
     }
 
-    // Una orden de servicio tiene muchas tareas (instalación, configuración, etc.)
     public function tasks()
     {
         return $this->hasMany(Task::class);
     }
 
-    // Opcional: Calcular progreso basado en tareas completadas
     public function getProgressAttribute()
     {
         $totalTasks = $this->tasks()->count();
@@ -85,7 +112,6 @@ class ServiceOrder extends Model implements HasMedia
         return round(($completedTasks / $totalTasks) * 100);
     }
 
-    // Documentos asociados (Evidencias de instalación, fotos)
     public function documents(): MorphMany
     {
         return $this->morphMany(Document::class, 'documentable');

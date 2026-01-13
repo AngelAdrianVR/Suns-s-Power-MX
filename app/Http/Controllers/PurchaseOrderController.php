@@ -28,13 +28,22 @@ class PurchaseOrderController extends Controller
 
         $orders = PurchaseOrder::query()
             ->where('branch_id', $branchId)
-            ->with(['supplier:id,company_name,contact_name,email', 'requestor:id,name'])
+            // CORRECCIÓN: Cargamos 'supplier' sin las columnas viejas y traemos 'mainContact'
+            ->with([
+                'supplier' => fn($q) => $q->select('id', 'company_name'), 
+                'supplier.mainContact', // Relación definida en tu modelo Supplier
+                'requestor:id,name'
+            ])
             ->withCount('items')
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
                       ->orWhereHas('supplier', function ($q) use ($search) {
                           $q->where('company_name', 'like', "%{$search}%");
+                          // Opcional: Buscar también por nombre de contacto nuevo
+                          $q->orWhereHas('contacts', function($cq) use ($search) {
+                              $cq->where('name', 'like', "%{$search}%");
+                          });
                       });
                 });
             })
@@ -45,14 +54,22 @@ class PurchaseOrderController extends Controller
             ->paginate(20)
             ->withQueryString()
             ->through(function ($order) {
+                // Obtenemos el contacto principal si existe
+                $contact = $order->supplier->mainContact ?? null;
+
                 return [
                     'id' => $order->id,
-                    'supplier' => $order->supplier,
+                    // Estructuramos los datos del proveedor para la vista
+                    'supplier' => [
+                        'company_name' => $order->supplier->company_name,
+                        'contact_name' => $contact ? $contact->name : 'Sin contacto',
+                        'contact_email' => $contact ? $contact->email : null,
+                    ],
                     'requested_by' => $order->requestor ? $order->requestor->name : 'Sistema',
                     'status' => $order->status,
                     'total_cost' => $order->total_cost,
                     'expected_date' => $order->expected_date ? $order->expected_date->format('Y-m-d') : null,
-                    'received_date' => $order->received_date ? $order->received_date->format('Y-m-d') : null, // <--- Agregado
+                    'received_date' => $order->received_date ? $order->received_date->format('Y-m-d') : null,
                     'created_at' => $order->created_at->format('Y-m-d'),
                     'items_count' => $order->items_count,
                     'notes' => $order->notes,
@@ -165,10 +182,10 @@ class PurchaseOrderController extends Controller
     {
         $this->authorizeAction($purchaseOrder);
 
-        // Cargamos relaciones necesarias
-        $purchaseOrder->load(['supplier', 'items.product.media', 'requestor']);
+        // CORRECCIÓN: Cargar contacto principal explícitamente
+        $purchaseOrder->load(['supplier.mainContact', 'items.product.media', 'requestor']);
 
-        // Transformamos los items para facilitar el acceso a la imagen en el Vue
+        // Transformar items
         $items = $purchaseOrder->items->map(function ($item) {
             $product = $item->product;
             return [
@@ -181,14 +198,14 @@ class PurchaseOrderController extends Controller
                     'id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
-                    // Obtenemos la URL de la imagen de Spatie
                     'image_url' => $product->getFirstMediaUrl('product_images') ?: $product->getFirstMediaUrl() ?: null,
                 ]
             ];
         });
 
-        // Reemplazamos la colección de items con la transformada o la pasamos aparte
-        // Para no romper la estructura del modelo, crearemos una estructura limpia para Inertia
+        // Obtener datos del contacto principal del proveedor
+        $contact = $purchaseOrder->supplier->mainContact ?? null;
+
         $orderData = [
             'id' => $purchaseOrder->id,
             'status' => $purchaseOrder->status,
@@ -198,9 +215,20 @@ class PurchaseOrderController extends Controller
             'notes' => $purchaseOrder->notes,
             'currency' => $purchaseOrder->currency,
             'total_cost' => $purchaseOrder->total_cost,
-            'supplier' => $purchaseOrder->supplier,
+            
+            // CORRECCIÓN: Estructurar datos del proveedor incluyendo contacto
+            'supplier' => [
+                'id' => $purchaseOrder->supplier->id,
+                'company_name' => $purchaseOrder->supplier->company_name,
+                'website' => $purchaseOrder->supplier->website,
+                // Extraemos info del contacto principal si existe
+                'contact_name' => $contact ? $contact->name : 'Sin contacto asignado',
+                'email' => $contact ? $contact->email : 'Sin correo registrado',
+                'phone' => $contact ? $contact->phone : 'Sin teléfono',
+            ],
+            
             'requestor' => $purchaseOrder->requestor,
-            'items' => $items, // Usamos los items procesados
+            'items' => $items,
         ];
 
         return Inertia::render('Purchases/Show', [
@@ -308,8 +336,7 @@ class PurchaseOrderController extends Controller
             if ($newStatus === 'Recibida' && $oldStatus !== 'Recibida') {
                 $purchaseOrder->load('items.product');
                 
-                // 1. Asignar fecha de recepción
-                $purchaseOrder->received_date = now(); // <--- ACTUALIZACIÓN AQUÍ
+                $purchaseOrder->received_date = now(); 
                 
                 // 2. Aumentar Stock
                 foreach ($purchaseOrder->items as $item) {
@@ -323,8 +350,6 @@ class PurchaseOrderController extends Controller
                     );
                 }
             } else {
-                // Si cambiamos a otro estado y tenía fecha, la limpiamos?
-                // Depende de la lógica, por seguridad la limpiamos si se regresa a borrador
                 if ($newStatus === 'Borrador') {
                     $purchaseOrder->received_date = null;
                 }
@@ -350,16 +375,12 @@ class PurchaseOrderController extends Controller
         return redirect()->route('purchases.index')->with('success', 'Orden eliminada.');
     }
 
-    /**
-     * Muestra la vista de impresión moderna.
-     */
     public function printOrder(PurchaseOrder $purchaseOrder)
     {
         $this->authorizeAction($purchaseOrder);
 
-        $purchaseOrder->load(['supplier', 'items.product.media', 'requestor']);
+        $purchaseOrder->load(['supplier.mainContact', 'items.product.media', 'requestor']);
 
-        // Transformación de items
         $items = $purchaseOrder->items->map(function ($item) {
             $product = $item->product;
             return [
@@ -381,9 +402,8 @@ class PurchaseOrderController extends Controller
                 'currency' => $purchaseOrder->currency,
                 'total_cost' => $purchaseOrder->total_cost,
                 'notes' => $purchaseOrder->notes,
-                'supplier' => $purchaseOrder->supplier, // Toda la info del proveedor se pasa aquí
+                'supplier' => $purchaseOrder->supplier, 
                 'items' => $items,
-                // 'company_info' eliminado según solicitud
             ]
         ]);
     }

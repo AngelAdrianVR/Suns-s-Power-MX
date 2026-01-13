@@ -1,15 +1,15 @@
 <script setup>
-import { ref, computed } from 'vue'; // Agregamos computed
+import { ref, computed } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
-import { useForm, Link, router } from '@inertiajs/vue3'; // Agregamos router
+import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, 
-    createDiscreteApi, NAvatar, NModal, NList, NListItem, NThing, NPopconfirm, NInputGroup 
+    NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NCard, NUpload, NUploadDragger, NIcon, NGrid, NGridItem, 
+    createDiscreteApi, NAvatar, NModal, NList, NListItem, NThing, NPopconfirm, NInputGroup, NText, NP, NEmpty
 } from 'naive-ui';
 import { 
     SaveOutline, ArrowBackOutline, ImageOutline, CubeOutline, CloudUploadOutline, LocationOutline, AlertCircleOutline,
-    AddOutline, TrashOutline, ListOutline 
+    AddOutline, TrashOutline, ListOutline, AttachOutline, CloudDownloadOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -22,13 +22,12 @@ const { hasPermission } = usePermissions();
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
 
-// --- GESTIÓN DE CATEGORÍAS (Lógica Nueva) ---
+// --- GESTIÓN DE CATEGORÍAS ---
 const showCategoryModal = ref(false);
 const categoryForm = useForm({
     name: ''
 });
 
-// Convertimos a computed para que se actualice automáticamente
 const categoryOptions = computed(() => {
     return props.categories.map(cat => ({
         label: cat.name,
@@ -56,7 +55,6 @@ const deleteCategory = (id) => {
         preserveState: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Categoría eliminada', duration: 2000 });
-            // Si la categoría eliminada estaba seleccionada, limpiar el campo
             if (form.category_id === id) {
                 form.category_id = null;
             }
@@ -67,7 +65,8 @@ const deleteCategory = (id) => {
         }
     });
 };
-// --------------------------------------------
+
+// --- GESTIÓN DE PRODUCTO ---
 
 const form = useForm({
     _method: 'PUT',
@@ -81,6 +80,7 @@ const form = useForm({
     location: props.product.location, 
     description: props.product.description,
     image: null,
+    attachments: [], // Array para nuevos archivos
 });
 
 const rules = {
@@ -92,12 +92,46 @@ const rules = {
     min_stock_alert: { required: true, type: 'number', message: 'Define el mínimo para alertas', trigger: 'blur' }
 };
 
+// Manejo de imagen principal
 const handleUploadChange = (data) => {
     if (data.fileList && data.fileList.length > 0) {
         form.image = data.fileList[0].file;
     } else {
         form.image = null;
     }
+};
+
+// Manejo de nuevos adjuntos (igual que en Create.vue)
+const handleAttachmentsChange = (data) => {
+    form.attachments = data.fileList.map(item => item.file).filter(f => f);
+};
+
+// Eliminar archivo existente (igual que en Show.vue)
+const deleteExistingFile = (fileId) => {
+    router.delete(route('media.delete-file', fileId), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({
+                title: 'Archivo Eliminado',
+                content: 'El archivo adjunto se ha eliminado correctamente.',
+                duration: 3000
+            });
+        },
+        onError: () => {
+            notification.error({
+                title: 'Error',
+                content: 'No se pudo eliminar el archivo.',
+                duration: 4000
+            });
+        }
+    });
+};
+
+const getFileIcon = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return ImageOutline;
+    if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) return DocumentTextOutline;
+    return AttachOutline;
 };
 
 const submit = () => {
@@ -190,7 +224,7 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
 
-                                    <!-- SELECTOR DE CATEGORÍA CON BOTÓN DE GESTIÓN -->
+                                    <!-- SELECTOR DE CATEGORÍA -->
                                     <n-grid-item>
                                         <n-form-item 
                                             label="Categoría" 
@@ -269,6 +303,87 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
                                 </n-grid>
+                            </n-card>
+
+                            <!-- NUEVA SECCIÓN: Documentos y Archivos -->
+                            <n-card :bordered="false" class="shadow-sm rounded-2xl">
+                                <template #header>
+                                    <span class="text-gray-600 font-semibold flex items-center gap-2">
+                                        <n-icon :component="AttachOutline" /> Documentos y Archivos Extra
+                                    </span>
+                                </template>
+                                
+                                <!-- 1. LISTA DE ARCHIVOS EXISTENTES -->
+                                <div v-if="product.attachments && product.attachments.length > 0" class="mb-6">
+                                    <p class="text-xs text-gray-500 font-bold mb-2 uppercase">Archivos Actuales</p>
+                                    <div class="grid grid-cols-1 gap-3">
+                                        <div v-for="file in product.attachments" :key="file.id" 
+                                            class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white hover:shadow-sm transition-shadow">
+                                            
+                                            <div class="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-500">
+                                                <n-icon size="18">
+                                                    <component :is="getFileIcon(file.name)" />
+                                                </n-icon>
+                                            </div>
+                                            
+                                            <div class="flex-1 min-w-0">
+                                                <a :href="file.url" target="_blank" class="block">
+                                                    <p class="text-sm font-medium text-gray-700 truncate hover:text-blue-600 transition-colors">
+                                                        {{ file.name }}
+                                                    </p>
+                                                    <p class="text-xs text-gray-400">{{ file.size }}</p>
+                                                </a>
+                                            </div>
+
+                                            <div class="flex items-center gap-1">
+                                                <a :href="file.url" target="_blank" title="Descargar">
+                                                    <n-button size="tiny" circle secondary type="info">
+                                                        <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+                                                    </n-button>
+                                                </a>
+                                                
+                                                <n-popconfirm
+                                                    @positive-click="deleteExistingFile(file.id)"
+                                                    positive-text="Sí, eliminar"
+                                                    negative-text="Cancelar"
+                                                >
+                                                    <template #trigger>
+                                                        <n-button size="tiny" circle secondary type="error">
+                                                            <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                        </n-button>
+                                                    </template>
+                                                    ¿Eliminar este archivo permanentemente?
+                                                </n-popconfirm>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <n-divider class="my-6" />
+                                </div>
+
+                                <!-- 2. SUBIDA DE NUEVOS ARCHIVOS -->
+                                <p class="text-xs text-gray-500 mb-2 font-bold uppercase">Agregar Nuevos</p>
+                                <n-form-item :show-label="false" :feedback="form.errors['attachments.0'] || form.errors.attachments" :validation-status="form.errors.attachments ? 'error' : undefined">
+                                    <n-upload
+                                        multiple
+                                        directory-dnd
+                                        @change="handleAttachmentsChange"
+                                        :default-upload="false"
+                                    >
+                                        <n-upload-dragger>
+                                            <div style="margin-bottom: 12px">
+                                                <n-icon size="48" :depth="3">
+                                                    <cloud-upload-outline />
+                                                </n-icon>
+                                            </div>
+                                            <n-text style="font-size: 16px">
+                                                Arrastra archivos nuevos aquí
+                                            </n-text>
+                                            <n-p depth="3" style="margin: 8px 0 0 0">
+                                                Se sumarán a los existentes
+                                            </n-p>
+                                        </n-upload-dragger>
+                                    </n-upload>
+                                </n-form-item>
                             </n-card>
                         </div>
 
@@ -350,7 +465,7 @@ const submit = () => {
                             <!-- Imagen -->
                             <n-card :bordered="false" class="shadow-sm rounded-2xl">
                                 <template #header>
-                                    <span class="text-gray-600 font-semibold">Imagen del Producto</span>
+                                    <span class="text-gray-600 font-semibold">Imagen Principal</span>
                                 </template>
                                 
                                 <div class="mb-4 flex justify-center">

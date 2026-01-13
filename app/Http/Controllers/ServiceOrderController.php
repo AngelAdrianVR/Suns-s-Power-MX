@@ -25,8 +25,6 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $branchId = session('current_branch_id') ?? $user->branch_id;
         
-        // 1. Determinar permisos (Igual que en Show)
-        // Admin y Ventas ven todo. Los demás solo lo suyo y sin costos.
         $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas']);
 
         $filters = $request->only(['search', 'status', 'date_range']);
@@ -42,12 +40,9 @@ class ServiceOrderController extends Controller
             ->withCount('tasks')
             ->where('branch_id', $branchId);
 
-        // 2. Filtrar órdenes si NO tiene acceso total
         if (!$hasFullAccess) {
             $query->where(function ($q) use ($user) {
-                // Ver si es el técnico líder
                 $q->where('technician_id', $user->id)
-                  // O si está asignado a alguna tarea dentro de la orden
                   ->orWhereHas('tasks', function ($tq) use ($user) {
                       $tq->whereHas('assignees', function ($aq) use ($user) {
                           $aq->where('users.id', $user->id);
@@ -60,7 +55,9 @@ class ServiceOrderController extends Controller
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
-                      ->orWhere('installation_address', 'like', "%{$search}%")
+                      // Buscamos en los campos atomizados (ej. calle o colonia)
+                      ->orWhere('installation_street', 'like', "%{$search}%")
+                      ->orWhere('installation_neighborhood', 'like', "%{$search}%")
                       ->orWhereHas('client', function ($cq) use ($search) {
                           $cq->where('name', 'like', "%{$search}%");
                       });
@@ -80,7 +77,8 @@ class ServiceOrderController extends Controller
                         'id' => $order->client->id,
                         'name' => $order->client->name,
                     ] : null,
-                    'installation_address' => $order->installation_address,
+                    // Devolvemos la dirección formateada para la tabla
+                    'installation_address' => $order->full_installation_address, 
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
                     'technician' => $order->technician ? [
                         'name' => $order->technician->name,
@@ -90,7 +88,6 @@ class ServiceOrderController extends Controller
                         'name' => $order->salesRep->name,
                         'photo' => $order->salesRep->profile_photo_url,
                     ] : null,
-                    // 3. Ocultar el total si no tiene permisos (envía null)
                     'total_amount' => $hasFullAccess ? $order->total_amount : null,
                     'progress' => $order->progress ?? 0, 
                     'created_at_human' => $order->created_at->diffForHumans(),
@@ -101,7 +98,7 @@ class ServiceOrderController extends Controller
             'orders' => $orders,
             'filters' => $filters,
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
-            'can_view_financials' => $hasFullAccess // Nueva prop para el Index
+            'can_view_financials' => $hasFullAccess
         ]);
     }
 
@@ -109,6 +106,7 @@ class ServiceOrderController extends Controller
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         return Inertia::render('ServiceOrders/Create', [
+            // Mandamos solo lo básico para que cargue rápido
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
@@ -118,6 +116,7 @@ class ServiceOrderController extends Controller
     public function store(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
             'technician_id' => 'nullable|exists:users,id',
@@ -125,11 +124,22 @@ class ServiceOrderController extends Controller
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
-            'installation_address' => 'required|string',
+            
+            // Nuevas validaciones para dirección atomizada
+            'installation_street' => 'required|string|max:255',
+            'installation_exterior_number' => 'nullable|string|max:50',
+            'installation_interior_number' => 'nullable|string|max:50',
+            'installation_neighborhood' => 'nullable|string|max:255',
+            'installation_municipality' => 'nullable|string|max:255',
+            'installation_state' => 'nullable|string|max:255',
+            'installation_zip_code' => 'nullable|string|max:10',
+            'installation_country' => 'nullable|string|max:100',
+            
             'notes' => 'nullable|string'
         ]);
 
         $validated['branch_id'] = $branchId;
+        
         DB::transaction(function () use ($validated) {
             ServiceOrder::create($validated);
         });
@@ -248,10 +258,8 @@ class ServiceOrderController extends Controller
 
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
-            // AGREGA ESTAS LÍNEAS:
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
-            // -------------------
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->get(['id', 'name']),
         ]);
     }
@@ -262,13 +270,23 @@ class ServiceOrderController extends Controller
         if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         $validated = $request->validate([
-            'client_id' => 'required|exists:clients,id', // Faltaba este
-            'sales_rep_id' => 'required|exists:users,id', // Faltaba este
+            'client_id' => 'required|exists:clients,id',
+            'sales_rep_id' => 'required|exists:users,id',
             'technician_id' => 'nullable|exists:users,id',
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
-            'total_amount' => 'required|numeric|min:0', // Faltaba este
-            'installation_address' => 'required|string',
+            'total_amount' => 'required|numeric|min:0',
+            
+            // Actualizamos validación en update también
+            'installation_street' => 'required|string|max:255',
+            'installation_exterior_number' => 'nullable|string|max:50',
+            'installation_interior_number' => 'nullable|string|max:50',
+            'installation_neighborhood' => 'nullable|string|max:255',
+            'installation_municipality' => 'nullable|string|max:255',
+            'installation_state' => 'nullable|string|max:255',
+            'installation_zip_code' => 'nullable|string|max:10',
+            'installation_country' => 'nullable|string|max:100',
+            
             'notes' => 'nullable|string',
         ]);
 

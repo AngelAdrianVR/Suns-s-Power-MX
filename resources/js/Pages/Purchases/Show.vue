@@ -1,6 +1,6 @@
 <script>
 import { Link, router } from '@inertiajs/vue3';
-import { usePermissions } from '@/Composables/usePermissions'; // 1. Importar composable
+import { usePermissions } from '@/Composables/usePermissions';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NCard, NIcon, NSteps, NStep, NTag, NButton, NDivider, NDataTable, 
@@ -10,7 +10,7 @@ import {
 import { 
     ArrowBackOutline, PrintOutline, CubeOutline, CheckmarkCircleOutline, 
     CloseCircleOutline, DocumentTextOutline, TimeOutline, AirplaneOutline,
-    StorefrontOutline, ImageOutline
+    StorefrontOutline, ImageOutline, PersonOutline, CallOutline, GlobeOutline // Agregados
 } from '@vicons/ionicons5';
 import { h } from 'vue';
 
@@ -21,7 +21,8 @@ export default {
         NModal, NImage,
         // Iconos
         ArrowBackOutline, PrintOutline, CubeOutline, CheckmarkCircleOutline,
-        CloseCircleOutline, DocumentTextOutline, TimeOutline, AirplaneOutline, StorefrontOutline, ImageOutline
+        CloseCircleOutline, DocumentTextOutline, TimeOutline, AirplaneOutline, 
+        StorefrontOutline, ImageOutline, PersonOutline, CallOutline, GlobeOutline
     },
     props: {
         order: {
@@ -29,7 +30,6 @@ export default {
             required: true
         }
     },
-    // 2. Usar setup para exponer hasPermission al template
     setup() {
         const { hasPermission } = usePermissions();
         return { hasPermission };
@@ -80,7 +80,7 @@ export default {
                 {
                     title: 'Total',
                     key: 'subtotal',
-                    render: (row) => this.formatCurrency(row.subtotal), // Usamos el subtotal calculado en backend
+                    render: (row) => this.formatCurrency(row.subtotal),
                     align: 'right',
                     className: 'font-bold'
                 }
@@ -93,7 +93,7 @@ export default {
                 case 'Borrador': return 1;
                 case 'Solicitada': return 2;
                 case 'Recibida': return 3;
-                case 'Cancelada': return 0; // Estado especial
+                case 'Cancelada': return 0;
                 default: return 1;
             }
         },
@@ -106,7 +106,6 @@ export default {
             return this.order.status === 'Cancelada';
         },
         itemsWithKey() {
-            // Naive UI requiere keys unicas
             return this.order.items.map(item => ({...item, key: item.id}));
         }
     },
@@ -154,7 +153,6 @@ export default {
             });
         },
         printOrder() {
-            // Abre la nueva ruta de impresión en una pestaña nueva
             const url = route('purchases.print', this.order.id);
             window.open(url, '_blank');
         }
@@ -183,7 +181,6 @@ export default {
         <div class="py-8">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 
-                <!-- ALERTA DE CANCELACIÓN -->
                 <div v-if="isCancelled" class="mb-6">
                     <n-alert title="Orden Cancelada" type="error" closable>
                         Esta orden ha sido cancelada y no afecta el inventario.
@@ -205,41 +202,29 @@ export default {
 
                             <n-divider />
 
-                            <!-- BOTONES DE ACCIÓN (Lógica de transición) -->
                             <div class="flex flex-wrap gap-3 justify-end items-center">
-                                
-                                <!-- Si está en Borrador -->
                                 <template v-if="order.status === 'Borrador'">
-                                    <!-- Editar: Requiere permiso purchases.edit -->
                                     <Link v-if="hasPermission('purchases.edit')" :href="route('purchases.edit', order.id)">
                                         <n-button secondary>Editar</n-button>
                                     </Link>
-                                    
-                                    <!-- Solicitar: Requiere permiso purchases.edit -->
                                     <n-button v-if="hasPermission('purchases.edit')" type="info" @click="changeStatus('Solicitada')" :loading="loadingAction">
                                         <template #icon><n-icon><AirplaneOutline /></n-icon></template>
                                         Solicitar
                                     </n-button>
                                 </template>
 
-                                <!-- Si está Solicitada -->
                                 <template v-if="order.status === 'Solicitada'">
-                                    <!-- Cancelar: Requiere permiso purchases.approve -->
                                     <n-button v-if="hasPermission('purchases.approve')" type="error" ghost @click="changeStatus('Cancelada')" :loading="loadingAction">
                                         <template #icon><n-icon><CloseCircleOutline /></n-icon></template>
                                         Cancelar
                                     </n-button>
-                                    
-                                    <!-- Recibir: Requiere permiso purchases.approve -->
                                     <n-button v-if="hasPermission('purchases.approve')" type="primary" @click="changeStatus('Recibida')" :loading="loadingAction">
                                         <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
                                         Recibir
                                     </n-button>
                                 </template>
 
-                                <!-- Si está Cancelada -->
                                 <template v-if="order.status === 'Cancelada'">
-                                    <!-- Reactivar: Requiere permiso purchases.edit -->
                                     <n-button v-if="hasPermission('purchases.edit')" secondary type="warning" @click="changeStatus('Borrador')" :loading="loadingAction">
                                         Reactivar
                                     </n-button>
@@ -247,7 +232,6 @@ export default {
 
                                 <p v-if="order.received_date" class="text-green-800 bg-green-100 rounded-md px-2 text-xs py-1">Recibida: {{ formatDate(order.received_date) }}</p>
 
-                                <!-- Común: Imprimir (Disponible para todos los que puedan ver) -->
                                 <n-button secondary circle @click="printOrder">
                                     <template #icon><n-icon><PrintOutline /></n-icon></template>
                                 </n-button>
@@ -260,20 +244,12 @@ export default {
                                 <n-tag type="default" size="small">{{ order.items.length }} Items</n-tag>
                             </template>
                             
-                            <!-- TABLA PARA ESCRITORIO (md en adelante) -->
                             <div class="hidden md:block">
-                                <n-data-table
-                                    :columns="columns"
-                                    :data="itemsWithKey"
-                                    :bordered="false"
-                                    size="small"
-                                />
+                                <n-data-table :columns="columns" :data="itemsWithKey" :bordered="false" size="small" />
                             </div>
 
-                            <!-- VISTA MOVIL (Tarjetas) (visible solo en sm e inferior) -->
                             <div class="block md:hidden space-y-4">
                                 <div v-for="item in itemsWithKey" :key="item.id" class="bg-white border border-gray-100 rounded-lg p-3 shadow-sm flex gap-3">
-                                    <!-- Imagen -->
                                     <div class="flex-shrink-0" @click="item.product.image_url && openImage(item.product.image_url)">
                                         <img 
                                             v-if="item.product.image_url" 
@@ -284,11 +260,9 @@ export default {
                                             <n-icon size="24"><CubeOutline /></n-icon>
                                         </div>
                                     </div>
-                                    <!-- Info -->
                                     <div class="flex-grow">
                                         <p class="font-bold text-gray-800 text-sm leading-tight">{{ item.product.name }}</p>
                                         <p class="text-xs text-gray-500 mb-2">SKU: {{ item.product.sku }}</p>
-                                        
                                         <div class="flex justify-between items-end border-t border-dashed border-gray-100 pt-2">
                                             <div class="text-xs text-gray-600">
                                                 <span class="block">{{ item.quantity }} x {{ formatCurrency(item.unit_cost) }}</span>
@@ -301,7 +275,6 @@ export default {
                                 </div>
                             </div>
 
-                            <!-- Totales -->
                             <div class="mt-6 flex flex-col items-end border-t border-gray-100 pt-4">
                                 <div class="w-full sm:w-1/2 lg:w-1/3 space-y-2">
                                     <div class="flex justify-between text-gray-500">
@@ -320,19 +293,30 @@ export default {
                     <!-- COLUMNA DERECHA: INFO PROVEEDOR Y NOTAS -->
                     <div class="lg:col-span-1 space-y-6">
                         
-                        <!-- TARJETA PROVEEDOR -->
+                        <!-- TARJETA PROVEEDOR ACTUALIZADA -->
                         <n-card :bordered="false" class="shadow-sm rounded-2xl bg-blue-50/50">
                             <div class="flex flex-col items-center text-center mb-4">
                                 <n-icon size="48" class="text-blue-200 mb-2"><StorefrontOutline /></n-icon>
                                 <h3 class="font-bold text-lg text-gray-800">{{ order.supplier.company_name }}</h3>
+                                <!-- Email del contacto -->
                                 <p class="text-sm text-gray-500">{{ order.supplier.email }}</p>
+                                <!-- Sitio Web si existe -->
+                                <a v-if="order.supplier.website" :href="order.supplier.website" target="_blank" class="text-xs text-blue-600 hover:underline mt-1 flex items-center gap-1">
+                                    <n-icon><GlobeOutline/></n-icon> {{ order.supplier.website }}
+                                </a>
                             </div>
                             <n-descriptions column="1" label-placement="left" size="small">
                                 <n-descriptions-item label="Contacto">
-                                    {{ order.supplier.contact_name || 'N/A' }}
+                                    <div class="flex items-center gap-2">
+                                        <n-icon class="text-gray-400"><PersonOutline/></n-icon>
+                                        <span>{{ order.supplier.contact_name }}</span>
+                                    </div>
                                 </n-descriptions-item>
                                 <n-descriptions-item label="Teléfono">
-                                    {{ order.supplier.phone || 'N/A' }}
+                                    <div class="flex items-center gap-2">
+                                        <n-icon class="text-gray-400"><CallOutline/></n-icon>
+                                        <span>{{ order.supplier.phone }}</span>
+                                    </div>
                                 </n-descriptions-item>
                             </n-descriptions>
                         </n-card>
@@ -375,7 +359,6 @@ export default {
             </div>
         </div>
 
-        <!-- MODAL PARA VER IMAGEN -->
         <n-modal v-model:show="showImageModal" preset="card" style="width: 600px; max-width: 90%" title="Vista Previa del Producto">
             <div class="flex justify-center bg-gray-50 p-4 rounded-lg">
                 <img :src="previewImageUrl" class="max-h-[70vh] object-contain rounded shadow-sm" />
@@ -384,7 +367,3 @@ export default {
 
     </AppLayout>
 </template>
-
-<style scoped>
-/* Ajustes para móviles si es necesario */
-</style>
