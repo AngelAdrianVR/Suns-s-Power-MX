@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, createDiscreteApi 
+    NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, createDiscreteApi, NDivider 
 } from 'naive-ui';
 import { 
     SaveOutline, ArrowBackOutline, PersonOutline, MailOutline, CallOutline, 
@@ -22,13 +22,27 @@ const form = useForm({
     name: props.client.name,
     contact_person: props.client.contact_person,
     tax_id: props.client.tax_id,
+    
+    // Contacto
     email: props.client.email,
+    email_secondary: props.client.email_secondary,
     phone: props.client.phone,
-    address: props.client.address,
+    phone_secondary: props.client.phone_secondary,
+    
+    // Dirección Atomizada
+    street: props.client.street,
+    exterior_number: props.client.exterior_number,
+    interior_number: props.client.interior_number,
+    neighborhood: props.client.neighborhood,
+    municipality: props.client.municipality,
+    state: props.client.state,
+    zip_code: props.client.zip_code,
+    country: props.client.country || 'México',
+    
     notes: props.client.notes,
 });
 
-// Reglas de validación (Mismas que en Create)
+// Reglas de validación
 const rules = {
     name: { 
         required: true, 
@@ -37,9 +51,14 @@ const rules = {
     },
     email: { 
         type: 'email', 
-        message: 'Ingresa un correo válido', 
+        message: 'Formato de correo inválido', 
         trigger: ['blur', 'input'] 
-    }
+    },
+    email_secondary: { 
+        type: 'email', 
+        message: 'Formato de correo inválido', 
+        trigger: ['blur', 'input'] 
+    },
 };
 
 const submit = () => {
@@ -64,7 +83,7 @@ const submit = () => {
         } else {
             notification.warning({
                 title: 'Campos Requeridos',
-                content: 'Por favor corrige los errores antes de guardar.',
+                content: 'Por favor completa la información obligatoria.',
                 duration: 3000
             });
         }
@@ -76,7 +95,7 @@ const submit = () => {
     <AppLayout :title="`Editar: ${client.name}`">
         <template #header>
             <div class="flex items-center gap-4">
-                <!-- Botón regresar al SHOW del cliente, no al index -->
+                <!-- Botón regresar al SHOW del cliente -->
                 <Link :href="route('clients.show', client.id)">
                     <n-button circle secondary type="default">
                         <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
@@ -92,7 +111,7 @@ const submit = () => {
         </template>
 
         <div class="py-8">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
                 
                 <n-form
                     ref="formRef"
@@ -100,12 +119,12 @@ const submit = () => {
                     :rules="rules"
                     label-placement="top"
                     require-mark-placement="right-hanging"
-                    size="large"
+                    size="medium"
                 >
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         
                         <!-- Columna Izquierda: Datos Principales -->
-                        <div class="md:col-span-2 space-y-6">
+                        <div class="lg:col-span-2 space-y-6">
                             
                             <!-- Tarjeta 1: Identidad -->
                             <n-card :bordered="false" class="shadow-sm rounded-2xl">
@@ -126,7 +145,7 @@ const submit = () => {
                                             <n-input 
                                                 v-model:value="form.name" 
                                                 placeholder="Ej. Juan Pérez o Energías Renovables S.A." 
-                                                class="font-semibold"
+                                                class="font-semibold text-lg"
                                             >
                                                 <template #prefix>
                                                     <n-icon :component="BusinessOutline" class="text-gray-400"/>
@@ -140,8 +159,6 @@ const submit = () => {
                                             <n-form-item 
                                                 label="RFC (Tax ID)" 
                                                 path="tax_id"
-                                                :validation-status="form.errors.tax_id ? 'error' : undefined"
-                                                :feedback="form.errors.tax_id"
                                             >
                                                 <n-input 
                                                     v-model:value="form.tax_id" 
@@ -155,7 +172,7 @@ const submit = () => {
                                             </n-form-item>
 
                                             <n-form-item 
-                                                label="Persona de Contacto (Opcional)" 
+                                                label="Persona de Contacto" 
                                                 path="contact_person"
                                             >
                                                 <n-input 
@@ -172,24 +189,68 @@ const submit = () => {
                                 </n-grid>
                             </n-card>
 
-                            <!-- Tarjeta 2: Ubicación -->
+                            <!-- Tarjeta 2: Ubicación Atomizada -->
                             <n-card :bordered="false" class="shadow-sm rounded-2xl">
                                 <template #header>
                                     <span class="text-gray-600 font-semibold flex items-center gap-2">
-                                        <n-icon :component="LocationOutline" /> Ubicación Principal
+                                        <n-icon :component="LocationOutline" /> Dirección Fiscal / Instalación
                                     </span>
                                 </template>
-                                <n-form-item 
-                                    label="Dirección (Calle, Número, Colonia, CP)" 
-                                    path="address"
-                                >
-                                    <n-input 
-                                        v-model:value="form.address" 
-                                        type="textarea"
-                                        placeholder="Dirección fiscal o del sitio principal de instalación"
-                                        :autosize="{ minRows: 2, maxRows: 4 }"
-                                    />
-                                </n-form-item>
+                                
+                                <n-grid x-gap="12" y-gap="4" cols="1 s:2 m:4" responsive="screen">
+                                    
+                                    <!-- Calle -->
+                                    <n-grid-item span="1 m:2">
+                                        <n-form-item label="Calle" path="street">
+                                            <n-input v-model:value="form.street" placeholder="Av. Principal" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item>
+                                        <n-form-item label="No. Exterior" path="exterior_number">
+                                            <n-input v-model:value="form.exterior_number" placeholder="123" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item>
+                                        <n-form-item label="No. Interior" path="interior_number">
+                                            <n-input v-model:value="form.interior_number" placeholder="Apt 4B" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <!-- Fila 2 -->
+                                    <n-grid-item span="1 m:2">
+                                        <n-form-item label="Colonia / Barrio" path="neighborhood">
+                                            <n-input v-model:value="form.neighborhood" placeholder="Centro" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item>
+                                        <n-form-item label="Código Postal" path="zip_code">
+                                            <n-input v-model:value="form.zip_code" placeholder="00000" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item>
+                                        <n-form-item label="País" path="country">
+                                            <n-input v-model:value="form.country" placeholder="México" />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <!-- Fila 3 -->
+                                    <n-grid-item span="1 m:2">
+                                        <n-form-item label="Municipio / Alcaldía" path="municipality">
+                                            <n-input v-model:value="form.municipality" placeholder="Delegación..." />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item span="1 m:2">
+                                        <n-form-item label="Estado / Provincia" path="state">
+                                            <n-input v-model:value="form.state" placeholder="Estado..." />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                </n-grid>
                             </n-card>
                         </div>
 
@@ -204,41 +265,51 @@ const submit = () => {
                                     </span>
                                 </template>
                                 
-                                <n-grid x-gap="12" :cols="1">
-                                    <n-grid-item>
-                                        <n-form-item 
-                                            label="Correo Electrónico" 
-                                            path="email"
-                                            :validation-status="form.errors.email ? 'error' : undefined"
-                                            :feedback="form.errors.email"
-                                        >
-                                            <n-input 
-                                                v-model:value="form.email" 
-                                                placeholder="cliente@email.com"
-                                            >
-                                                <template #prefix>
-                                                    <n-icon :component="MailOutline" />
-                                                </template>
-                                            </n-input>
-                                        </n-form-item>
-                                    </n-grid-item>
+                                <div class="space-y-4">
+                                    <!-- Contacto 1 -->
+                                    <div>
+                                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Principal</p>
+                                        <n-grid x-gap="8" :cols="1">
+                                            <n-grid-item>
+                                                <n-form-item label="Correo Electrónico" path="email">
+                                                    <n-input v-model:value="form.email" placeholder="mail@ejemplo.com">
+                                                        <template #prefix><n-icon :component="MailOutline" /></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                            <n-grid-item>
+                                                <n-form-item label="Teléfono / Móvil" path="phone">
+                                                    <n-input v-model:value="form.phone" placeholder="(00) 0000 0000">
+                                                        <template #prefix><n-icon :component="CallOutline" /></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                        </n-grid>
+                                    </div>
 
-                                    <n-grid-item>
-                                        <n-form-item 
-                                            label="Teléfono / Celular" 
-                                            path="phone"
-                                        >
-                                            <n-input 
-                                                v-model:value="form.phone" 
-                                                placeholder="(55) 0000 0000" 
-                                            >
-                                                <template #prefix>
-                                                    <n-icon :component="CallOutline" />
-                                                </template>
-                                            </n-input>
-                                        </n-form-item>
-                                    </n-grid-item>
-                                </n-grid>
+                                    <n-divider style="margin: 0" />
+
+                                    <!-- Contacto 2 -->
+                                    <div>
+                                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Secundario (Opcional)</p>
+                                        <n-grid x-gap="8" :cols="1">
+                                            <n-grid-item>
+                                                <n-form-item label="Correo Alternativo" path="email_secondary">
+                                                    <n-input v-model:value="form.email_secondary" placeholder="mail2@ejemplo.com">
+                                                        <template #prefix><n-icon :component="MailOutline" /></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                            <n-grid-item>
+                                                <n-form-item label="Teléfono Alternativo" path="phone_secondary">
+                                                    <n-input v-model:value="form.phone_secondary" placeholder="Otro número">
+                                                        <template #prefix><n-icon :component="CallOutline" /></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                        </n-grid>
+                                    </div>
+                                </div>
                             </n-card>
 
                             <!-- Tarjeta Notas -->

@@ -258,7 +258,7 @@ const rowProps = (row) => {
         </template>
 
         <div class="py-8 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="max-w-[85rem] mx-auto sm:px-6 lg:px-8">
                 
                 <!-- Barra de búsqueda -->
                 <div class="mb-6 px-4 sm:px-0 flex justify-between items-center">

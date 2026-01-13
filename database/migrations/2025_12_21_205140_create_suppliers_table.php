@@ -15,9 +15,12 @@ return new class extends Migration
             $table->id();
             $table->foreignId('branch_id')->default(1)->constrained();
             $table->string('company_name');
-            $table->string('contact_name')->nullable();
-            $table->string('email')->nullable();
-            $table->string('phone')->nullable();
+            $table->string('website')->nullable();
+
+            // contacto 
+            // $table->string('contact_name')->nullable();
+            // $table->string('email')->nullable();
+            // $table->string('phone')->nullable();
             $table->timestamps();
         });
     }

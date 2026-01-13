@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
 {
@@ -18,29 +19,36 @@ class SupplierController extends Controller
     {
         $filters = $request->only(['search']);
         $search = $filters['search'] ?? null;
-
-        // LÓGICA MULTI-TENANT: Obtenemos la sucursal actual (Sesión o Usuario)
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         $suppliers = Supplier::query()
-            ->where('branch_id', $branchId) // Filtro estricto por sucursal
+            ->where('branch_id', $branchId)
+            ->withCount('contacts') // Contamos contactos reales
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('company_name', 'like', "%{$search}%")
-                      ->orWhere('contact_name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      // Buscamos también en los contactos relacionados
+                      ->orWhereHas('contacts', function($q) use ($search) {
+                          $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                      });
                 });
             })
             ->orderBy('created_at', 'desc')
             ->paginate(30)
             ->withQueryString()
             ->through(function ($supplier) {
+                // Obtenemos el contacto principal para mostrar en la tabla
+                $mainContact = $supplier->mainContact; 
+                
                 return [
                     'id' => $supplier->id,
                     'company_name' => $supplier->company_name,
-                    'contact_name' => $supplier->contact_name,
-                    'email' => $supplier->email,
-                    'phone' => $supplier->phone,
+                    'website' => $supplier->website,
+                    // Mostramos datos del contacto principal o un fallback
+                    'contact_name' => $mainContact ? $mainContact->name : 'Sin contacto',
+                    'email' => $mainContact ? $mainContact->email : '-',
+                    'phone' => $mainContact ? $mainContact->phone : '-',
                     'products_count' => $supplier->products()->count(),
                 ];
             });
@@ -58,37 +66,59 @@ class SupplierController extends Controller
 
     public function store(Request $request)
     {
+        // 1. Validación Principal
         $validated = $request->validate([
             'company_name' => 'required|string|max:255',
-            'contact_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:14',
+            'website' => 'nullable|url|max:255',
+            
+            // Validación del Array de Contactos
+            'contacts' => 'required|array|min:1',
+            'contacts.*.name' => 'required|string|max:255',
+            'contacts.*.email' => 'nullable|email|max:255',
+            'contacts.*.phone' => 'nullable|string|max:20',
+            'contacts.*.job_title' => 'nullable|string|max:100',
+            'contacts.*.is_primary' => 'boolean',
+            'contacts.*.notes' => 'nullable|string',
         ]);
 
-        // Inyectamos el branch_id automáticamente
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
-        // Verificación de seguridad básica (opcional si el middleware ya lo garantiza)
         if (!$branchId) {
             return back()->with('error', 'No se ha identificado la sucursal activa.');
         }
 
-        $validated['branch_id'] = $branchId;
+        // Usamos DB Transaction para asegurar integridad (Supplier + Contactos)
+        DB::transaction(function () use ($validated, $branchId) {
+            
+            // 2. Crear Proveedor
+            $supplier = Supplier::create([
+                'branch_id' => $branchId,
+                'company_name' => $validated['company_name'],
+                'website' => $validated['website'] ?? null,
+                // Dejamos nulos los campos legacy (contact_name, etc)
+            ]);
 
-       $supplier = Supplier::create($validated);
+            // 3. Crear Contactos
+            foreach ($validated['contacts'] as $contactData) {
+                // Inyectamos branch_id al contacto también
+                $contactData['branch_id'] = $branchId;
+                $supplier->contacts()->create($contactData);
+            }
+        });
 
-        return redirect()->route('suppliers.show', $supplier->id)->with('success', 'Proveedor registrado exitosamente.');
+        return redirect()->route('suppliers.index')->with('success', 'Proveedor y contactos registrados exitosamente.');
     }
 
     public function show(Supplier $supplier)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
-            abort(403, 'No tienes permiso para ver este proveedor.');
+            abort(403);
         }
 
-        // Solo cargamos los productos que YA tiene el proveedor (Relación directa)
-        // Esto es rápido y no sobrecarga la vista inicial.
+        // Cargar contactos para la vista de detalle
+        $supplier->load('contacts');
+
         $assignedProducts = $supplier->products()
             ->with('media')
             ->select('products.id', 'products.name', 'products.sku', 'products.purchase_price as default_price')
@@ -109,7 +139,6 @@ class SupplierController extends Controller
         return Inertia::render('Suppliers/Show', [
             'supplier' => $supplier,
             'assigned_products' => $assignedProducts,
-            // NO enviamos available_products aquí para no alentar la carga
         ]);
     }
 
@@ -184,11 +213,13 @@ class SupplierController extends Controller
 
     public function edit(Supplier $supplier)
     {
-        // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
             return inertia('Forbidden403');
         }
+
+        // IMPORTANTE: Cargar los contactos existentes para que el formulario los muestre
+        $supplier->load('contacts');
 
         return Inertia::render('Suppliers/Edit', [
             'supplier' => $supplier
@@ -197,7 +228,6 @@ class SupplierController extends Controller
 
     public function update(Request $request, Supplier $supplier)
     {
-        // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($supplier->branch_id !== $branchId) {
             return inertia('Forbidden403');
@@ -205,30 +235,59 @@ class SupplierController extends Controller
 
         $validated = $request->validate([
             'company_name' => 'required|string|max:255',
-            'contact_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:50',
+            'website' => 'nullable|url|max:255',
+            
+            'contacts' => 'required|array|min:1',
+            'contacts.*.id' => 'nullable|integer', // ID presente si es edición de uno existente
+            'contacts.*.name' => 'required|string|max:255',
+            'contacts.*.email' => 'nullable|email|max:255',
+            'contacts.*.phone' => 'nullable|string|max:20',
+            'contacts.*.job_title' => 'nullable|string|max:100',
+            'contacts.*.is_primary' => 'boolean',
+            'contacts.*.notes' => 'nullable|string',
         ]);
 
-        $supplier->update($validated);
+        DB::transaction(function () use ($supplier, $validated, $branchId) {
+            // 1. Actualizar datos base
+            $supplier->update([
+                'company_name' => $validated['company_name'],
+                'website' => $validated['website'] ?? null,
+            ]);
+
+            // 2. Sincronizar Contactos
+            // Estrategia: Obtener IDs enviados, eliminar los que no están, actualizar existentes y crear nuevos.
+            
+            $inputContacts = collect($validated['contacts']);
+            
+            // A) Eliminar contactos que ya no vienen en el request
+            $inputIds = $inputContacts->pluck('id')->filter(); // Solo IDs no nulos
+            $supplier->contacts()->whereNotIn('id', $inputIds)->delete();
+
+            // B) Crear o Actualizar
+            foreach ($inputContacts as $contactData) {
+                $contactData['branch_id'] = $branchId; // Asegurar tenant
+
+                if (isset($contactData['id']) && $contactData['id']) {
+                    // Actualizar existente (verificando que pertenezca al supplier)
+                    $supplier->contacts()->where('id', $contactData['id'])->update($contactData);
+                } else {
+                    // Crear nuevo
+                    $supplier->contacts()->create($contactData);
+                }
+            }
+        });
 
         return redirect()->route('suppliers.show', $supplier)->with('success', 'Proveedor actualizado correctamente.');
     }
 
     public function destroy(Supplier $supplier)
     {
-        // SEGURIDAD
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            return inertia('Forbidden403');
-        }
-
+        if ($supplier->branch_id !== $branchId) { return inertia('Forbidden403'); }
         if ($supplier->purchaseOrders()->exists()) {
-            return back()->with('error', 'No se puede eliminar el proveedor porque tiene Órdenes de Compra asociadas.');
+            return back()->with('error', 'No se puede eliminar porque tiene Órdenes de Compra.');
         }
-
         $supplier->delete();
-
         return redirect()->route('suppliers.index')->with('success', 'Proveedor eliminado.');
     }
 

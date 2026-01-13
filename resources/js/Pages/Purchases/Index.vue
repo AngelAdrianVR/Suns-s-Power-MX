@@ -4,12 +4,12 @@ import { usePermissions } from '@/Composables/usePermissions'; // Importar permi
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NButton, NDataTable, NInput, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NDropdown, NBadge 
+    NButton, NDataTable, NInput, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NDropdown, NBadge, NTooltip 
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     CartOutline, CalendarOutline, CloseCircleOutline, CheckmarkCircleOutline,
-    EllipsisVertical, TimeOutline
+    EllipsisVertical, TimeOutline, PersonOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -170,9 +170,13 @@ const createColumns = () => [
         title: 'Proveedor',
         key: 'supplier',
         render(row) {
+            // CORRECCIÓN: Usar los campos del contacto que mandamos desde el controlador
             return h('div', { class: 'flex flex-col' }, [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.supplier?.company_name || 'Desconocido'),
-                h('span', { class: 'text-xs text-gray-400' }, row.supplier?.contact_name)
+                h('div', { class: 'flex items-center gap-1 text-xs text-gray-400' }, [
+                    h(NIcon, { component: PersonOutline, class: 'text-gray-400' }),
+                    h('span', row.supplier?.contact_name || 'Sin contacto')
+                ])
             ]);
         }
     },
@@ -345,6 +349,10 @@ const rowProps = (row) => ({
                                 <div class="flex flex-col">
                                     <span class="font-mono text-gray-400 text-xs font-bold tracking-wider">OC-{{ String(order.id).padStart(4, '0') }}</span>
                                     <span class="font-bold text-gray-800 text-lg leading-tight">{{ order.supplier?.company_name || 'Sin Proveedor' }}</span>
+                                    <!-- Contacto móvil -->
+                                    <span class="text-xs text-gray-400 flex items-center gap-1 mt-1">
+                                        <n-icon :component="PersonOutline" /> {{ order.supplier?.contact_name || 'Sin contacto' }}
+                                    </span>
                                 </div>
                                 <n-tag :type="getStatusStyles(order.status).type" round size="small" :bordered="false">
                                     <template #icon><n-icon :component="getStatusStyles(order.status).icon" /></template>

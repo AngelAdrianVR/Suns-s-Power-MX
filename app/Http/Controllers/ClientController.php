@@ -20,7 +20,6 @@ class ClientController extends Controller
         $filters = $request->only(['search', 'status']);
         $search = $filters['search'] ?? null;
         
-        // Contexto Multi-tenant
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         $clients = Client::query()
@@ -30,12 +29,12 @@ class ClientController extends Controller
                     $q->where('name', 'like', "%{$search}%")
                       ->orWhere('contact_person', 'like', "%{$search}%")
                       ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('tax_id', 'like', "%{$search}%"); // Búsqueda por RFC
+                      ->orWhere('email_secondary', 'like', "%{$search}%") // Busqueda en correo secundario
+                      ->orWhere('phone', 'like', "%{$search}%")
+                      ->orWhere('tax_id', 'like', "%{$search}%"); 
                 });
             })
-            // Subconsultas para calcular saldo sin hidratar todos los modelos (Optimización SQL)
             ->withSum(['serviceOrders as total_debt' => function ($query) {
-                // Solo sumamos órdenes que generan deuda (ej. no canceladas)
                 $query->whereNotIn('status', ['Cancelado', 'Cotización']);
             }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
@@ -43,7 +42,6 @@ class ClientController extends Controller
             ->paginate(30)
             ->withQueryString()
             ->through(function ($client) {
-                // Cálculo de saldo en memoria de resultados paginados
                 $debt = $client->total_debt ?? 0;
                 $paid = $client->total_paid ?? 0;
                 $balance = $debt - $paid;
@@ -55,8 +53,10 @@ class ClientController extends Controller
                     'email' => $client->email,
                     'phone' => $client->phone,
                     'tax_id' => $client->tax_id,
-                    'balance' => round($balance, 2), // Saldo Pendiente
-                    'has_debt' => $balance > 1.00, // Bandera para UI (tolerancia de $1)
+                    // Devolvemos la dirección completa concatenada (usando el accessor del modelo)
+                    'full_address' => $client->full_address, 
+                    'balance' => round($balance, 2),
+                    'has_debt' => $balance > 1.00,
                 ];
             });
 
@@ -76,10 +76,24 @@ class ClientController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
+            'tax_id' => 'nullable|string|max:20',
+            
+            // Contacto
             'email' => 'nullable|email|max:255',
+            'email_secondary' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:20',
-            'tax_id' => 'nullable|string|max:20', // RFC
-            'address' => 'nullable|string',
+            'phone_secondary' => 'nullable|string|max:20',
+            
+            // Dirección Atomizada (Todo nullable)
+            'street' => 'nullable|string|max:255',
+            'exterior_number' => 'nullable|string|max:50',
+            'interior_number' => 'nullable|string|max:50',
+            'neighborhood' => 'nullable|string|max:255',
+            'municipality' => 'nullable|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'zip_code' => 'nullable|string|max:10',
+            'country' => 'nullable|string|max:100',
+            
             'coordinates' => 'nullable|string',
             'notes' => 'nullable|string',
         ]);
@@ -98,53 +112,42 @@ class ClientController extends Controller
             ->with('success', 'Cliente registrado exitosamente.');
     }
 
-    /**
-     * Muestra el EXPEDIENTE DEL CLIENTE: Historial, Deuda y Datos.
-     */
     public function show(Client $client)
     {
-        // Seguridad Tenant
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($client->branch_id !== $branchId) {
             abort(403, 'No tienes permiso para ver este cliente.');
         }
 
-        // Cargar relaciones para el expediente
         $client->load([
-            // Historial de servicios (últimos 10)
             'serviceOrders' => function ($q) {
                 $q->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'start_date')
                   ->orderBy('created_at', 'desc')
                   ->take(10);
             },
-            // Historial de pagos recientes (AGREGAMOS with('serviceOrder'))
             'payments' => function ($q) {
-                $q->with('serviceOrder:id,total_amount,created_at') // <--- CARGAMOS LA RELACIÓN AQUÍ
+                $q->with('serviceOrder:id,total_amount,created_at')
                   ->orderBy('payment_date', 'desc')
                   ->take(10);
             },
-            // Documentos: No necesitamos cargar la relación 'documents' aquí si usamos getMedia() abajo
         ]);
 
-        // Calcular estado de cuenta global
         $totalDebt = $client->serviceOrders()->whereNotIn('status', ['Cancelado', 'Cotización'])->sum('total_amount');
         $totalPaid = $client->payments()->sum('amount');
         $balance = $totalDebt - $totalPaid;
 
-        // Transformar documentos para Vue
         $documents = $client->getMedia('documents')->map(function ($media) {
             return [
                 'id' => $media->id,
                 'name' => $media->file_name,
-                // Extraemos la categoría de las propiedades personalizadas
                 'category' => $media->getCustomProperty('category', 'General'),
                 'created_at' => $media->created_at->toISOString(),
-                // Generamos la URL de descarga
                 'url' => $media->getUrl(), 
                 'size' => $media->human_readable_size,
             ];
         });
 
+        // Nota: Al usar ->toArray(), todos los nuevos campos (street, etc) se incluyen automáticamente.
         return Inertia::render('Clients/Show', [
             'client' => array_merge($client->toArray(), ['documents' => $documents]),
             'stats' => [
@@ -156,16 +159,13 @@ class ClientController extends Controller
         ]);
     }
 
-    /**
-     * Sube un documento al expediente del cliente.
-     */
     public function uploadDocument(Request $request, Client $client)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($client->branch_id !== $branchId) return inertia('Forbidden403');
 
         $request->validate([
-            'file' => 'required|file|max:10240', // Max 10MB
+            'file' => 'required|file|max:10240', 
             'category' => 'nullable|string|max:50',
         ]);
 
@@ -193,13 +193,26 @@ class ClientController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($client->branch_id !== $branchId) return inertia('Forbidden403');
 
+        // Mismas reglas de validación que el Store
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:20',
             'tax_id' => 'nullable|string|max:20',
-            'address' => 'nullable|string',
+            
+            'email' => 'nullable|email|max:255',
+            'email_secondary' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'phone_secondary' => 'nullable|string|max:20',
+            
+            'street' => 'nullable|string|max:255',
+            'exterior_number' => 'nullable|string|max:50',
+            'interior_number' => 'nullable|string|max:50',
+            'neighborhood' => 'nullable|string|max:255',
+            'municipality' => 'nullable|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'zip_code' => 'nullable|string|max:10',
+            'country' => 'nullable|string|max:100',
+            
             'coordinates' => 'nullable|string',
             'notes' => 'nullable|string',
         ]);
@@ -215,7 +228,6 @@ class ClientController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($client->branch_id !== $branchId) return inertia('Forbidden403');
 
-        // Validaciones de integridad antes de borrar
         if ($client->serviceOrders()->exists()) {
             return back()->with('error', 'No se puede eliminar: El cliente tiene historial de servicios.');
         }
@@ -227,5 +239,30 @@ class ClientController extends Controller
         $client->delete();
 
         return redirect()->route('clients.index')->with('success', 'Cliente eliminado.');
+    }
+
+    
+    /**
+     * API: Obtener detalles del cliente para autocompletado (AJAX)
+     */
+    public function getClientDetails(Client $client)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        // Seguridad: No devolver datos si es de otra sucursal
+        if ($client->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        return response()->json([
+            'street' => $client->street,
+            'exterior_number' => $client->exterior_number,
+            'interior_number' => $client->interior_number,
+            'neighborhood' => $client->neighborhood,
+            'municipality' => $client->municipality,
+            'state' => $client->state,
+            'zip_code' => $client->zip_code,
+            'country' => $client->country,
+        ]);
     }
 }
