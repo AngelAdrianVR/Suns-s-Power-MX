@@ -397,8 +397,8 @@ const isImage = (file) => {
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ item.quantity }}</td>
                                                 <!-- VISIBILIDAD CONDICIONAL: Celdas de Precio -->
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.product.purchase_price) }}</td>
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.product.purchase_price * item.quantity) }}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                                     <!-- Botón quitar: Requiere 'service_orders.edit' -->
                                                     <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="removeProduct(item.id)">
@@ -420,7 +420,7 @@ const isImage = (file) => {
                                             <tr>
                                                 <td colspan="3" class="px-6 py-3 text-right">Total Materiales (Costo Interno):</td>
                                                 <td class="px-6 py-3 text-right text-indigo-600">
-                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.price * i.quantity), 0) || 0) }}
+                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.product.purchase_price * i.quantity), 0) || 0) }}
                                                 </td>
                                                 <td></td>
                                             </tr>
