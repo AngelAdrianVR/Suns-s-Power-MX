@@ -16,13 +16,32 @@ class TicketController extends Controller
      */
     public function index(Request $request)
     {
-        $filters = $request->only(['search', 'status', 'priority']);
+        // Agregamos municipality y state a los filtros recibidos
+        $filters = $request->only(['search', 'status', 'priority', 'municipality', 'state']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
         $priority = $filters['priority'] ?? null;
+        $municipality = $filters['municipality'] ?? null;
+        $state = $filters['state'] ?? null;
 
         // Contexto de sucursal
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        // Obtener listas para los selectores (solo de clientes de esta sucursal)
+        // Usamos distinct para no repetir opciones
+        $availableMunicipalities = Client::where('branch_id', $branchId)
+            ->whereNotNull('municipality')
+            ->where('municipality', '!=', '')
+            ->distinct()
+            ->orderBy('municipality')
+            ->pluck('municipality');
+
+        $availableStates = Client::where('branch_id', $branchId)
+            ->whereNotNull('state')
+            ->where('state', '!=', '')
+            ->distinct()
+            ->orderBy('state')
+            ->pluck('state');
 
         $tickets = Ticket::with(['client', 'serviceOrder'])
             ->where('branch_id', $branchId)
@@ -42,6 +61,17 @@ class TicketController extends Controller
             ->when($priority, function ($query, $priority) {
                 $query->where('priority', $priority);
             })
+            // Filtros por Ubicación del Cliente
+            ->when($municipality, function ($query, $municipality) {
+                $query->whereHas('client', function ($q) use ($municipality) {
+                    $q->where('municipality', $municipality);
+                });
+            })
+            ->when($state, function ($query, $state) {
+                $query->whereHas('client', function ($q) use ($state) {
+                    $q->where('state', $state);
+                });
+            })
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
@@ -56,7 +86,9 @@ class TicketController extends Controller
                     'client' => $ticket->client ? [
                         'id' => $ticket->client->id,
                         'name' => $ticket->client->name,
-                        'phone' => $ticket->client->phone,
+                        'phone' => $ticket->client->phone, // Nota: Si eliminaste 'phone' de Client, ajusta esto a contact_person o relations
+                        'municipality' => $ticket->client->municipality, // Útil si quieres mostrarlo en tabla
+                        'state' => $ticket->client->state,
                     ] : null,
                     'service_order_id' => $ticket->related_service_order_id,
                 ];
@@ -65,6 +97,8 @@ class TicketController extends Controller
         return Inertia::render('Ticket/Index', [
             'tickets' => $tickets,
             'filters' => $filters,
+            'municipalities' => $availableMunicipalities, // Pasamos las opciones a la vista
+            'states' => $availableStates,
         ]);
     }
 

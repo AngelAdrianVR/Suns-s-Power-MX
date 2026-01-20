@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, h } from 'vue';
+import { ref, watch, h, computed } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -8,7 +8,7 @@ import {
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, CreateOutline, TrashOutline, 
-    TicketOutline, PersonOutline, ConstructOutline, TimeOutline, AlertCircleOutline
+    TicketOutline, PersonOutline, ConstructOutline, TimeOutline, AlertCircleOutline, LocationOutline
 } from '@vicons/ionicons5';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -19,6 +19,8 @@ const { hasPermission } = usePermissions();
 const props = defineProps({
     tickets: Object,
     filters: Object,
+    municipalities: Array, // Lista de municipios disponibles
+    states: Array,         // Lista de estados disponibles
 });
 
 // Configuración de Notificaciones
@@ -28,8 +30,10 @@ const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || null);
 const priorityFilter = ref(props.filters.priority || null);
+const municipalityFilter = ref(props.filters.municipality || null);
+const stateFilter = ref(props.filters.state || null);
 
-// Opciones para selectores
+// Opciones para selectores estáticos
 const statusOptions = [
     { label: 'Todos los Estatus', value: null },
     { label: 'Abierto', value: 'Abierto' },
@@ -46,6 +50,17 @@ const priorityOptions = [
     { label: 'Urgente', value: 'Urgente' }
 ];
 
+// Opciones dinámicas para Municipios y Estados
+const municipalityOptions = computed(() => {
+    const opts = props.municipalities.map(m => ({ label: m, value: m }));
+    return [{ label: 'Todos los Municipios', value: null }, ...opts];
+});
+
+const stateOptions = computed(() => {
+    const opts = props.states.map(s => ({ label: s, value: s }));
+    return [{ label: 'Todos los Estados', value: null }, ...opts];
+});
+
 // Función para recargar la vista con filtros (Debounce solo para search)
 let timeout = null;
 
@@ -53,7 +68,9 @@ const applyFilters = () => {
     router.get(route('tickets.index'), { 
         search: search.value,
         status: statusFilter.value,
-        priority: priorityFilter.value
+        priority: priorityFilter.value,
+        municipality: municipalityFilter.value,
+        state: stateFilter.value
     }, { preserveState: true, replace: true });
 };
 
@@ -62,7 +79,7 @@ watch(search, () => {
     timeout = setTimeout(applyFilters, 300);
 });
 
-watch([statusFilter, priorityFilter], () => {
+watch([statusFilter, priorityFilter, municipalityFilter, stateFilter], () => {
     applyFilters();
 });
 
@@ -110,13 +127,11 @@ const getStatusType = (status) => {
     }
 };
 
-// Función para formatear fechas (Idéntica a Show.vue)
+// Función para formatear fechas
 const formatDateLong = (dateStr) => {
     if (!dateStr) return 'Fecha desconocida';
-    
     let dateObj = new Date(dateStr);
 
-    // Si viene en formato string con barras (dd/mm/yyyy HH:mm), lo parseamos manualmente
     if (typeof dateStr === 'string' && dateStr.includes('/')) {
         const parsed = parse(dateStr, 'd/M/yyyy HH:mm', new Date());
         if (!isNaN(parsed.getTime())) {
@@ -147,7 +162,6 @@ const createColumns = () => [
             return h('div', { class: 'flex flex-col gap-1' }, [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.title),
                 h('span', { class: 'text-xs text-gray-400 truncate max-w-xs' }, row.description_preview),
-                // Indicador de Orden de Servicio Relacionada
                 row.service_order_id ? h(NTag, { type: 'info', size: 'tiny', bordered: false, class: 'w-max mt-1' }, {
                     default: () => h('div', { class: 'flex items-center gap-1' }, [
                         h(NIcon, { component: ConstructOutline }),
@@ -158,15 +172,21 @@ const createColumns = () => [
         }
     },
     {
-        title: 'Cliente',
+        title: 'Cliente / Ubicación',
         key: 'client',
         render(row) {
             if (!row.client) return h('span', { class: 'text-gray-400 italic' }, 'Sin Cliente');
+            
+            const locationText = [row.client.municipality, row.client.state].filter(Boolean).join(', ');
+
             return h('div', { class: 'flex items-center gap-2' }, [
                 h(NIcon, { component: PersonOutline, class: 'text-gray-400' }),
                 h('div', { class: 'flex flex-col' }, [
                     h('span', { class: 'text-gray-700 text-sm font-medium' }, row.client.name),
-                    h('span', { class: 'text-xs text-gray-400' }, row.client.phone)
+                    locationText ? h('span', { class: 'text-[10px] text-gray-400 flex items-center gap-1' }, [
+                        h(NIcon, { component: LocationOutline, class: 'text-xs' }),
+                        locationText
+                    ]) : null
                 ])
             ]);
         }
@@ -198,7 +218,6 @@ const createColumns = () => [
         render(row) {
             return h('div', { class: 'flex items-center gap-1 text-gray-500 text-xs' }, [
                 h(NIcon, { component: TimeOutline }),
-                // Usamos la función formatDateLong para el formato consistente
                 h('span', { class: 'capitalize' }, formatDateLong(row.created_at))
             ]);
         }
@@ -209,31 +228,15 @@ const createColumns = () => [
         width: 100,
         render(row) {
             return h(NSpace, { justify: 'end' }, () => [
-                h(
-                    NButton,
-                    {
-                        circle: true,
-                        size: 'small',
-                        type: 'warning',
-                        ghost: true,
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            goToEdit(row.id);
-                        }
+                h(NButton, {
+                        circle: true, size: 'small', type: 'warning', ghost: true,
+                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
                     },
                     { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }
                 ),
-                h(
-                    NButton,
-                    {
-                        circle: true,
-                        size: 'small',
-                        type: 'error',
-                        ghost: true,
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            confirmDelete(row);
-                        }
+                h(NButton, {
+                        circle: true, size: 'small', type: 'error', ghost: true,
+                        onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
                     },
                     { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }
                 )
@@ -245,15 +248,15 @@ const createColumns = () => [
 const columns = createColumns();
 
 const handlePageChange = (page) => {
-    // Preservar todos los filtros al paginar
     router.get(props.tickets.path + '?page=' + page, { 
         search: search.value,
         status: statusFilter.value,
-        priority: priorityFilter.value
+        priority: priorityFilter.value,
+        municipality: municipalityFilter.value,
+        state: stateFilter.value
     }, { preserveState: true });
 };
 
-// Propiedades de la fila
 const rowProps = (row) => {
   return {
     style: 'cursor: pointer;',
@@ -273,12 +276,9 @@ const rowProps = (row) => {
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestiona reportes e incidencias de clientes</p>
                 </div>
-                <!-- Botón Crear -->
                 <Link v-if="hasPermission('tickets.create')" :href="route('tickets.create')">
                     <n-button type="primary" round size="large" class="mt-2 lg:mt-0 shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
+                        <template #icon><n-icon><AddOutline /></n-icon></template>
                         Nuevo Ticket
                     </n-button>
                 </Link>
@@ -288,37 +288,66 @@ const rowProps = (row) => {
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 
-                <!-- Barra de búsqueda y Filtros -->
-                <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-3">
-                    <n-input 
-                        v-model:value="search" 
-                        type="text" 
-                        placeholder="Buscar por folio, asunto o cliente..." 
-                        class="w-full md:max-w-md shadow-sm rounded-full"
-                        clearable
-                        round
-                        size="large"
-                    >
-                        <template #prefix>
-                            <n-icon :component="SearchOutline" class="text-gray-400" />
-                        </template>
-                    </n-input>
+                <!-- Barra de filtros -->
+                <div class="mb-6 px-4 sm:px-0 space-y-4">
+                    <div class="flex flex-col md:flex-row gap-3">
+                        <!-- Buscador -->
+                        <div class="w-full md:flex-1">
+                            <n-input 
+                                v-model:value="search" 
+                                type="text" 
+                                placeholder="Buscar por folio, asunto o cliente..." 
+                                class="shadow-sm rounded-full"
+                                clearable
+                                round
+                                size="large"
+                            >
+                                <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
+                            </n-input>
+                        </div>
+                        
+                        <!-- Filtros Rápidos (Estatus/Prioridad) -->
+                        <div class="flex gap-2 w-full md:w-auto">
+                            <n-select 
+                                v-model:value="statusFilter" 
+                                :options="statusOptions" 
+                                placeholder="Estatus" 
+                                clearable
+                                class="w-1/2 md:w-40"
+                            />
+                            <n-select 
+                                v-model:value="priorityFilter" 
+                                :options="priorityOptions" 
+                                placeholder="Prioridad" 
+                                clearable
+                                class="w-1/2 md:w-40"
+                            />
+                        </div>
+                    </div>
 
-                    <div class="flex gap-2 w-full md:w-auto">
-                        <n-select 
-                            v-model:value="statusFilter" 
-                            :options="statusOptions" 
-                            placeholder="Estatus" 
+                    <!-- Filtros de Ubicación (Segunda Fila) -->
+                    <div class="flex flex-col md:flex-row gap-3">
+                         <n-select 
+                            v-model:value="stateFilter" 
+                            :options="stateOptions" 
+                            placeholder="Filtrar por Estado" 
+                            filterable
                             clearable
-                            class="w-1/2 md:w-40"
-                        />
+                            class="w-full md:w-1/3"
+                        >
+                            <template #prefix><n-icon :component="LocationOutline" /></template>
+                        </n-select>
+
                         <n-select 
-                            v-model:value="priorityFilter" 
-                            :options="priorityOptions" 
-                            placeholder="Prioridad" 
+                            v-model:value="municipalityFilter" 
+                            :options="municipalityOptions" 
+                            placeholder="Filtrar por Municipio" 
+                            filterable
                             clearable
-                            class="w-1/2 md:w-40"
-                        />
+                            class="w-full md:w-1/3"
+                        >
+                            <template #prefix><n-icon :component="LocationOutline" /></template>
+                        </n-select>
                     </div>
                 </div>
 
@@ -333,7 +362,6 @@ const rowProps = (row) => {
                         :row-props="rowProps"
                         class="custom-table"
                     />
-                    <!-- Paginación -->
                     <div class="p-4 flex justify-end border-t border-gray-100" v-if="tickets.total > 0">
                         <n-pagination
                             :page="tickets.current_page"
@@ -355,70 +383,48 @@ const rowProps = (row) => {
                         class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-3 relative overflow-hidden"
                         @click="router.get(route('tickets.show', ticket.id))"
                     >
-                        <!-- Header Card: Folio y Acciones -->
+                        <!-- Header Card -->
                         <div class="flex justify-between items-start">
                             <div class="flex items-center gap-2">
                                 <span class="bg-gray-100 text-gray-600 font-mono text-xs px-2 py-1 rounded-md">#{{ ticket.id }}</span>
-                                <n-tag :type="getPriorityColor(ticket.priority)" size="small" :bordered="false">
-                                    {{ ticket.priority }}
-                                </n-tag>
+                                <n-tag :type="getPriorityColor(ticket.priority)" size="small" :bordered="false">{{ ticket.priority }}</n-tag>
                             </div>
-                            
-                            <!-- Botones Acción -->
                             <div class="flex gap-1">
-                                <button v-if="hasPermission('tickets.edit')"
-                                    @click.stop="goToEdit(ticket.id)"
-                                    class="text-amber-500 hover:bg-amber-50 p-1.5 rounded-full transition"
-                                >
+                                <button v-if="hasPermission('tickets.edit')" @click.stop="goToEdit(ticket.id)" class="text-amber-500 hover:bg-amber-50 p-1.5 rounded-full transition">
                                     <n-icon size="18"><CreateOutline /></n-icon>
                                 </button>
-                                <button v-if="hasPermission('tickets.delete')"
-                                    @click.stop="confirmDelete(ticket)"
-                                    class="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition"
-                                >
+                                <button v-if="hasPermission('tickets.delete')" @click.stop="confirmDelete(ticket)" class="text-red-500 hover:bg-red-50 p-1.5 rounded-full transition">
                                     <n-icon size="18"><TrashOutline /></n-icon>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- Contenido Principal -->
+                        <!-- Info -->
                         <div class="pr-2">
                             <h3 class="text-base font-bold text-gray-800 leading-tight">{{ ticket.title }}</h3>
                             <p class="text-xs text-gray-400 mt-1 line-clamp-2">{{ ticket.description_preview }}</p>
                         </div>
 
-                        <!-- Cliente y Fecha -->
+                        <!-- Cliente y Ubicación -->
                         <div class="flex items-center gap-2 mt-1 border-t border-gray-50 pt-3">
                             <n-avatar size="small" round class="bg-blue-50 text-blue-500">
                                 <n-icon><PersonOutline/></n-icon>
                             </n-avatar>
-                            <div class="flex flex-col">
+                            <div class="flex flex-col w-full">
                                 <span class="text-xs font-semibold text-gray-700">{{ ticket.client?.name || 'Sin Cliente' }}</span>
-                                <!-- Fecha formateada también en móvil -->
-                                <span class="text-[10px] text-gray-400 capitalize">{{ formatDateLong(ticket.created_at) }}</span>
+                                <div v-if="ticket.client?.municipality || ticket.client?.state" class="flex items-center gap-1 text-[10px] text-gray-400">
+                                    <n-icon><LocationOutline /></n-icon>
+                                    {{ [ticket.client?.municipality, ticket.client?.state].filter(Boolean).join(', ') }}
+                                </div>
                             </div>
                             <div class="ml-auto">
-                                <n-tag :type="getStatusType(ticket.status)" size="small" round>
-                                    {{ ticket.status }}
-                                </n-tag>
+                                <n-tag :type="getStatusType(ticket.status)" size="small" round>{{ ticket.status }}</n-tag>
                             </div>
-                        </div>
-
-                        <!-- Orden Relacionada (Si existe) -->
-                        <div v-if="ticket.service_order_id" class="flex items-center gap-1 text-xs text-blue-500 bg-blue-50 p-2 rounded-lg mt-1">
-                            <n-icon><ConstructOutline /></n-icon>
-                            <span>Orden Relacionada #{{ ticket.service_order_id }}</span>
                         </div>
                     </div>
 
-                    <!-- Paginación Móvil -->
                     <div class="flex justify-center mt-6" v-if="tickets.total > 0">
-                        <n-pagination
-                            simple
-                            :page="tickets.current_page"
-                            :page-count="tickets.last_page"
-                            :on-update:page="handlePageChange"
-                        />
+                        <n-pagination simple :page="tickets.current_page" :page-count="tickets.last_page" :on-update:page="handlePageChange" />
                     </div>
                 </div>
 

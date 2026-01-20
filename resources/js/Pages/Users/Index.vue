@@ -7,7 +7,7 @@ import {
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NCard, NIcon, NModal, NEmpty, NPagination, createDiscreteApi 
 } from 'naive-ui';
 import { 
-    SearchOutline, AddOutline, CreateOutline, PowerOutline, EyeOutline 
+    SearchOutline, AddOutline, CreateOutline, PowerOutline, EyeOutline, TrashOutline 
 } from '@vicons/ionicons5';
 
 // Props que vienen desde el controlador
@@ -19,8 +19,8 @@ const props = defineProps({
 // Inicializar permisos
 const { hasPermission } = usePermissions();
 
-// Configuración de Notificaciones
-const { notification } = createDiscreteApi(['notification']);
+// Configuración de Notificaciones y Diálogo
+const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
 // Estado para búsqueda
 const search = ref(props.filters.search || '');
@@ -59,6 +59,37 @@ const toggleStatus = (user) => {
                 title: 'Estado Actualizado',
                 content: `El usuario ${user.name} ahora está ${newStatus}.`,
                 duration: 3000
+            });
+        }
+    });
+};
+
+// Función para confirmar y eliminar usuario
+const confirmDelete = (user) => {
+    event.stopPropagation();
+    
+    dialog.warning({
+        title: 'Confirmar Eliminación',
+        content: `¿Estás seguro de eliminar a "${user.name}"? Esta acción no se puede deshacer.`,
+        positiveText: 'Sí, eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => {
+            router.delete(route('users.destroy', user.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    notification.success({
+                        title: 'Usuario Eliminado',
+                        content: 'El usuario ha sido eliminado correctamente.',
+                        duration: 3000
+                    });
+                },
+                onError: () => {
+                    notification.error({
+                        title: 'Error',
+                        content: 'No se pudo eliminar el usuario.',
+                        duration: 3000
+                    });
+                }
             });
         }
     });
@@ -143,7 +174,7 @@ const createColumns = () => [
     {
         title: 'Acciones',
         key: 'actions',
-        width: 160,
+        width: 180, // Aumentamos un poco el ancho para que quepan los 4 botones
         render(row) {
             const buttons = [];
 
@@ -193,6 +224,21 @@ const createColumns = () => [
                         onClick: (e) => toggleStatus(row)
                     },
                     { icon: () => h(NIcon, null, { default: () => h(PowerOutline) }) }
+                ));
+            }
+
+            // Botón Eliminar
+            if (hasPermission('users.destroy')) {
+                buttons.push(h(
+                    NButton,
+                    {
+                        circle: true,
+                        size: 'small',
+                        type: 'error',
+                        ghost: true,
+                        onClick: (e) => confirmDelete(row)
+                    },
+                    { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }
                 ));
             }
 
@@ -332,6 +378,13 @@ const rowProps = (row) => {
                                         class="p-1 rounded-full transition"
                                     >
                                         <n-icon size="20"><PowerOutline /></n-icon>
+                                    </button>
+                                    <button 
+                                        v-if="hasPermission('users.destroy')"
+                                        @click.stop="confirmDelete(user)"
+                                        class="text-red-600 hover:bg-red-50 p-1 rounded-full transition"
+                                    >
+                                        <n-icon size="20"><TrashOutline /></n-icon>
                                     </button>
                                 </div>
                             </div>

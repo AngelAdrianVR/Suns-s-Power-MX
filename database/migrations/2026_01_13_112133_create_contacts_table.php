@@ -23,7 +23,7 @@ return new class extends Migration
             $table->morphs('contactable');
 
             $table->string('name'); // Nombre de la persona de contacto
-            $table->string('job_title')->nullable(); // Puesto (Ej: Gerente de Ventas)
+            $table->string('job_title')->nullable(); // Puesto (Ej: Gerente de Ventas) / parentesco en caso de contactos familiares
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
             

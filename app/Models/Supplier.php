@@ -7,19 +7,25 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Supplier extends Model
+class Supplier extends Model implements HasMedia
 {
+    use InteractsWithMedia;
+
     protected $fillable = [
-        'branch_id', // campo para multi-tenancy
+        'branch_id', 
         'company_name',
-        'website', // Nuevo campo agregado
+        'website',
         
-        // // Mantenemos estos por compatibilidad temporal, pero 
-        // // idealmente se deberían usar la relación 'contacts'
-        // 'contact_name',
-        // 'email',
-        // 'phone',
+        // Campos fiscales y bancarios
+        'rfc',
+        'address',
+        'bank_account_holder',
+        'bank_name',
+        'clabe',
+        'account_number',
     ];
 
     /**
@@ -32,7 +38,6 @@ class Supplier extends Model
 
     /**
      * Relación Polimórfica: Un proveedor puede tener múltiples contactos.
-     * Esto reemplaza el uso de campos estáticos para permitir N contactos.
      */
     public function contacts(): MorphMany
     {

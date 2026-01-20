@@ -3,29 +3,36 @@ import { ref } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, createDiscreteApi, NDivider
+    NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, 
+    createDiscreteApi, NDivider, NSelect
 } from 'naive-ui';
 import { 
     SaveOutline, ArrowBackOutline, PersonOutline, MailOutline, CallOutline, 
-    BusinessOutline, LocationOutline, DocumentTextOutline, ReceiptOutline, MapOutline
+    BusinessOutline, LocationOutline, DocumentTextOutline, ReceiptOutline, 
+    PersonAddOutline, TrashOutline, Star, StarOutline
 } from '@vicons/ionicons5';
 
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
 
-// Formulario actualizado con la nueva estructura de BD
+// Estructura inicial de un contacto (Igual que en Proveedores)
+const createEmptyContact = (isPrimary = false) => ({
+    name: '',
+    job_title: '', // Nuevo campo: Puesto / Parentesco
+    email: '',
+    phone: '',
+    notes: '',
+    is_primary: isPrimary
+});
+
+// Formulario actualizado con la nueva estructura
 const form = useForm({
     name: '',            
     contact_person: '',  
     tax_id: '',          
     
-    // Contacto Principal y Secundario
-    email: '',
-    email_secondary: '',
-    phone: '',
-    phone_secondary: '',
-    
     // Dirección Atomizada
+    road_type: '', // NUEVO: Tipo de vialidad
     street: '',
     exterior_number: '',
     interior_number: '',
@@ -33,10 +40,25 @@ const form = useForm({
     municipality: '',
     state: '',
     zip_code: '',
-    country: 'México', // Valor por defecto
+    country: 'México',
     
     notes: '',
+
+    // Lista de Contactos (Reemplaza a los campos planos)
+    contacts: [ createEmptyContact(true) ]
 });
+
+// Opciones para tipo de vialidad (Opcional, puede ser un simple input)
+const roadTypeOptions = [
+    { label: 'Calle', value: 'Calle' },
+    { label: 'Avenida', value: 'Avenida' },
+    { label: 'Boulevard', value: 'Boulevard' },
+    { label: 'Calzada', value: 'Calzada' },
+    { label: 'Circuito', value: 'Circuito' },
+    { label: 'Privada', value: 'Privada' },
+    { label: 'Carretera', value: 'Carretera' },
+    { label: 'Camino', value: 'Camino' },
+];
 
 const rules = {
     name: { 
@@ -44,21 +66,37 @@ const rules = {
         message: 'El nombre o razón social es obligatorio', 
         trigger: 'blur' 
     },
-    email: { 
-        type: 'email', 
-        message: 'Formato de correo inválido', 
-        trigger: ['blur', 'input'] 
-    },
-    email_secondary: { 
-        type: 'email', 
-        message: 'Formato de correo inválido', 
-        trigger: ['blur', 'input'] 
-    },
+};
+
+// Funciones para manejo de contactos (Idénticas a Suppliers)
+const addContact = () => {
+    form.contacts.push(createEmptyContact(false));
+};
+
+const removeContact = (index) => {
+    if (form.contacts.length === 1) {
+        notification.warning({ title: 'Atención', content: 'Debe haber al menos un contacto.', duration: 2000 });
+        return;
+    }
+    form.contacts.splice(index, 1);
+};
+
+const setPrimary = (index) => {
+    form.contacts.forEach((c, i) => {
+        c.is_primary = (i === index);
+    });
 };
 
 const submit = () => {
     formRef.value?.validate((errors) => {
         if (!errors) {
+            // Validaciones extra para contactos
+            const invalidContact = form.contacts.find(c => !c.name);
+            if (invalidContact) {
+                notification.error({ title: 'Error', content: 'Todos los contactos deben tener un nombre.' });
+                return;
+            }
+
             form.post(route('clients.store'), {
                 onSuccess: () => {
                     notification.success({
@@ -144,7 +182,7 @@ const submit = () => {
                                                 </n-input>
                                             </n-form-item>
 
-                                            <n-form-item label="Persona de Contacto" path="contact_person">
+                                            <n-form-item label="Persona de Atención (Alias)" path="contact_person">
                                                 <n-input v-model:value="form.contact_person" placeholder="Atención a...">
                                                     <template #prefix><n-icon :component="PersonOutline"/></template>
                                                 </n-input>
@@ -164,9 +202,23 @@ const submit = () => {
 
                                 <n-grid x-gap="12" y-gap="4" cols="1 s:2 m:4" responsive="screen">
                                     
-                                    <!-- Calle ocupa 2 columnas en pantallas medianas -->
-                                    <n-grid-item span="1 m:2">
-                                        <n-form-item label="Calle" path="street">
+                                    <!-- NUEVO: Tipo de Vialidad -->
+                                    <n-grid-item span="1 m:1">
+                                        <n-form-item label="Tipo Vialidad" path="road_type">
+                                            <!-- Usamos NSelect con tags para permitir entrada libre o selección -->
+                                            <n-select 
+                                                v-model:value="form.road_type" 
+                                                filterable 
+                                                tag 
+                                                :options="roadTypeOptions" 
+                                                placeholder="Calle" 
+                                            />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <!-- Calle ahora ocupa el resto -->
+                                    <n-grid-item span="1 m:3">
+                                        <n-form-item label="Nombre de la Vialidad (Calle)" path="street">
                                             <n-input v-model:value="form.street" placeholder="Av. Principal" />
                                         </n-form-item>
                                     </n-grid-item>
@@ -217,67 +269,8 @@ const submit = () => {
 
                                 </n-grid>
                             </n-card>
-                        </div>
 
-                        <!-- Columna Derecha: Contacto y Extras -->
-                        <div class="space-y-6">
-                            
-                            <!-- 3. Medios de Contacto -->
-                            <n-card :bordered="false" class="shadow-sm rounded-2xl bg-blue-50/60">
-                                <template #header>
-                                    <span class="text-blue-800 font-bold flex items-center gap-2">
-                                        <n-icon :component="CallOutline"/> Medios de Contacto
-                                    </span>
-                                </template>
-                                
-                                <div class="space-y-4">
-                                    <!-- Contacto 1 -->
-                                    <div>
-                                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Principal</p>
-                                        <n-grid x-gap="8" :cols="1">
-                                            <n-grid-item>
-                                                <n-form-item label="Correo Electrónico" path="email">
-                                                    <n-input v-model:value="form.email" placeholder="mail@ejemplo.com">
-                                                        <template #prefix><n-icon :component="MailOutline" /></template>
-                                                    </n-input>
-                                                </n-form-item>
-                                            </n-grid-item>
-                                            <n-grid-item>
-                                                <n-form-item label="Teléfono / Móvil" path="phone">
-                                                    <n-input v-model:value="form.phone" placeholder="(00) 0000 0000">
-                                                        <template #prefix><n-icon :component="CallOutline" /></template>
-                                                    </n-input>
-                                                </n-form-item>
-                                            </n-grid-item>
-                                        </n-grid>
-                                    </div>
-
-                                    <n-divider style="margin: 0" />
-
-                                    <!-- Contacto 2 -->
-                                    <div>
-                                        <p class="text-xs font-bold text-gray-500 uppercase mb-2">Secundario (Opcional)</p>
-                                        <n-grid x-gap="8" :cols="1">
-                                            <n-grid-item>
-                                                <n-form-item label="Correo Alternativo" path="email_secondary">
-                                                    <n-input v-model:value="form.email_secondary" placeholder="mail2@ejemplo.com">
-                                                        <template #prefix><n-icon :component="MailOutline" /></template>
-                                                    </n-input>
-                                                </n-form-item>
-                                            </n-grid-item>
-                                            <n-grid-item>
-                                                <n-form-item label="Teléfono Alternativo" path="phone_secondary">
-                                                    <n-input v-model:value="form.phone_secondary" placeholder="Otro número">
-                                                        <template #prefix><n-icon :component="CallOutline" /></template>
-                                                    </n-input>
-                                                </n-form-item>
-                                            </n-grid-item>
-                                        </n-grid>
-                                    </div>
-                                </div>
-                            </n-card>
-
-                            <!-- 4. Notas -->
+                            <!-- 3. Notas -->
                             <n-card :bordered="false" class="shadow-sm rounded-2xl">
                                 <template #header>
                                     <span class="text-gray-700 font-bold flex items-center gap-2 text-sm">
@@ -291,9 +284,114 @@ const submit = () => {
                                     :autosize="{ minRows: 3 }"
                                 />
                             </n-card>
+                        </div>
 
-                            <!-- Botones -->
-                            <div class="flex flex-col gap-3 sticky top-6">
+                        <!-- Columna Derecha: Lista de Contactos Dinámica -->
+                        <div class="space-y-6">
+                            
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="text-lg font-bold text-gray-700 flex items-center gap-2">
+                                    <n-icon :component="CallOutline" class="text-blue-600"/> Contactos
+                                </h3>
+                                <n-button size="small" dashed type="primary" @click="addContact">
+                                    <template #icon><n-icon><PersonAddOutline /></n-icon></template>
+                                    Agregar
+                                </n-button>
+                            </div>
+
+                            <!-- Iteración de Contactos -->
+                            <transition-group name="list" tag="div" class="space-y-4">
+                                <div 
+                                    v-for="(contact, index) in form.contacts" 
+                                    :key="index"
+                                    class="relative group"
+                                >
+                                    <n-card 
+                                        :bordered="false" 
+                                        class="shadow-sm rounded-xl border border-gray-100 transition hover:shadow-md"
+                                        :class="{'ring-2 ring-blue-100': contact.is_primary}"
+                                    >
+                                        <!-- Header del Card de Contacto -->
+                                        <div class="flex justify-between items-start mb-4">
+                                            <div class="flex items-center gap-2">
+                                                <div 
+                                                    class="size-8 flex items-center justify-center rounded-full"
+                                                    :class="contact.is_primary ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'"
+                                                >
+                                                    <n-icon size="18" :component="contact.is_primary ? Star : StarOutline" />
+                                                </div>
+                                                <span class="font-medium text-gray-600">Contacto #{{ index + 1 }}</span>
+                                            </div>
+                                            
+                                            <div class="flex items-center gap-2">
+                                                <n-button 
+                                                    v-if="!contact.is_primary" 
+                                                    size="tiny" 
+                                                    quaternary 
+                                                    type="info"
+                                                    @click="setPrimary(index)"
+                                                >
+                                                    Principal
+                                                </n-button>
+                                                <n-button 
+                                                    v-if="form.contacts.length > 1"
+                                                    size="small" 
+                                                    quaternary 
+                                                    type="error" 
+                                                    @click="removeContact(index)"
+                                                >
+                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                </n-button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Campos del Contacto -->
+                                        <n-grid :x-gap="12" :y-gap="8" cols="1">
+                                            <n-grid-item>
+                                                <n-form-item label="Nombre Completo" :path="`contacts[${index}].name`">
+                                                    <n-input v-model:value="contact.name" placeholder="Ej. Roberto Gómez">
+                                                        <template #prefix><n-icon :component="PersonOutline"/></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                            
+                                            <!-- NUEVO: Puesto / Parentesco -->
+                                            <n-grid-item>
+                                                <n-form-item label="Puesto / Parentesco" :path="`contacts[${index}].job_title`">
+                                                    <n-input v-model:value="contact.job_title" placeholder="Ej. Gerente / Esposo" />
+                                                </n-form-item>
+                                            </n-grid-item>
+
+                                            <n-grid-item>
+                                                <n-form-item label="Email" :path="`contacts[${index}].email`">
+                                                    <n-input v-model:value="contact.email" placeholder="mail@ejemplo.com">
+                                                        <template #prefix><n-icon :component="MailOutline"/></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+
+                                            <n-grid-item>
+                                                <n-form-item label="Teléfono / Celular" :path="`contacts[${index}].phone`">
+                                                    <n-input v-model:value="contact.phone" placeholder="(55) 1234 5678">
+                                                        <template #prefix><n-icon :component="CallOutline"/></template>
+                                                    </n-input>
+                                                </n-form-item>
+                                            </n-grid-item>
+                                        </n-grid>
+
+                                        <!-- Validaciones individuales -->
+                                        <div v-if="form.errors[`contacts.${index}.name`]" class="text-red-500 text-xs mt-1">
+                                            {{ form.errors[`contacts.${index}.name`] }}
+                                        </div>
+                                        <div v-if="form.errors[`contacts.${index}.email`]" class="text-red-500 text-xs mt-1">
+                                            {{ form.errors[`contacts.${index}.email`] }}
+                                        </div>
+
+                                    </n-card>
+                                </div>
+                            </transition-group>
+
+                            <div class="flex flex-col gap-3 sticky top-6 pt-4">
                                 <n-button 
                                     type="primary" 
                                     size="large" 
@@ -319,3 +417,15 @@ const submit = () => {
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+</style>
