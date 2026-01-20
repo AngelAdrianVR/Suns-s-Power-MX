@@ -3,37 +3,25 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { 
     NCard, NForm, NFormItem, NInput, NButton, NIcon, NSelect, NUpload, 
-    NUploadDragger, NText, NP, NDivider, NAlert, createDiscreteApi 
+    NUploadDragger, NText, NP, NDivider, NAlert, NDatePicker, NGrid, NGridItem,
+    createDiscreteApi 
 } from 'naive-ui';
 import { 
     ArrowBackOutline, SaveOutline, PersonOutline, MailOutline, 
     KeyOutline, CloudUploadOutline, RefreshOutline, 
-    CallOutline, ShieldCheckmarkOutline
+    CallOutline, ShieldCheckmarkOutline, HomeOutline, 
+    WalletOutline, PeopleOutline, AddOutline, TrashOutline,
+    CalendarOutline, LocationOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
 
 export default {
     components: {
-        AppLayout,
-        Head,
-        Link,
-        NCard,
-        NForm,
-        NFormItem,
-        NInput,
-        NButton,
-        NIcon,
-        NSelect,
-        NUpload,
-        NUploadDragger,
-        NText,
-        NP,
-        NDivider,
-        NAlert,
-        ArrowBackOutline,
-        CloudUploadOutline, 
-        SaveOutline,
-        CallOutline,
-        ShieldCheckmarkOutline
+        AppLayout, Head, Link, NCard, NForm, NFormItem, NInput, NButton, 
+        NIcon, NSelect, NUpload, NUploadDragger, NText, NP, NDivider, 
+        NAlert, NDatePicker, NGrid, NGridItem,
+        ArrowBackOutline, CloudUploadOutline, SaveOutline, CallOutline, 
+        ShieldCheckmarkOutline, HomeOutline, WalletOutline, PeopleOutline,
+        AddOutline, TrashOutline, CalendarOutline, LocationOutline, DocumentTextOutline, PersonOutline
     },
     props: {
         user: {
@@ -46,44 +34,125 @@ export default {
         }
     },
     setup(props) {
-        // Obtenemos el rol actual del usuario (si tiene alguno asignado)
+        // Obtenemos el rol actual del usuario
         const currentRole = props.user.roles && props.user.roles.length > 0 
             ? props.user.roles[0].name 
             : null;
 
+        // HELPER: Asegura que la fecha tenga formato YYYY-MM-DD para NaiveUI
+        // Si viene con hora (2023-01-01 10:00:00), nos quedamos solo con los primeros 10 chars.
+        const formatDate = (dateString) => {
+            if (!dateString) return null;
+            if (typeof dateString === 'string') {
+                return dateString.substring(0, 10);
+            }
+            return null;
+        };
+
+        // Mapear contactos para editar (job_title -> relationship)
+        const mappedContacts = props.user.contacts ? props.user.contacts.map(c => ({
+            name: c.name,
+            relationship: c.job_title, // Recuperamos el parentesco
+            phone: c.phone
+        })) : [];
+
+        // Mapear beneficiarios (asegurar estructura y corregir fecha)
+        const mappedBeneficiaries = props.user.beneficiaries ? props.user.beneficiaries.map(b => ({
+            first_name: b.first_name,
+            paternal_surname: b.paternal_surname,
+            maternal_surname: b.maternal_surname,
+            birth_date: formatDate(b.birth_date), // Usamos el helper aquí
+            relationship: b.relationship
+        })) : [];
+
         const form = useForm({
-            _method: 'PUT', // Truco para permitir envío de archivos en actualización
-            name: props.user.name,
-            email: props.user.email,
-            phone: props.user.phone,
+            _method: 'PUT', // Necesario para Inertia al enviar archivos en update
+            
+            // Generales
+            first_name: props.user.first_name || '',
+            paternal_surname: props.user.paternal_surname || '',
+            maternal_surname: props.user.maternal_surname || '',
+            email: props.user.email || '',
+            phone: props.user.phone || '',
             role: currentRole,
-            password: '', // Vacío por defecto, solo se actualiza si el usuario escribe algo
-            documents: [] 
+            password: '', // Vacío por defecto (opcional)
+
+            // Legales
+            birth_date: formatDate(props.user.birth_date), // Usamos el helper aquí
+            curp: props.user.curp || '',
+            rfc: props.user.rfc || '',
+            nss: props.user.nss || '',
+
+            // Domicilio
+            street: props.user.street || '',
+            exterior_number: props.user.exterior_number || '',
+            interior_number: props.user.interior_number || '',
+            neighborhood: props.user.neighborhood || '',
+            zip_code: props.user.zip_code || '',
+            municipality: props.user.municipality || '',
+            state: props.user.state || '',
+            address_references: props.user.address_references || '',
+            cross_streets: props.user.cross_streets || '',
+
+            // Bancarios
+            bank_account_holder: props.user.bank_account_holder || '',
+            bank_name: props.user.bank_name || '',
+            bank_clabe: props.user.bank_clabe || '',
+            bank_account_number: props.user.bank_account_number || '',
+
+            // Listas Dinámicas
+            beneficiaries: mappedBeneficiaries,
+            contacts: mappedContacts,
+            documents: [] // Solo archivos nuevos
         });
 
         const { message } = createDiscreteApi(['message']);
 
+        // Helpers listas (igual que Create)
+        const addBeneficiary = () => {
+            form.beneficiaries.push({
+                first_name: '',
+                paternal_surname: '',
+                maternal_surname: '',
+                birth_date: null,
+                relationship: ''
+            });
+        };
+
+        const removeBeneficiary = (index) => {
+            form.beneficiaries.splice(index, 1);
+        };
+
+        const addContact = () => {
+            form.contacts.push({
+                name: '',
+                relationship: '',
+                phone: ''
+            });
+        };
+
+        const removeContact = (index) => {
+            form.contacts.splice(index, 1);
+        };
+
         return { 
-            form, 
-            message,
-            PersonOutline,
-            MailOutline,
-            KeyOutline,
-            RefreshOutline,
-            SaveOutline,
-            ArrowBackOutline,
-            CallOutline,
-            ShieldCheckmarkOutline
+            form, message,
+            addBeneficiary, removeBeneficiary,
+            addContact, removeContact,
+            // Iconos
+            PersonOutline, MailOutline, KeyOutline, RefreshOutline, SaveOutline,
+            ArrowBackOutline, CallOutline, ShieldCheckmarkOutline, HomeOutline,
+            WalletOutline, PeopleOutline, AddOutline, TrashOutline, CalendarOutline,
+            LocationOutline, DocumentTextOutline
         };
     },
     data() {
         return {
             rules: {
-                name: { required: true, message: 'El nombre es obligatorio', trigger: ['input', 'blur'] },
+                first_name: { required: true, message: 'El nombre es obligatorio', trigger: ['input', 'blur'] },
+                paternal_surname: { required: true, message: 'El apellido es obligatorio', trigger: ['input', 'blur'] },
                 email: { required: true, message: 'El correo es obligatorio', trigger: ['input', 'blur'] },
-                phone: { required: true, message: 'El teléfono es obligatorio', trigger: ['input', 'blur'] },
                 role: { required: true, message: 'Selecciona un rol', trigger: ['blur', 'change'] }
-                // Password es opcional en edición, no agregamos regla required
             }
         };
     },
@@ -98,9 +167,8 @@ export default {
                 password += chars.charAt(Math.floor(Math.random() * chars.length));
             }
             this.form.password = password;
-            // No limpiamos error porque password no es obligatorio aquí, pero por si acaso
             if(this.form.errors.password) this.form.clearErrors('password');
-            this.message.success("Nueva contraseña generada (debes guardar para aplicar)");
+            this.message.success("Nueva contraseña generada (Guardar para aplicar)");
         },
         handleFileListChange(data) {
             this.form.documents = data.fileList.map(file => file.file);
@@ -109,15 +177,13 @@ export default {
         submit() {
             this.$refs.formRef?.validate((errors) => {
                 if (!errors) {
-                    // Usamos post hacia la ruta update debido al _method: 'PUT'
-                    // Esto es necesario si permites subir archivos al editar
                     this.form.post(route('users.update', this.user.id), {
                         preserveScroll: true,
                         onSuccess: () => {
-                            this.message.success('Usuario actualizado correctamente');
+                            this.message.success('Expediente actualizado correctamente');
                         },
                         onError: () => {
-                            this.message.error('Hubo un error al actualizar. Revisa los campos.');
+                            this.message.error('Hubo un error. Revisa los campos marcados.');
                         }
                     });
                 } else {
@@ -130,164 +196,316 @@ export default {
 </script>
 
 <template>
-    <AppLayout title="Editar Usuario">
+    <AppLayout :title="`Editar: ${user.name}`">
         <template #header>
             <div class="flex items-center gap-4">
                 <n-button circle secondary @click="goBack">
-                    <template #icon>
-                        <n-icon><ArrowBackOutline /></n-icon>
-                    </template>
+                    <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
                 </n-button>
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    Editar Usuario: {{ user.name }}
+                    Editar Expediente: {{ user.name }}
                 </h2>
             </div>
         </template>
 
-        <div class="py-8 min-h-screen">
-            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="py-8 min-h-screen bg-gray-50/50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 
-                <div class="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden p-6 md:p-8">
-                    
-                    <div class="mb-6">
-                        <h1 class="text-2xl font-bold text-gray-800">Actualizar Información</h1>
-                        <p class="text-gray-500 text-sm mt-1">Modifica los datos del empleado o asigna un nuevo rol.</p>
-                    </div>
+                <n-form
+                    ref="formRef"
+                    :model="form"
+                    :rules="rules"
+                    label-placement="top"
+                    size="large"
+                >
+                    <!-- SECCIÓN 1: DATOS PERSONALES -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-blue-50 rounded-lg text-blue-600">
+                                <n-icon size="24"><PersonOutline /></n-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Información Personal</h3>
+                                <p class="text-xs text-gray-400">Datos generales e identificación.</p>
+                            </div>
+                        </div>
 
-                    <n-divider />
-
-                    <n-form
-                        ref="formRef"
-                        :model="form"
-                        :rules="rules"
-                        label-placement="top"
-                        size="large"
-                        class="mt-6"
-                    >
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            
-                            <!-- Nombre -->
-                            <n-form-item 
-                                label="Nombre Completo" 
-                                path="name"
-                                :validation-status="form.errors.name ? 'error' : undefined"
-                                :feedback="form.errors.name"
-                            >
-                                <n-input 
-                                    v-model:value="form.name" 
-                                    placeholder="Ej. Juan Pérez"
-                                    @input="form.clearErrors('name')"
-                                >
-                                    <template #prefix>
-                                        <n-icon :component="PersonOutline" />
-                                    </template>
-                                </n-input>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <n-form-item label="Nombre(s)" path="first_name">
+                                <n-input v-model:value="form.first_name" placeholder="Ej. Juan" />
+                            </n-form-item>
+                            <n-form-item label="Apellido Paterno" path="paternal_surname">
+                                <n-input v-model:value="form.paternal_surname" placeholder="Ej. Pérez" />
+                            </n-form-item>
+                            <n-form-item label="Apellido Materno" path="maternal_surname">
+                                <n-input v-model:value="form.maternal_surname" placeholder="Ej. López" />
                             </n-form-item>
 
-                            <!-- Email -->
-                            <n-form-item 
-                                label="Correo Electrónico" 
-                                path="email"
-                                :validation-status="form.errors.email ? 'error' : undefined"
-                                :feedback="form.errors.email"
-                            >
-                                <n-input 
-                                    v-model:value="form.email" 
-                                    placeholder="juan.perez@empresa.com"
-                                    @input="form.clearErrors('email')"
-                                >
-                                    <template #prefix>
-                                        <n-icon :component="MailOutline" />
-                                    </template>
-                                </n-input>
-                            </n-form-item>
-
-                            <!-- Teléfono -->
-                            <n-form-item 
-                                label="Teléfono (Con whatsapp)" 
-                                path="phone"
-                                :validation-status="form.errors.phone ? 'error' : undefined"
-                                :feedback="form.errors.phone"
-                            >
-                                <n-input 
-                                    v-model:value="form.phone" 
-                                    placeholder="Ej. 55 1234 5678"
-                                    @input="form.clearErrors('phone')"
-                                >
-                                    <template #prefix>
-                                        <n-icon :component="CallOutline" />
-                                    </template>
-                                </n-input>
-                            </n-form-item>
-
-                            <!-- Selector de Rol -->
-                            <n-form-item 
-                                label="Rol de Usuario" 
-                                path="role"
-                                :validation-status="form.errors.role ? 'error' : undefined"
-                                :feedback="form.errors.role"
-                            >
-                                <n-select 
-                                    v-model:value="form.role" 
-                                    :options="roles"
-                                    placeholder="Selecciona un rol"
-                                    clearable
-                                    @update:value="form.clearErrors('role')"
+                            <n-form-item label="Fecha de Nacimiento" path="birth_date">
+                                <n-date-picker 
+                                    v-model:formatted-value="form.birth_date" 
+                                    value-format="yyyy-MM-dd"
+                                    type="date" 
+                                    class="w-full" 
+                                    clearable 
                                 />
                             </n-form-item>
+                            
+                            <n-form-item label="CURP" path="curp">
+                                <n-input v-model:value="form.curp" placeholder="18 caracteres" maxlength="18" uppercase />
+                            </n-form-item>
+                            
+                            <n-form-item label="RFC" path="rfc">
+                                <n-input v-model:value="form.rfc" placeholder="13 caracteres" maxlength="13" uppercase />
+                            </n-form-item>
 
-                            <!-- Contraseña -->
-                            <n-form-item 
-                                label="Nueva Contraseña (Opcional)" 
-                                path="password"
-                                :validation-status="form.errors.password ? 'error' : undefined"
-                                :feedback="form.errors.password"
-                            >
-                                <n-input
-                                    v-model:value="form.password"
-                                    type="text"
-                                    placeholder="Dejar en blanco para mantener la actual"
+                            <n-form-item label="NSS" path="nss">
+                                <n-input v-model:value="form.nss" placeholder="11 dígitos" maxlength="11" />
+                            </n-form-item>
+
+                            <n-form-item label="Correo Electrónico" path="email">
+                                <n-input v-model:value="form.email">
+                                    <template #prefix><n-icon :component="MailOutline" /></template>
+                                </n-input>
+                            </n-form-item>
+
+                            <n-form-item label="Teléfono / Celular" path="phone">
+                                <n-input v-model:value="form.phone">
+                                    <template #prefix><n-icon :component="CallOutline" /></template>
+                                </n-input>
+                            </n-form-item>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 2: ACCESO Y ROL -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-purple-50 rounded-lg text-purple-600">
+                                <n-icon size="24"><ShieldCheckmarkOutline /></n-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Acceso al Sistema</h3>
+                                <p class="text-xs text-gray-400">Credenciales y permisos.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <n-form-item label="Rol de Usuario" path="role">
+                                <n-select v-model:value="form.role" :options="roles" placeholder="Selecciona un rol" />
+                            </n-form-item>
+
+                            <n-form-item label="Nueva Contraseña (Opcional)" path="password">
+                                <n-input 
+                                    v-model:value="form.password" 
+                                    type="text" 
+                                    placeholder="Dejar vacío para mantener la actual"
                                     show-password-on="mousedown"
-                                    @input="form.clearErrors('password')"
                                 >
-                                    <template #prefix>
-                                        <n-icon :component="KeyOutline" />
-                                    </template>
+                                    <template #prefix><n-icon :component="KeyOutline" /></template>
                                     <template #suffix>
-                                        <n-button 
-                                            quaternary 
-                                            circle 
-                                            size="small" 
-                                            @click="generatePassword"
-                                            title="Generar nueva aleatoria"
-                                        >
-                                            <template #icon>
-                                                <n-icon :component="RefreshOutline" />
-                                            </template>
+                                        <n-button quaternary circle size="small" @click="generatePassword" title="Generar">
+                                            <template #icon><n-icon :component="RefreshOutline" /></template>
                                         </n-button>
                                     </template>
                                 </n-input>
                             </n-form-item>
                         </div>
+                        <n-alert type="info" :show-icon="true" class="rounded-xl mt-2">
+                            Si no deseas cambiar la contraseña del usuario, deja el campo en blanco.
+                        </n-alert>
+                    </div>
 
-                        <!-- Nota sobre contraseña -->
-                        <div class="mb-8 mt-2">
-                            <n-alert type="info" :show-icon="true" class="rounded-xl">
-                                <template #icon>
-                                    <n-icon :component="KeyOutline" />
-                                </template>
-                                <strong>Nota:</strong> Si no deseas cambiar la contraseña del usuario, deja el campo en blanco.
-                            </n-alert>
+                    <!-- SECCIÓN 3: DOMICILIO -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-orange-50 rounded-lg text-orange-600">
+                                <n-icon size="24"><HomeOutline /></n-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Domicilio</h3>
+                                <p class="text-xs text-gray-400">Dirección actual del empleado.</p>
+                            </div>
                         </div>
 
-                        <n-divider>Agregar Documentación</n-divider>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <n-form-item label="Calle" path="street" class="md:col-span-2">
+                                <n-input v-model:value="form.street" placeholder="Nombre de la calle" />
+                            </n-form-item>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <n-form-item label="No. Exterior" path="exterior_number">
+                                    <n-input v-model:value="form.exterior_number" />
+                                </n-form-item>
+                                <n-form-item label="No. Interior" path="interior_number">
+                                    <n-input v-model:value="form.interior_number" placeholder="Opcional" />
+                                </n-form-item>
+                            </div>
 
-                        <!-- Subida de Archivos -->
-                        <n-form-item 
-                            label="Subir nuevos archivos"
-                            :validation-status="form.errors.documents ? 'error' : undefined"
-                            :feedback="form.errors.documents"
-                        >
+                            <n-form-item label="Colonia" path="neighborhood">
+                                <n-input v-model:value="form.neighborhood" />
+                            </n-form-item>
+
+                            <n-form-item label="Código Postal" path="zip_code">
+                                <n-input v-model:value="form.zip_code" />
+                            </n-form-item>
+
+                            <n-form-item label="Municipio / Alcaldía" path="municipality">
+                                <n-input v-model:value="form.municipality" />
+                            </n-form-item>
+
+                            <n-form-item label="Estado" path="state">
+                                <n-input v-model:value="form.state" />
+                            </n-form-item>
+
+                            <n-form-item label="Referencias" path="address_references" class="md:col-span-2">
+                                <n-input v-model:value="form.address_references" type="textarea" :rows="2" />
+                            </n-form-item>
+
+                             <n-form-item label="Entre Calles" path="cross_streets">
+                                <n-input v-model:value="form.cross_streets" />
+                            </n-form-item>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 4: DATOS BANCARIOS -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-green-50 rounded-lg text-green-600">
+                                <n-icon size="24"><WalletOutline /></n-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Datos Bancarios</h3>
+                                <p class="text-xs text-gray-400">Información para depósitos de nómina.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <n-form-item label="Titular de la Cuenta" path="bank_account_holder">
+                                <n-input v-model:value="form.bank_account_holder" />
+                            </n-form-item>
+
+                            <n-form-item label="Institución Bancaria" path="bank_name">
+                                <n-input v-model:value="form.bank_name" />
+                            </n-form-item>
+
+                            <n-form-item label="CLABE Interbancaria" path="bank_clabe">
+                                <n-input v-model:value="form.bank_clabe" maxlength="18" />
+                            </n-form-item>
+
+                            <n-form-item label="Número de Cuenta" path="bank_account_number">
+                                <n-input v-model:value="form.bank_account_number" />
+                            </n-form-item>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 5: BENEFICIARIOS -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-pink-50 rounded-lg text-pink-600">
+                                    <n-icon size="24"><PeopleOutline /></n-icon>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-gray-800">Beneficiarios</h3>
+                                    <p class="text-xs text-gray-400">Familiares o dependientes.</p>
+                                </div>
+                            </div>
+                            <n-button size="small" secondary type="primary" @click="addBeneficiary">
+                                <template #icon><n-icon><AddOutline /></n-icon></template>
+                                Agregar
+                            </n-button>
+                        </div>
+
+                        <div v-if="form.beneficiaries.length === 0" class="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                            <n-text depth="3">No hay beneficiarios registrados</n-text>
+                        </div>
+
+                        <div v-for="(beneficiary, index) in form.beneficiaries" :key="index" class="bg-gray-50 rounded-xl p-4 mb-4 relative border border-gray-200">
+                             <div class="absolute top-2 right-2">
+                                <n-button circle size="small" type="error" ghost @click="removeBeneficiary(index)">
+                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                </n-button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <n-form-item label="Nombre(s)" :show-label="index === 0">
+                                    <n-input v-model:value="beneficiary.first_name" placeholder="Nombre" />
+                                </n-form-item>
+                                <n-form-item label="Apellido Paterno" :show-label="index === 0">
+                                    <n-input v-model:value="beneficiary.paternal_surname" placeholder="Ap. Paterno" />
+                                </n-form-item>
+                                <n-form-item label="Apellido Materno" :show-label="index === 0">
+                                    <n-input v-model:value="beneficiary.maternal_surname" placeholder="Ap. Materno" />
+                                </n-form-item>
+                                <n-form-item label="Fecha Nacimiento" :show-label="index === 0">
+                                    <n-date-picker 
+                                        v-model:formatted-value="beneficiary.birth_date"
+                                        value-format="yyyy-MM-dd"
+                                        type="date" 
+                                        class="w-full" 
+                                    />
+                                </n-form-item>
+                                <n-form-item label="Parentesco" :show-label="index === 0">
+                                    <n-input v-model:value="beneficiary.relationship" placeholder="Ej. Esposa" />
+                                </n-form-item>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 6: CONTACTOS DE EMERGENCIA -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-red-50 rounded-lg text-red-600">
+                                    <n-icon size="24"><CallOutline /></n-icon>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-gray-800">Contactos de Emergencia</h3>
+                                    <p class="text-xs text-gray-400">En caso de accidente.</p>
+                                </div>
+                            </div>
+                            <n-button size="small" secondary type="error" @click="addContact">
+                                <template #icon><n-icon><AddOutline /></n-icon></template>
+                                Agregar
+                            </n-button>
+                        </div>
+
+                        <div v-if="form.contacts.length === 0" class="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                            <n-text depth="3">No hay contactos registrados</n-text>
+                        </div>
+
+                        <div v-for="(contact, index) in form.contacts" :key="index" class="bg-gray-50 rounded-xl p-4 mb-4 relative border border-gray-200">
+                            <div class="absolute top-2 right-2">
+                                <n-button circle size="small" type="error" ghost @click="removeContact(index)">
+                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                </n-button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <n-form-item label="Nombre Completo" :show-label="index === 0">
+                                    <n-input v-model:value="contact.name" placeholder="Nombre" />
+                                </n-form-item>
+                                <n-form-item label="Parentesco" :show-label="index === 0">
+                                    <n-input v-model:value="contact.relationship" placeholder="Ej. Hermano" />
+                                </n-form-item>
+                                <n-form-item label="Teléfono" :show-label="index === 0">
+                                    <n-input v-model:value="contact.phone" placeholder="Número" />
+                                </n-form-item>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 7: DOCUMENTACIÓN -->
+                    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 mb-8">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-gray-100 rounded-lg text-gray-600">
+                                <n-icon size="24"><DocumentTextOutline /></n-icon>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">Agregar Documentos</h3>
+                                <p class="text-xs text-gray-400">Sube archivos nuevos para anexar al expediente.</p>
+                            </div>
+                        </div>
+
+                        <n-form-item>
                             <n-upload
                                 multiple
                                 directory-dnd
@@ -297,42 +515,36 @@ export default {
                             >
                                 <n-upload-dragger>
                                     <div style="margin-bottom: 12px">
-                                        <n-icon size="48" :depth="3">
-                                            <CloudUploadOutline />
-                                        </n-icon>
+                                        <n-icon size="48" :depth="3"><CloudUploadOutline /></n-icon>
                                     </div>
-                                    <n-text style="font-size: 16px">
-                                        Haz clic o arrastra archivos adicionales aquí
-                                    </n-text>
+                                    <n-text style="font-size: 16px">Haz clic o arrastra archivos aquí</n-text>
                                     <n-p depth="3" style="margin: 8px 0 0 0">
-                                        Los archivos que subas se agregarán a los existentes.
+                                        Los archivos que subas se sumarán a los existentes.
                                     </n-p>
                                 </n-upload-dragger>
                             </n-upload>
                         </n-form-item>
+                    </div>
 
-                        <!-- Botones de Acción -->
-                        <div class="flex justify-end gap-4 mt-8">
-                            <n-button @click="goBack" size="large" round>
-                                Cancelar
-                            </n-button>
-                            <n-button 
-                                type="primary" 
-                                size="large" 
-                                round 
-                                @click="submit" 
-                                :loading="form.processing"
-                                :disabled="form.processing"
-                            >
-                                <template #icon>
-                                    <n-icon :component="SaveOutline" />
-                                </template>
-                                Actualizar Usuario
-                            </n-button>
-                        </div>
+                    <!-- BOTONES ACCIÓN -->
+                    <div class="flex justify-end gap-4 pb-12">
+                        <n-button @click="goBack" size="large" round>
+                            Cancelar
+                        </n-button>
+                        <n-button 
+                            type="primary" 
+                            size="large" 
+                            round 
+                            @click="submit" 
+                            :loading="form.processing"
+                            :disabled="form.processing"
+                        >
+                            <template #icon><n-icon :component="SaveOutline" /></template>
+                            Actualizar Expediente
+                        </n-button>
+                    </div>
 
-                    </n-form>
-                </div>
+                </n-form>
             </div>
         </div>
     </AppLayout>

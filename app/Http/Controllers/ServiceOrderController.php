@@ -387,7 +387,36 @@ class ServiceOrderController extends Controller
             return back()->with('error', 'No se puede eliminar una orden completada o facturada.');
         }
 
-        $serviceOrder->delete(); 
-        return redirect()->route('service-orders.index')->with('success', 'Orden eliminada.');
+        // Usamos una transacción para asegurar que se borre todo o nada
+        DB::transaction(function () use ($serviceOrder) {
+            
+            // 1. Restaurar inventario: Iterar sobre los items y devolver el stock
+            // Esto es crucial en un ERP para evitar perdida de material
+            foreach ($serviceOrder->items as $item) {
+                if ($item->product) {
+                    InventoryService::addStock(
+                        product: $item->product,
+                        branchId: $serviceOrder->branch_id,
+                        quantity: $item->quantity,
+                        reason: 'Cancelación Orden',
+                        reference: $serviceOrder,
+                        notes: "Eliminación de Orden de Servicio #{$serviceOrder->id}"
+                    );
+                }
+            }
+
+            // 2. Eliminar relaciones dependientes
+            // Aquí está la corrección específica para tu error SQL 1451
+            $serviceOrder->payments()->delete(); // Elimina los pagos asociados
+            $serviceOrder->items()->delete();    // Elimina los items de la orden
+            
+            // Opcional: Si tienes tareas y estas tienen otras dependencias, podrías necesitar borrarlas también
+            // $serviceOrder->tasks()->delete(); 
+
+            // 3. Eliminar la orden principal
+            $serviceOrder->delete(); 
+        });
+
+        return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
     }
 }

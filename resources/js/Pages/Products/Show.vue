@@ -271,6 +271,7 @@ const deleteFile = (fileId) => {
                         <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
                             <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
                                 <img 
+                                    @error="$event.target.src = product.image_url + '?retry=' + new Date().getTime()"
                                     v-if="product.image_url" 
                                     :src="product.image_url" 
                                     class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"

@@ -188,6 +188,11 @@ class RoleSeeder extends Seeder
                 'module' => 'Usuarios'
             ],
             [
+                'name' => 'users.destroy',
+                'description' => 'Eliminar usuarios',
+                'module' => 'Usuarios'
+            ],
+            [
                 'name' => 'users.toggle_status',
                 'description' => 'Activar o desactivar acceso a usuarios',
                 'module' => 'Usuarios'

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, h, computed } from 'vue';
-import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
+import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
@@ -12,12 +12,20 @@ import {
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
-    CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline
+    CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline,
+    PeopleOutline, Star, StarOutline
 } from '@vicons/ionicons5';
 
+// Definición de Props explícita
 const props = defineProps({
-    client: Object,
-    stats: Object, // { total_debt, total_paid, balance, services_count }
+    client: {
+        type: Object,
+        required: true
+    },
+    stats: {
+        type: Object,
+        required: true
+    }
 });
 
 // Inicializar permisos
@@ -34,7 +42,7 @@ const { notification } = createDiscreteApi(['notification'], {
 // --- ESTADO Y UTILIDADES ---
 const activeTab = ref('services');
 const showPaymentModal = ref(false);
-const fileInput = ref(null); // Referencia al input de archivo
+const fileInput = ref(null);
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
@@ -45,12 +53,22 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
+// --- COMPUTED: CONTACTO PRINCIPAL ---
+const primaryContact = computed(() => {
+    if (!props.client.contacts || props.client.contacts.length === 0) return null;
+    return props.client.contacts.find(c => c.is_primary) || props.client.contacts[0];
+});
+
 // --- COMPUTED: DIRECCIÓN Y MAPAS ---
 const formattedAddress = computed(() => {
     const c = props.client;
-    // Unimos las partes lógicamente
+    // Construir la calle con su tipo de vialidad
+    const streetPart = c.street 
+        ? ((c.road_type ? c.road_type + ' ' : '') + c.street + (c.exterior_number ? ` #${c.exterior_number}` : '')) 
+        : null;
+
     const parts = [
-        c.street ? (c.street + (c.exterior_number ? ` #${c.exterior_number}` : '')) : null,
+        streetPart,
         c.interior_number ? `Int. ${c.interior_number}` : null,
         c.neighborhood ? `Col. ${c.neighborhood}` : null,
         c.zip_code ? `CP ${c.zip_code}` : null,
@@ -61,7 +79,6 @@ const formattedAddress = computed(() => {
 });
 
 const googleMapsUrl = computed(() => {
-    // Si no hay calle ni municipio, probablemente no valga la pena el link
     if (!props.client.street && !props.client.municipality) return null;
     
     const addressQuery = [
@@ -76,6 +93,65 @@ const googleMapsUrl = computed(() => {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
 });
 
+// --- COLUMNAS CONTACTOS ---
+const contactColumns = [
+    {
+        title: '',
+        key: 'is_primary',
+        width: 40,
+        render(row) {
+            return row.is_primary 
+                ? h(NIcon, { color: '#f59e0b', size: 18 }, { default: () => h(Star) }) 
+                : null;
+        }
+    },
+    { 
+        title: 'Nombre', 
+        key: 'name', 
+        render(row) {
+            return h('div', { class: 'font-medium text-gray-800' }, row.name);
+        }
+    },
+    { 
+        title: 'Puesto / Parentesco', 
+        key: 'job_title',
+        render(row) {
+             return row.job_title 
+                ? h(NTag, { size: 'small', bordered: false, type: 'default' }, { default: () => row.job_title }) 
+                : '-';
+        }
+    },
+    { 
+        title: 'Email', 
+        key: 'email',
+        render(row) {
+            if (!row.email) return '-';
+            return h('a', { 
+                href: `mailto:${row.email}`, 
+                class: 'text-indigo-600 hover:underline flex items-center gap-1' 
+            }, [
+                h(NIcon, null, { default: () => h(MailOutline) }),
+                row.email
+            ]);
+        }
+    },
+    { 
+        title: 'Teléfono', 
+        key: 'phone',
+        render(row) {
+            if (!row.phone) return '-';
+             return h('a', { 
+                href: `tel:${row.phone}`, 
+                class: 'text-green-600 hover:underline flex items-center gap-1' 
+            }, [
+                h(NIcon, null, { default: () => h(CallOutline) }),
+                row.phone
+            ]);
+        }
+    },
+    { title: 'Notas', key: 'notes', ellipsis: { tooltip: true } }
+];
+
 // --- COLUMNAS SERVICIOS ---
 const serviceColumns = [
     { title: 'Folio', key: 'id', width: 70, render: (row) => `#${row.id}` },
@@ -87,7 +163,6 @@ const serviceColumns = [
                 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 
                 'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' 
             };
-            // Usamos size 'tiny' para ahorrar espacio en tablas móviles
             return h(NTag, { type: types[row.status] || 'default', size: 'tiny', bordered: false, round: true }, { default: () => row.status });
         }
     },
@@ -151,10 +226,10 @@ const docColumns = [
                 size: 'small', 
                 quaternary: true, 
                 type: 'info',
-                tag: 'a',           // Renderizar como enlace
-                href: row.url,      // URL del archivo (backend)
-                target: '_blank',   // Abrir en nueva pestaña
-                download: row.name  // Sugerir nombre al descargar
+                tag: 'a',
+                href: row.url,
+                target: '_blank',
+                download: row.name
             }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) });
         }
     }
@@ -191,10 +266,8 @@ const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Asignar archivo al formulario
     uploadForm.file = file;
 
-    // Enviar formulario automáticamente al seleccionar
     uploadForm.post(route('clients.documents.store', props.client.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -203,7 +276,6 @@ const handleFileChange = (event) => {
                 content: 'Documento subido correctamente.' 
             });
             uploadForm.reset();
-            // Limpiar el input file por si quieren subir el mismo archivo de nuevo
             if (fileInput.value) fileInput.value.value = '';
         },
         onError: () => {
@@ -230,7 +302,6 @@ const handleFileChange = (event) => {
                         </n-button>
                     </Link>
                     
-                    <!-- Botón Editar: Protegido por clients.edit -->
                     <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
                         <n-button secondary round type="warning" size="small">
                             <template #icon><n-icon><CreateOutline /></n-icon></template>
@@ -256,14 +327,12 @@ const handleFileChange = (event) => {
                             </n-avatar>
                             
                             <div class="flex-1 min-w-0">
-                                <!-- Nombre y Contacto Principal -->
                                 <h1 class="text-xl sm:text-3xl font-black text-gray-800 tracking-tight leading-tight mb-2 break-words">
                                     {{ client.name }}
                                 </h1>
                                 
                                 <div class="flex flex-col gap-2 text-xs sm:text-sm text-gray-600">
                                     
-                                    <!-- Persona de Contacto y RFC -->
                                     <div class="flex flex-wrap gap-x-4 gap-y-1 items-center">
                                         <div v-if="client.contact_person" class="font-medium flex items-center gap-1.5">
                                             <n-icon class="text-gray-400"><PersonOutline/></n-icon> {{ client.contact_person }}
@@ -273,27 +342,22 @@ const handleFileChange = (event) => {
                                         </div>
                                     </div>
 
-                                    <!-- Datos de Contacto (Emails y Teléfonos) -->
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-1">
-                                        <!-- Emails -->
-                                        <div v-if="client.email || client.email_secondary" class="flex flex-col">
-                                            <span v-if="client.email" class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
-                                                <n-icon class="text-indigo-400"><MailOutline /></n-icon> {{ client.email }}
-                                            </span>
-                                            <span v-if="client.email_secondary" class="flex items-center gap-1.5 text-gray-400 text-[11px] ml-5">
-                                                {{ client.email_secondary }}
+                                    <!-- Datos de Contacto (DINÁMICO DESDE CONTACTOS) -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-1" v-if="primaryContact">
+                                        <div v-if="primaryContact.email" class="flex flex-col">
+                                            <span class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
+                                                <n-icon class="text-indigo-400"><MailOutline /></n-icon> {{ primaryContact.email }}
                                             </span>
                                         </div>
                                         
-                                        <!-- Teléfonos -->
-                                        <div v-if="client.phone || client.phone_secondary" class="flex flex-col">
-                                            <span v-if="client.phone" class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
-                                                <n-icon class="text-green-500"><CallOutline /></n-icon> {{ client.phone }}
-                                            </span>
-                                            <span v-if="client.phone_secondary" class="flex items-center gap-1.5 text-gray-400 text-[11px] ml-5">
-                                                <n-icon class="text-gray-300"><PhonePortraitOutline/></n-icon> {{ client.phone_secondary }}
+                                        <div v-if="primaryContact.phone" class="flex flex-col">
+                                            <span class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
+                                                <n-icon class="text-green-500"><CallOutline /></n-icon> {{ primaryContact.phone }}
                                             </span>
                                         </div>
+                                    </div>
+                                    <div v-else class="text-gray-400 italic mt-1">
+                                        Sin medios de contacto registrados
                                     </div>
 
                                     <!-- Dirección Atomizada -->
@@ -303,7 +367,6 @@ const handleFileChange = (event) => {
                                             <span class="leading-snug">{{ formattedAddress }}</span>
                                         </div>
                                         
-                                        <!-- Botón Google Maps -->
                                         <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-block">
                                             <n-button size="tiny" secondary round type="info">
                                                 <template #icon><n-icon><MapOutline/></n-icon></template>
@@ -318,7 +381,6 @@ const handleFileChange = (event) => {
                         <!-- Columna Estado Financiero -->
                         <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             
-                            <!-- Tarjeta de Saldo Principal -->
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
@@ -337,7 +399,6 @@ const handleFileChange = (event) => {
                                 </div>
                             </div>
                             
-                            <!-- Stats secundarios -->
                             <div class="grid grid-cols-2 sm:flex sm:flex-col gap-2 w-full sm:w-auto">
                                 <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
                                     <div class="text-[10px] text-gray-400 uppercase truncate">Facturado</div>
@@ -387,7 +448,6 @@ const handleFileChange = (event) => {
                                     <h3 class="text-base sm:text-lg font-bold text-gray-800">Historial</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Gestión operativa</p>
                                 </div>
-                                <!-- Botón Nueva Orden: Protegido por service_orders.create -->
                                 <n-button 
                                     v-if="hasPermission('service_orders.create')"
                                     type="primary" 
@@ -457,7 +517,39 @@ const handleFileChange = (event) => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- PESTAÑA 3: DOCUMENTOS -->
+                        <!-- PESTAÑA 3: CONTACTOS -->
+                        <n-tab-pane name="contacts" tab="Contactos">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <n-icon size="18"><PeopleOutline /></n-icon> 
+                                    <span class="hidden sm:inline">Contactos</span>
+                                    <span class="sm:hidden text-xs">Contactos</span>
+                                    <n-badge :value="client.contacts?.length || 0" type="success" :max="99" class="scale-75 origin-left" />
+                                </div>
+                            </template>
+
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                                <div>
+                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Directorio</h3>
+                                    <p class="text-xs sm:text-sm text-gray-500">Personas de contacto registradas</p>
+                                </div>
+                            </div>
+
+                            <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+                                <div class="min-w-[600px] sm:min-w-full">
+                                    <n-data-table
+                                        :columns="contactColumns"
+                                        :data="client.contacts"
+                                        :bordered="false"
+                                        size="medium"
+                                        class="mb-2"
+                                    />
+                                    <n-empty v-if="!client.contacts || client.contacts.length === 0" description="No hay contactos registrados" class="py-8"/>
+                                </div>
+                            </div>
+                        </n-tab-pane>
+
+                        <!-- PESTAÑA 4: DOCUMENTOS -->
                         <n-tab-pane name="documents" tab="Documentos">
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
@@ -473,7 +565,6 @@ const handleFileChange = (event) => {
                                 </div>
                             </div>
 
-                            <!-- Input oculto para subir archivos -->
                             <input 
                                 type="file" 
                                 ref="fileInput" 
@@ -481,13 +572,11 @@ const handleFileChange = (event) => {
                                 @change="handleFileChange"
                             >
 
-                            <!-- Zona de Clic para subir -->
                             <div 
                                 v-if="hasPermission('clients.edit')" 
                                 @click="triggerFileInput"
                                 class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer group relative"
                             >
-                                <!-- Loading overlay opcional -->
                                 <div v-if="uploadForm.processing" class="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-xl">
                                     <span class="text-indigo-600 font-bold animate-pulse">Subiendo...</span>
                                 </div>
@@ -516,7 +605,6 @@ const handleFileChange = (event) => {
             </div>
         </div>
 
-        <!-- MODAL DE PAGOS -->
         <PaymentModal 
             v-model:show="showPaymentModal" 
             :client="client"
