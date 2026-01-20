@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Auth;
-use Spatie\Permission\Models\Role; // Importamos el modelo Role de Spatie
+use Illuminate\Support\Facades\DB; // Importante para transacciones
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
@@ -19,20 +20,18 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
-        // Obtenemos el término de búsqueda si existe
         $search = $request->input('search');
-        
-        // Recuperamos la sucursal actual de la sesión o del usuario autenticado
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         $users = User::query()
-            ->where('branch_id', $branchId) // Filtramos por la sucursal actual
-            ->where('id', '!=', 1) // Ocultamos al usuario de soporte (ID 1)
-            ->with(['branch', 'roles']) // Cargamos roles y sucursal
+            ->where('branch_id', $branchId)
+            ->where('id', '!=', 1) 
+            ->with(['branch', 'roles'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('curp', 'like', "%{$search}%");
                 });
             })
             ->latest()
@@ -49,7 +48,6 @@ class UserController extends Controller
 
     public function create()
     {
-        // Obtenemos los roles y los mapeamos para el Select de Naive UI
         $roles = Role::all()->map(function ($role) {
             return [
                 'label' => $role->name,
@@ -64,42 +62,105 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        // Validamos los datos
+        // 1. Validaciones
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'password' => ['required', 'string', 'min:8'],
-            'role' => ['required', 'exists:roles,name'], // Validación del rol
-            'documents' => ['nullable', 'array'],
-            'documents.*' => ['file', 'max:10240'],
+            // Generales
+            'first_name' => 'required|string|max:100',
+            'paternal_surname' => 'required|string|max:100',
+            'maternal_surname' => 'nullable|string|max:100',
+            'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'nullable|string|max:20',
+            'password' => 'required|string|min:8',
+            'role' => 'required|exists:roles,name',
+
+            // Legales
+            'birth_date' => 'nullable|date',
+            'curp' => 'nullable|string|max:18',
+            'rfc' => 'nullable|string|max:13',
+            'nss' => 'nullable|string|max:11',
+
+            // Domicilio
+            'street' => 'nullable|string|max:255',
+            'exterior_number' => 'nullable|string|max:20',
+            'interior_number' => 'nullable|string|max:20',
+            'neighborhood' => 'nullable|string|max:255',
+            'zip_code' => 'nullable|string|max:10',
+            'municipality' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'address_references' => 'nullable|string',
+            'cross_streets' => 'nullable|string',
+
+            // Bancarios
+            'bank_account_holder' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:100',
+            'bank_clabe' => 'nullable|string|max:18',
+            'bank_account_number' => 'nullable|string|max:20',
+
+            // Listas
+            'documents' => 'nullable|array',
+            'documents.*' => 'file|max:10240',
+            
+            'beneficiaries' => 'nullable|array',
+            'beneficiaries.*.first_name' => 'required|string',
+            'beneficiaries.*.paternal_surname' => 'required|string',
+            'beneficiaries.*.relationship' => 'required|string',
+
+            'contacts' => 'nullable|array',
+            'contacts.*.name' => 'required|string',
+            'contacts.*.relationship' => 'required|string',
+            'contacts.*.phone' => 'required|string',
         ]);
 
-        // Obtenemos el ID de la sucursal actual
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'phone' => $validated['phone'] ?? null,
-            'password' => Hash::make($validated['password']),
-            'branch_id' => $branchId,
-            'is_active' => true,
-        ]);
+        DB::transaction(function () use ($validated, $request, $branchId) {
+            
+            // Construir nombre completo legacy
+            $fullName = trim("{$validated['first_name']} {$validated['paternal_surname']} " . ($validated['maternal_surname'] ?? ''));
 
-        // Asignamos el rol utilizando Spatie
-        $user->assignRole($validated['role']);
+            // Preparar datos usuario
+            $userData = collect($validated)->except(['contacts', 'beneficiaries', 'role', 'documents'])->toArray();
+            $userData['name'] = $fullName;
+            $userData['password'] = Hash::make($validated['password']);
+            $userData['branch_id'] = $branchId;
+            $userData['is_active'] = true;
 
-        // Procesar archivos
-        if ($request->hasFile('documents')) {
-            foreach ($request->file('documents') as $file) {
-                $user->addMedia($file)->toMediaCollection('documents');
+            // Crear Usuario
+            $user = User::create($userData);
+
+            // Asignar Rol
+            $user->assignRole($validated['role']);
+
+            // Guardar Beneficiarios
+            if (!empty($validated['beneficiaries'])) {
+                $user->beneficiaries()->createMany($validated['beneficiaries']);
             }
-        }
+
+            // Guardar Contactos Emergencia (Polimórficos)
+            if (!empty($validated['contacts'])) {
+                foreach ($validated['contacts'] as $contact) {
+                    $user->contacts()->create([
+                        'branch_id' => $branchId,
+                        'name' => $contact['name'],
+                        'job_title' => $contact['relationship'], // Usamos job_title para parentesco
+                        'phone' => $contact['phone'],
+                        'is_primary' => false,
+                        'notes' => 'Contacto de Emergencia'
+                    ]);
+                }
+            }
+
+            // Procesar archivos
+            if ($request->hasFile('documents')) {
+                foreach ($request->file('documents') as $file) {
+                    $user->addMedia($file)->toMediaCollection('documents');
+                }
+            }
+        });
 
         return redirect()->route('users.index')->with('flash', [
             'type' => 'success',
-            'message' => 'Usuario creado exitosamente con rol asignado.'
+            'message' => 'Expediente creado exitosamente.'
         ]);
     }
 
@@ -110,7 +171,8 @@ class UserController extends Controller
             abort(403, 'No tienes permiso para ver este usuario.');
         }
 
-        $user->load(['branch', 'media', 'roles']);
+        // Cargar todas las relaciones necesarias para el expediente
+        $user->load(['branch', 'media', 'roles', 'beneficiaries', 'contacts']);
         
         $lastTasks = $user->tasks()
             ->orderBy('created_at', 'desc')
@@ -132,10 +194,9 @@ class UserController extends Controller
             abort(403, 'No tienes permiso para editar este usuario.');
         }
 
-        // Cargamos roles actuales del usuario
-        $user->load(['branch', 'media', 'roles']);
+        // Cargamos relaciones
+        $user->load(['branch', 'media', 'roles', 'beneficiaries', 'contacts']);
         
-        // Obtenemos los roles para el select
         $roles = Role::all()->map(function ($role) {
             return [
                 'label' => $role->name,
@@ -157,43 +218,93 @@ class UserController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required', 
-                'string', 
-                'email', 
-                'max:255', 
-                Rule::unique('users')->ignore($user->id)
-            ],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'role' => ['required', 'exists:roles,name'], // Validación del rol
-            'password' => ['nullable', 'string', 'min:8'],
-            'documents' => ['nullable', 'array'],
-            'documents.*' => ['file', 'max:10240'],
+            // Generales
+            'first_name' => 'required|string|max:100',
+            'paternal_surname' => 'required|string|max:100',
+            'maternal_surname' => 'nullable|string|max:100',
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'phone' => 'nullable|string|max:20',
+            'role' => 'required|exists:roles,name',
+            'password' => 'nullable|string|min:8', // Opcional en update
+
+            // Legales
+            'birth_date' => 'nullable|date',
+            'curp' => 'nullable|string|max:18',
+            'rfc' => 'nullable|string|max:13',
+            'nss' => 'nullable|string|max:11',
+
+            // Domicilio
+            'street' => 'nullable|string|max:255',
+            'exterior_number' => 'nullable|string|max:20',
+            'interior_number' => 'nullable|string|max:20',
+            'neighborhood' => 'nullable|string|max:255',
+            'zip_code' => 'nullable|string|max:10',
+            'municipality' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'address_references' => 'nullable|string',
+            'cross_streets' => 'nullable|string',
+
+            // Bancarios
+            'bank_account_holder' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:100',
+            'bank_clabe' => 'nullable|string|max:18',
+            'bank_account_number' => 'nullable|string|max:20',
+
+            // Listas
+            'documents' => 'nullable|array',
+            'beneficiaries' => 'nullable|array',
+            'contacts' => 'nullable|array',
         ]);
 
-        $user->name = $validated['name'];
-        $user->email = $validated['email'];
-        $user->phone = $validated['phone'] ?? $user->phone;
+        DB::transaction(function () use ($validated, $request, $user, $currentBranchId) {
+            
+            // Actualizar campos directos del usuario
+            $fullName = trim("{$validated['first_name']} {$validated['paternal_surname']} " . ($validated['maternal_surname'] ?? ''));
+            
+            $userData = collect($validated)->except(['contacts', 'beneficiaries', 'role', 'documents', 'password'])->toArray();
+            $userData['name'] = $fullName;
 
-        if (!empty($validated['password'])) {
-            $user->password = Hash::make($validated['password']);
-        }
-
-        $user->save();
-
-        // Sincronizamos el rol (quita los anteriores y pone el nuevo)
-        $user->syncRoles([$validated['role']]);
-
-        if ($request->hasFile('documents')) {
-            foreach ($request->file('documents') as $file) {
-                $user->addMedia($file)->toMediaCollection('documents');
+            if (!empty($validated['password'])) {
+                $userData['password'] = Hash::make($validated['password']);
             }
-        }
+
+            $user->update($userData);
+
+            // Sincronizar Rol
+            $user->syncRoles([$validated['role']]);
+
+            // Sincronizar Beneficiarios (Borrar y Recrear para consistencia)
+            $user->beneficiaries()->delete();
+            if (!empty($validated['beneficiaries'])) {
+                $user->beneficiaries()->createMany($validated['beneficiaries']);
+            }
+
+            // Sincronizar Contactos (Borrar y Recrear)
+            $user->contacts()->delete();
+            if (!empty($validated['contacts'])) {
+                foreach ($validated['contacts'] as $contact) {
+                    $user->contacts()->create([
+                        'branch_id' => $currentBranchId,
+                        'name' => $contact['name'],
+                        'job_title' => $contact['relationship'],
+                        'phone' => $contact['phone'],
+                        'is_primary' => false,
+                        'notes' => 'Emergencia'
+                    ]);
+                }
+            }
+
+            // Archivos (Solo agregar nuevos)
+            if ($request->hasFile('documents')) {
+                foreach ($request->file('documents') as $file) {
+                    $user->addMedia($file)->toMediaCollection('documents');
+                }
+            }
+        });
 
         return redirect()->route('users.show', $user->id)->with('flash', [
             'type' => 'success',
-            'message' => 'Usuario y rol actualizados correctamente.'
+            'message' => 'Expediente actualizado correctamente.'
         ]);
     }
 
@@ -217,6 +328,24 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        //
+        $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        if ($user->branch_id !== $currentBranchId) {
+            abort(403, 'No tienes permiso para eliminar este usuario.');
+        }
+
+        if ($user->id === Auth::id()) {
+            return back()->with('flash', [
+                'type' => 'error',
+                'message' => 'No puedes eliminar tu propia cuenta mientras está en uso.'
+            ]);
+        }
+
+        $user->delete();
+
+        return redirect()->route('users.index')->with('flash', [
+            'type' => 'success',
+            'message' => 'Usuario eliminado correctamente.'
+        ]);
     }
 }

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, h } from 'vue';
-import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
+import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; 
@@ -9,42 +9,55 @@ import {
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
-    PersonOutline, CallOutline, MailOutline, WalletOutline, CashOutline, AlertCircleOutline
+    PersonOutline, CallOutline, MailOutline, WalletOutline, CashOutline, AlertCircleOutline,
+    LocationOutline // Importamos icono para dirección
 } from '@vicons/ionicons5';
 
 const props = defineProps({
-    clients: Object, // Paginado
+    clients: Object, 
     filters: Object,
 });
 
 // Inicializar permisos
 const { hasPermission } = usePermissions();
-
-// Configuración de Notificaciones
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
-// Lógica de búsqueda
+// --- LÓGICA DE BÚSQUEDA ---
+// Mantenemos ambos filtros en refs separados
 const search = ref(props.filters.search || '');
+const addressSearch = ref(props.filters.address_filter || ''); // Nuevo filtro
+
 let searchTimeout;
 
-watch(search, (value) => {
+// Función única para recargar la tabla
+const reloadTable = () => {
+    router.get(
+        route('clients.index'), 
+        { 
+            search: search.value, 
+            address_filter: addressSearch.value 
+        }, 
+        { preserveState: true, replace: true }
+    );
+};
+
+// Observamos ambos campos
+watch([search, addressSearch], () => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-        router.get(route('clients.index'), { search: value }, { preserveState: true, replace: true });
-    }, 300);
+        reloadTable();
+    }, 400); // Un poco más de delay para evitar muchas peticiones si escriben en ambos
 });
 
 // --- ESTADO DEL MODAL DE PAGOS ---
 const showPaymentModal = ref(false);
 const selectedClientForPayment = ref(null);
 
-// Acción: Abrir Modal de Abono
 const registerPayment = (client) => {
     selectedClientForPayment.value = client;
     showPaymentModal.value = true;
 };
 
-// Acciones de Navegación
 const goToEdit = (id) => router.visit(route('clients.edit', id));
 const goToShow = (id) => router.visit(route('clients.show', id));
 
@@ -63,7 +76,6 @@ const confirmDelete = (client) => {
     });
 };
 
-// Formateador de Moneda
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
@@ -88,10 +100,20 @@ const createColumns = () => [
         render(row) {
             return h('div', { class: 'flex flex-col' }, [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.name),
-                // Mostramos RFC si existe
                 row.tax_id 
                     ? h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, `RFC: ${row.tax_id}`)
                     : null
+            ]);
+        }
+    },
+    {
+        title: 'Dirección',
+        key: 'full_address',
+        render(row) {
+            // Renderizamos la dirección para ver si el filtro funcionó visualmente
+            return h('div', { class: 'text-xs text-gray-500 max-w-[200px] truncate' }, [
+                h(NIcon, { class: 'mr-1 relative top-0.5' }, { default: () => h(LocationOutline) }),
+                row.full_address || 'Sin dirección'
             ]);
         }
     },
@@ -100,34 +122,23 @@ const createColumns = () => [
         key: 'contact_info',
         render(row) {
             const elements = [];
-            
-            // Persona de contacto
             if (row.contact_person) {
                 elements.push(h('div', { class: 'text-xs text-gray-600 font-medium mb-1' }, row.contact_person));
             }
-
-            // Datos de contacto
             if (row.phone) {
                 elements.push(h('div', { class: 'flex items-center gap-1.5 text-xs text-gray-500' }, [
                     h(NIcon, { class: 'text-green-500' }, { default: () => h(CallOutline) }),
                     h('span', row.phone)
                 ]));
             }
-            if (row.email) {
-                elements.push(h('div', { class: 'flex items-center gap-1.5 text-xs text-gray-500' }, [
-                    h(NIcon, { class: 'text-indigo-400' }, { default: () => h(MailOutline) }),
-                    h('span', { class: 'truncate max-w-[150px]' }, row.email)
-                ]));
-            }
             return h('div', { class: 'flex flex-col gap-0.5' }, elements.length ? elements : h('span', { class: 'text-gray-300 text-xs' }, '-'));
         }
     },
     {
-        title: 'Estado de Cuenta',
+        title: 'Estado',
         key: 'balance',
         render(row) {
             const hasDebt = row.has_debt;
-            
             return h(NTag, { 
                 type: hasDebt ? 'error' : 'success', 
                 size: 'small', 
@@ -145,10 +156,9 @@ const createColumns = () => [
     {
         title: '',
         key: 'actions',
-        width: 180,
+        width: 140, // Ajusté un poco el ancho
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                // Botón Rápido de Cobranza (Si tiene deuda) - Podrías protegerlo con un permiso de finanzas si deseas
                 row.has_debt ? h(NTooltip, { trigger: 'hover' }, {
                     trigger: () => h(NButton, {
                         circle: true, size: 'small', quaternary: true, type: 'success',
@@ -158,19 +168,16 @@ const createColumns = () => [
                     default: () => 'Registrar Abono'
                 }) : null,
 
-                // Ver Detalle (Siempre visible)
                 h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'info',
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
                 }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
 
-                // Editar (Protegido)
                 hasPermission('clients.edit') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'warning',
                     onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
                 }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
 
-                // Eliminar (Protegido)
                 hasPermission('clients.delete') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'error',
                     onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
@@ -183,14 +190,18 @@ const createColumns = () => [
 const columns = createColumns();
 
 const handlePageChange = (page) => {
-    router.get(route('clients.index'), { page, search: search.value }, { preserveState: true });
+    // Incluimos ambos filtros al cambiar de página
+    router.get(route('clients.index'), { 
+        page, 
+        search: search.value,
+        address_filter: addressSearch.value
+    }, { preserveState: true });
 };
 
 const rowProps = (row) => ({
     style: 'cursor: pointer;',
     onClick: () => goToShow(row.id)
 });
-
 </script>
 
 <template>
@@ -203,12 +214,9 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión de expedientes y estado de cuenta por sucursal</p>
                 </div>
-                <!-- Botón Crear (Protegido) -->
                 <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
+                        <template #icon><n-icon><AddOutline /></n-icon></template>
                         Nuevo Cliente
                     </n-button>
                 </Link>
@@ -218,21 +226,41 @@ const rowProps = (row) => ({
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 
-                <!-- Barra de Búsqueda -->
-                <div class="mb-6 px-4 sm:px-0 flex justify-between items-center">
-                    <n-input 
-                        v-model:value="search" 
-                        type="text" 
-                        placeholder="Buscar por nombre, RFC o correo..." 
-                        class="max-w-md shadow-sm rounded-full"
-                        clearable
-                        round
-                        size="large"
-                    >
-                        <template #prefix>
-                            <n-icon :component="SearchOutline" class="text-gray-400" />
-                        </template>
-                    </n-input>
+                <!-- Barra de Filtros -->
+                <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                    
+                    <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-grow max-w-4xl">
+                        <!-- Filtro 1: Buscador General -->
+                        <n-input 
+                            v-model:value="search" 
+                            type="text" 
+                            placeholder="Buscar: Nombre, RFC, Email..." 
+                            class="w-full md:w-64 shadow-sm"
+                            clearable
+                            round
+                            size="large"
+                        >
+                            <template #prefix>
+                                <n-icon :component="SearchOutline" class="text-gray-400" />
+                            </template>
+                        </n-input>
+
+                        <!-- Filtro 2: Buscador Dirección (NUEVO) -->
+                        <n-input 
+                            v-model:value="addressSearch" 
+                            type="text" 
+                            placeholder="Filtrar por Colonia, Estado, Municipio..." 
+                            class="w-full md:w-80 shadow-sm"
+                            clearable
+                            round
+                            size="large"
+                        >
+                            <template #prefix>
+                                <n-icon :component="LocationOutline" class="text-indigo-400" />
+                            </template>
+                        </n-input>
+                    </div>
+
                 </div>
 
                 <!-- TABLA (Escritorio) -->
@@ -246,7 +274,6 @@ const rowProps = (row) => ({
                         :row-props="rowProps"
                         class="custom-table"
                     />
-                    <!-- Paginación -->
                     <div class="p-4 flex justify-end border-t border-gray-100" v-if="clients.total > 0">
                         <n-pagination
                             :page="clients.current_page"
@@ -269,54 +296,36 @@ const rowProps = (row) => ({
                         @click="goToShow(client.id)"
                     >
                         <div class="flex items-start gap-4">
-                            <!-- Icono -->
                             <div class="flex-shrink-0">
                                 <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center border border-indigo-100">
                                     <n-icon size="24"><PersonOutline /></n-icon>
                                 </div>
                             </div>
-
-                            <!-- Info -->
                             <div class="flex-grow min-w-0 pr-8">
                                 <h3 class="text-lg font-bold text-gray-800 leading-tight truncate">
                                     {{ client.name }}
                                 </h3>
-                                
                                 <div v-if="client.contact_person" class="text-sm text-gray-500 mt-0.5">
                                     {{ client.contact_person }}
                                 </div>
-
-                                <!-- Datos contacto móvil -->
-                                <div class="mt-3 flex flex-wrap gap-2">
-                                    <div v-if="client.phone" class="flex items-center gap-1 text-xs text-gray-600 bg-gray-50 p-1.5 rounded-lg">
-                                        <n-icon class="text-green-500"><CallOutline /></n-icon>
-                                        {{ client.phone }}
-                                    </div>
+                                <!-- Mostrar dirección en móvil también -->
+                                <div class="mt-2 text-xs text-gray-400 flex items-start gap-1">
+                                    <n-icon class="mt-0.5"><LocationOutline/></n-icon>
+                                    <span class="line-clamp-2">{{ client.full_address || 'Sin dirección' }}</span>
                                 </div>
                             </div>
-
-                            <!-- Menú Acciones Móvil -->
+                            
+                            <!-- Botones acción móvil -->
                             <div class="absolute top-4 right-4 flex flex-col gap-2">
-                                <!-- Editar -->
-                                <button 
-                                    v-if="hasPermission('clients.edit')"
-                                    @click.stop="goToEdit(client.id)" 
-                                    class="text-amber-500 hover:bg-amber-50 p-2 rounded-full"
-                                >
+                                <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
                                     <n-icon size="20"><CreateOutline /></n-icon>
                                 </button>
-                                <!-- Eliminar -->
-                                <button 
-                                    v-if="hasPermission('clients.delete')"
-                                    @click.stop="confirmDelete(client)" 
-                                    class="text-red-500 hover:bg-red-50 p-2 rounded-full"
-                                >
+                                <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full">
                                     <n-icon size="20"><TrashOutline /></n-icon>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- Footer Card: Saldo -->
                         <div class="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
                             <span class="text-xs text-gray-400 font-mono">ID: {{ client.id }}</span>
                             <div 
@@ -328,7 +337,6 @@ const rowProps = (row) => ({
                             </div>
                         </div>
                         
-                        <!-- Botón Cobrar Móvil -->
                         <div v-if="client.has_debt" class="mt-2">
                              <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
                                 <template #icon><n-icon :component="CashOutline" /></template>
@@ -336,21 +344,14 @@ const rowProps = (row) => ({
                              </n-button>
                         </div>
                     </div>
-                     <!-- Paginación Móvil -->
                      <div class="flex justify-center mt-6" v-if="clients.total > 0">
-                        <n-pagination
-                            simple
-                            :page="clients.current_page"
-                            :page-count="clients.last_page"
-                            :on-update:page="handlePageChange"
-                        />
+                        <n-pagination simple :page="clients.current_page" :page-count="clients.last_page" :on-update:page="handlePageChange" />
                     </div>
                 </div>
 
             </div>
         </div>
 
-        <!-- MODAL DE PAGOS (Global para esta vista) -->
         <PaymentModal 
             v-model:show="showPaymentModal" 
             :client="selectedClientForPayment"

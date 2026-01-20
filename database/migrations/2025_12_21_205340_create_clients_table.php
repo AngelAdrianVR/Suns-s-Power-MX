@@ -20,13 +20,14 @@ return new class extends Migration
             $table->string('contact_person')->nullable();
             $table->string('tax_id')->nullable(); // RFC
             
-            // Datos de Contacto
-            $table->string('email')->nullable();
-            $table->string('email_secondary')->nullable();
-            $table->string('phone')->nullable();
-            $table->string('phone_secondary')->nullable();
+            // Datos de Contacto columnas comentadas porque se guardará el contacto en la tabla polimórfica
+            // $table->string('email')->nullable();
+            // $table->string('email_secondary')->nullable();
+            // $table->string('phone')->nullable();
+            // $table->string('phone_secondary')->nullable();
 
             // Dirección Desglosada (Address Splitting)
+            $table->string('road_type')->nullable();        // NUEVO: Tipo de vialidad (Calle, Avenida, Blvd)
             $table->string('street')->nullable();           // Calle
             $table->string('exterior_number')->nullable();  // Número Exterior
             $table->string('interior_number')->nullable();  // Número Interior
