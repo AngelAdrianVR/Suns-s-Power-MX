@@ -15,6 +15,8 @@ class AppServiceProvider extends ServiceProvider
         // ESTA ES LA CLAVE:
         // Le decimos a Laravel: "No busques una carpeta 'public', 
         // la carpeta pública es la misma carpeta base donde estoy corriendo (public_html)".
+
+        // ! Descomentar la linea de abajo para subirlo a producción / Comentarla si se trabajará en local        
         // $this->app->usePublicPath($this->app->basePath());
     }
 
@@ -26,6 +28,8 @@ class AppServiceProvider extends ServiceProvider
         // Como ya definimos arriba que nuestra "public" es la raíz del proyecto,
         // ahora solo le decimos que busque en la carpeta 'build' dentro de ahí.
         // Ruta resultante: /home1/germanac/public_html/build
+
+        // ! Descomentar la linea de abajo para subirlo a producción / Comentarla si se trabajará en local
         // Vite::useBuildDirectory('build');
     }
 }
