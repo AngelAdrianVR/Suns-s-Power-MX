@@ -162,10 +162,12 @@ const createColumns = () => [
         }
     },
     {
-        title: 'Costo',
+        title: hasPermission('products.view_costs') ? 'Costo' : '',
         key: 'purchase_price',
         render(row) {
-            return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
+            if ( hasPermission('products.view_costs') ) {
+                return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
+            }
         }
     },
     {

@@ -373,7 +373,7 @@ const deleteFile = (fileId) => {
 
                             <div class="prose prose-sm text-gray-500 max-w-none">
                                 <h4 class="text-gray-800 font-semibold mb-2">Descripción</h4>
-                                <p>{{ product.description || 'No hay descripción disponible para este producto.' }}</p>
+                                <p class="whitespace-pre-line">{{ product.description || 'No hay descripción disponible para este producto.' }}</p>
                             </div>
                         </div>
 

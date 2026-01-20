@@ -6,18 +6,21 @@ import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NCard, NIcon, NTag, NGrid, NGi, NAvatar, NInput, NInputNumber, NSelect, 
-    NModal, NForm, NFormItem, NEmpty, NScrollbar, createDiscreteApi, NSpin, NBadge, NTooltip
+    NModal, NForm, NFormItem, NEmpty, NScrollbar, createDiscreteApi, NSpin, NBadge, NTooltip,
+    NList, NListItem, NThing
 } from 'naive-ui';
 import { 
     ArrowBackOutline, StorefrontOutline, PersonOutline, MailOutline, CallOutline, 
     SearchOutline, ArrowForwardOutline, TrashOutline, CubeOutline, PricetagOutline, 
     TimeOutline, SaveOutline, AddOutline, CreateOutline, CloudDownloadOutline,
-    GlobeOutline, BriefcaseOutline, Star, CopyOutline, LogoWhatsapp
+    GlobeOutline, BriefcaseOutline, Star, CopyOutline, LogoWhatsapp,
+    CardOutline, LocationOutline, DocumentTextOutline, ReceiptOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     supplier: Object,
-    assigned_products: Array, 
+    assigned_products: Array,
+    documents: Array // Nueva prop para archivos
 });
 
 const { hasPermission } = usePermissions();
@@ -50,15 +53,19 @@ const currencyOptions = [
 
 // --- UTILIDADES ---
 const copyToClipboard = (text) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     notification.success({ content: 'Copiado al portapapeles', duration: 1500 });
 };
 
 const goToWebsite = (url) => {
     if (!url) return;
-    // Asegurar protocolo
     const target = url.startsWith('http') ? url : `https://${url}`;
     window.open(target, '_blank');
+};
+
+const downloadFile = (url) => {
+    window.open(url, '_blank');
 };
 
 // --- LÓGICA DE CARGA ASÍNCRONA (Productos) ---
@@ -179,12 +186,11 @@ const formatCurrency = (amount, currency) => {
                     </Link>
                 </div>
 
-                <!-- CABECERA: Info Proveedor -->
-                <div class="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 mb-8 relative overflow-hidden">
-
+                <!-- CABECERA: Info Principal -->
+                <div class="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6 relative overflow-hidden">
                     <div class="flex flex-col md:flex-row justify-between items-start gap-6 relative z-10">
                         <div class="flex items-start gap-5">
-                            <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg transform -rotate-3">
+                            <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-lg transform -rotate-3">
                                 <n-icon size="40"><StorefrontOutline /></n-icon>
                             </div>
                             <div>
@@ -192,16 +198,17 @@ const formatCurrency = (amount, currency) => {
                                     {{ supplier.company_name }}
                                 </h1>
                                 
-                                <div class="flex flex-col sm:flex-row gap-3 text-sm">
+                                <div class="flex flex-col sm:flex-row gap-4 text-sm text-gray-500">
+                                    <div class="flex items-center gap-1.5" v-if="supplier.rfc">
+                                        <n-icon class="text-gray-400"><ReceiptOutline /></n-icon>
+                                        <span class="font-mono font-medium text-gray-700">{{ supplier.rfc }}</span>
+                                    </div>
+                                    <div class="hidden sm:block text-gray-300">|</div>
                                     <!-- Link al Sitio Web -->
                                     <div v-if="supplier.website" class="flex items-center gap-2">
-                                        <n-button size="small" tertiary type="primary" @click="goToWebsite(supplier.website)">
-                                            <template #icon><n-icon><GlobeOutline /></n-icon></template>
-                                            Visitar Sitio Web
-                                        </n-button>
-                                    </div>
-                                    <div v-else class="flex items-center gap-2 text-gray-400 italic">
-                                        <n-icon><GlobeOutline /></n-icon> Sin sitio web registrado
+                                        <a :href="supplier.website.startsWith('http') ? supplier.website : 'https://' + supplier.website" target="_blank" class="text-blue-600 hover:underline flex items-center gap-1">
+                                            <n-icon><GlobeOutline /></n-icon> Sitio Web
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -214,6 +221,115 @@ const formatCurrency = (amount, currency) => {
                                 Editar Datos
                             </n-button>
                         </Link>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN: DATOS ADMINISTRATIVOS Y BANCARIOS -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    
+                    <!-- Columna 1: Dirección y Fiscal -->
+                    <div class="lg:col-span-1 space-y-6">
+                        <n-card :bordered="false" class="shadow-sm rounded-2xl border border-gray-100 h-full">
+                            <template #header>
+                                <div class="flex items-center gap-2 text-gray-800">
+                                    <n-icon class="text-orange-500"><LocationOutline /></n-icon> 
+                                    <span>Ubicación y Fiscal</span>
+                                </div>
+                            </template>
+                            
+                            <div class="space-y-4 p-3">
+                                <div>
+                                    <label class="text-xs font-bold text-gray-400 uppercase">Dirección</label>
+                                    <p class="text-sm text-gray-700 whitespace-pre-line mt-1">
+                                        {{ supplier.address || 'No registrada' }}
+                                    </p>
+                                </div>
+                                <div v-if="supplier.rfc">
+                                    <label class="text-xs font-bold text-gray-400 uppercase">RFC</label>
+                                    <p class="text-sm font-mono text-gray-700 mt-1">{{ supplier.rfc }}</p>
+                                </div>
+                            </div>
+                        </n-card>
+                    </div>
+
+                    <!-- Columna 2: Datos Bancarios -->
+                    <div class="lg:col-span-1">
+                        <n-card :bordered="false" class="shadow-sm rounded-2xl border border-gray-100 h-full">
+                            <template #header>
+                                <div class="flex items-center gap-2 text-gray-800">
+                                    <n-icon class="text-emerald-500"><CardOutline /></n-icon> 
+                                    <span>Datos Bancarios</span>
+                                </div>
+                            </template>
+
+                            <div v-if="supplier.bank_name || supplier.clabe || supplier.account_number" class="space-y-4 p-3">
+                                <div v-if="supplier.bank_name">
+                                    <label class="text-xs font-bold text-gray-400 uppercase">Banco</label>
+                                    <p class="text-sm font-semibold text-gray-800">{{ supplier.bank_name }}</p>
+                                </div>
+                                
+                                <div v-if="supplier.bank_account_holder">
+                                    <label class="text-xs font-bold text-gray-400 uppercase">Titular</label>
+                                    <p class="text-sm text-gray-700">{{ supplier.bank_account_holder }}</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 gap-3">
+                                    <div v-if="supplier.account_number">
+                                        <label class="text-xs font-bold text-gray-400 uppercase">Cuenta</label>
+                                        <div class="flex items-center gap-2 group cursor-pointer" @click="copyToClipboard(supplier.account_number)">
+                                            <p class="text-sm font-mono text-gray-700">{{ supplier.account_number }}</p>
+                                            <n-icon class="text-gray-300 opacity-0 group-hover:opacity-100"><CopyOutline /></n-icon>
+                                        </div>
+                                    </div>
+                                    <div v-if="supplier.clabe">
+                                        <label class="text-xs font-bold text-gray-400 uppercase">CLABE</label>
+                                        <div class="flex items-center gap-2 group cursor-pointer" @click="copyToClipboard(supplier.clabe)">
+                                            <p class="text-sm font-mono text-gray-700">{{ supplier.clabe }}</p>
+                                            <n-icon class="text-gray-300 opacity-0 group-hover:opacity-100"><CopyOutline /></n-icon>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 py-4">
+                                <n-icon size="30" class="mb-2 opacity-50"><CardOutline /></n-icon>
+                                <span class="text-xs">Sin datos bancarios</span>
+                            </div>
+                        </n-card>
+                    </div>
+
+                    <!-- Columna 3: Documentación -->
+                    <div class="lg:col-span-1">
+                        <n-card :bordered="false" class="shadow-sm rounded-2xl border border-gray-100 h-full">
+                            <template #header>
+                                <div class="flex items-center gap-2 text-gray-800">
+                                    <n-icon class="text-blue-500"><DocumentTextOutline /></n-icon> 
+                                    <span>Documentación</span>
+                                    <n-badge :value="documents?.length || 0" type="info" class="ml-1" />
+                                </div>
+                            </template>
+                            
+                            <div v-if="documents && documents.length > 0">
+                                <n-list hoverable clickable>
+                                    <n-list-item v-for="doc in documents" :key="doc.id">
+                                        <div class="flex items-center justify-between" @click="downloadFile(doc.url)">
+                                            <div class="flex items-center gap-3 overflow-hidden">
+                                                <div class="bg-blue-50 p-2 rounded-lg text-blue-600">
+                                                    <n-icon><CloudDownloadOutline /></n-icon>
+                                                </div>
+                                                <div class="min-w-0">
+                                                    <p class="text-sm font-medium text-gray-700 truncate">{{ doc.name }}</p>
+                                                    <p class="text-[10px] text-gray-400 uppercase">{{ doc.mime_type?.split('/')[1] || 'FILE' }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </n-list-item>
+                                </n-list>
+                            </div>
+                            <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 py-4">
+                                <n-icon size="30" class="mb-2 opacity-50"><DocumentTextOutline /></n-icon>
+                                <span class="text-xs">Sin documentos adjuntos</span>
+                            </div>
+                        </n-card>
                     </div>
                 </div>
 

@@ -17,10 +17,16 @@ return new class extends Migration
             $table->string('company_name');
             $table->string('website')->nullable();
 
-            // contacto 
-            // $table->string('contact_name')->nullable();
-            // $table->string('email')->nullable();
-            // $table->string('phone')->nullable();
+            // Nuevos campos solicitados
+            $table->string('rfc', 20)->nullable();
+            $table->text('address')->nullable();
+            
+            // Datos Bancarios
+            $table->string('bank_account_holder')->nullable();
+            $table->string('bank_name')->nullable();
+            $table->string('clabe', 20)->nullable();
+            $table->string('account_number', 20)->nullable();
+
             $table->timestamps();
         });
     }
