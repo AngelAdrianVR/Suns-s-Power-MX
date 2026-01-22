@@ -290,11 +290,13 @@ class ProductController extends Controller
             'sale_price' => 'required|numeric|min:0',
             'description' => 'nullable|string',
             'image' => 'nullable|image|max:5120',
-            'attachments.*' => 'nullable|file|max:10240', // Validar nuevos archivos
+            'attachments.*' => 'nullable|file|max:10240',
             'current_stock' => 'nullable|integer|min:0',
+            'min_stock_alert' => 'nullable|integer|min:0',
             'location' => 'nullable|string|max:255',
         ]);
 
+        // 1. Actualizar datos generales del producto
         $product->update([
             'name' => $validated['name'],
             'sku' => $validated['sku'],
@@ -302,31 +304,41 @@ class ProductController extends Controller
             'purchase_price' => $validated['purchase_price'],
             'sale_price' => $validated['sale_price'],
             'description' => $validated['description'],
+            // Si tu base de datos tiene min_stock_alert en la tabla products, déjalo aquí.
+            // Si solo existe en la tabla pivote, puedes quitar esta línea.
+            'min_stock_alert' => $validated['min_stock_alert'], 
         ]);
 
+        // 2. Procesar imágenes
         if ($request->hasFile('image')) {
             $product->clearMediaCollection('product_images');
             $product->addMediaFromRequest('image')->toMediaCollection('product_images');
         }
 
-        // Agregar nuevos adjuntos sin borrar los anteriores
         if ($request->hasFile('attachments')) {
             foreach ($request->file('attachments') as $file) {
                 $product->addMedia($file)->toMediaCollection('product_attachments');
             }
         }
 
+        // 3. Actualizar datos específicos de la Sucursal (Pivote)
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
         if ($branchId) {
             $newStock = $request->input('current_stock');
             $location = $request->input('location');
+            $minStock = $request->input('min_stock_alert'); // <-- CORRECCIÓN: Capturar el valor
             
             $pivotData = [];
+            
+            // Agregar al array de actualización si no son nulos
             if (!is_null($newStock)) $pivotData['current_stock'] = $newStock;
             if (!is_null($location)) $pivotData['location_in_warehouse'] = $location;
+            if (!is_null($minStock)) $pivotData['min_stock_alert'] = $minStock; // <-- CORRECCIÓN: Agregarlo al sync
 
             if (!empty($pivotData)) {
+                // Usamos syncWithoutDetaching para actualizar solo los campos especificados
+                // sin borrar la relación existente.
                 $product->branches()->syncWithoutDetaching([
                     $branchId => $pivotData
                 ]);

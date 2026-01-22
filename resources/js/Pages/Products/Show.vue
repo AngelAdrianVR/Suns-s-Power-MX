@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
     NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NInputNumber, createDiscreteApi, NDatePicker, NSkeleton,
-    NConfigProvider, esAR, dateEsAR, NList, NListItem, NThing, NEmpty, NPopconfirm
+    NConfigProvider, esAR, dateEsAR, NList, NListItem, NThing, NEmpty, NPopconfirm, NGridItem
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
@@ -225,6 +225,15 @@ const deleteFile = (fileId) => {
         }
     });
 };
+
+// === SOLUCIÓN FIX 403 PARA ARCHIVOS ===
+// Abre el archivo forzando una URL "nueva" con un timestamp
+const openFileWithRetry = (url) => {
+    if (!url) return;
+    const separator = url.includes('?') ? '&' : '?';
+    const safeUrl = `${url}${separator}retry=${new Date().getTime()}`;
+    window.open(safeUrl, '_blank');
+};
 </script>
 
 <template>
@@ -267,7 +276,7 @@ const deleteFile = (fileId) => {
                     
                     <!-- Columna Izquierda: Imagen y Stock -->
                     <div class="md:col-span-1 space-y-6">
-                        <!-- Imagen -->
+                        <!-- Imagen (Ya incluye tu fix de @error) -->
                         <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
                             <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
                                 <img 
@@ -377,58 +386,64 @@ const deleteFile = (fileId) => {
                             </div>
                         </div>
 
-                        <!-- NUEVA SECCIÓN: Documentos Adjuntos -->
+                        <!-- SECCIÓN: Documentos Adjuntos (MODIFICADA) -->
                         <div v-if="product.attachments && product.attachments.length > 0" class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                             <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2 mb-4">
                                 <n-icon class="text-blue-500"><AttachOutline /></n-icon>
                                 Archivos y Documentos
                             </h3>
                             
-                            <n-grid-item v-for="file in product.attachments" :key="file.id">
-                                <div class="group relative flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all">
-                                    <!-- Icono según tipo -->
-                                    <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500 shadow-sm group-hover:scale-110 transition-transform">
-                                        <n-icon size="20">
-                                            <component :is="getFileIcon(file.mime_type)" />
-                                        </n-icon>
-                                    </div>
-                                    
-                                    <!-- Info del archivo -->
-                                    <div class="flex-1 min-w-0">
-                                        <a :href="file.url" target="_blank" class="block">
+                            <n-grid x-gap="12" y-gap="12" cols="1 md:2">
+                                <n-grid-item v-for="file in product.attachments" :key="file.id">
+                                    <div class="group relative flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all">
+                                        <!-- Icono según tipo -->
+                                        <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500 shadow-sm group-hover:scale-110 transition-transform">
+                                            <n-icon size="20">
+                                                <component :is="getFileIcon(file.mime_type)" />
+                                            </n-icon>
+                                        </div>
+                                        
+                                        <!-- Info del archivo (Click con Retry) -->
+                                        <div class="flex-1 min-w-0 cursor-pointer" @click="openFileWithRetry(file.url)">
                                             <p class="text-sm font-semibold text-gray-700 truncate group-hover:text-blue-700">
                                                 {{ file.name }}
                                             </p>
                                             <p class="text-xs text-gray-400">
                                                 {{ file.size }}
                                             </p>
-                                        </a>
-                                    </div>
-                                    
-                                    <!-- Botones de Acción (Descarga y Eliminar) -->
-                                    <div class="flex items-center gap-1">
-                                        <a :href="file.url" target="_blank" title="Descargar">
-                                            <n-button size="tiny" circle secondary type="info">
+                                        </div>
+                                        
+                                        <!-- Botones de Acción -->
+                                        <div class="flex items-center gap-1">
+                                            <!-- Botón Descargar (Click con Retry) -->
+                                            <n-button 
+                                                size="tiny" 
+                                                circle 
+                                                secondary 
+                                                type="info" 
+                                                @click.stop="openFileWithRetry(file.url)"
+                                                title="Descargar"
+                                            >
                                                 <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
                                             </n-button>
-                                        </a>
-                                        
-                                        <!-- Botón de Eliminar con Confirmación -->
-                                        <n-popconfirm
-                                            @positive-click="deleteFile(file.id)"
-                                            positive-text="Sí, eliminar"
-                                            negative-text="Cancelar"
-                                        >
-                                            <template #trigger>
-                                                <n-button size="tiny" circle secondary type="error">
-                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                                </n-button>
-                                            </template>
-                                            ¿Estás seguro de eliminar este archivo permanentemente?
-                                        </n-popconfirm>
+                                            
+                                            <!-- Botón de Eliminar -->
+                                            <n-popconfirm
+                                                @positive-click="deleteFile(file.id)"
+                                                positive-text="Sí, eliminar"
+                                                negative-text="Cancelar"
+                                            >
+                                                <template #trigger>
+                                                    <n-button size="tiny" circle secondary type="error">
+                                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                    </n-button>
+                                                </template>
+                                                ¿Estás seguro de eliminar este archivo permanentemente?
+                                            </n-popconfirm>
+                                        </div>
                                     </div>
-                                </div>
-                            </n-grid-item>
+                                </n-grid-item>
+                            </n-grid>
                         </div>
 
                         <!-- Sección de Historial de Movimientos -->
@@ -544,8 +559,7 @@ const deleteFile = (fileId) => {
                                 <n-input 
                                     v-model:value="adjustmentForm.adjustment_note" 
                                     type="textarea" 
-                                    placeholder="Ej. Conteo cíclico, merma por daño, regalo a cliente..."
-                                    :rows="3"
+                                    placeholder="Ej. Conteo cíclico, merma por daño, regalo a cliente" :rows="3"
                                 />
                             </n-form-item>
                         </n-form>

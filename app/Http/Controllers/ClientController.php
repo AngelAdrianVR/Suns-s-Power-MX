@@ -295,8 +295,34 @@ class ClientController extends Controller
         return redirect()->route('clients.index')->with('success', 'Cliente eliminado.');
     }
 
-    // ... uploadDocument y getClientDetails se mantienen igual, 
-    // solo recuerda que en getClientDetails 'street' ahora va junto con 'road_type' si quieres mostrarlo completo.
+    /**
+     * Sube uno o múltiples documentos al expediente del cliente.
+     */
+    public function uploadDocument(Request $request, Client $client)
+    {
+        // Validación de seguridad (Branch)
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($client->branch_id !== $branchId) return inertia('Forbidden403');
+
+        // Validación actualizada para múltiples archivos
+        $request->validate([
+            'files' => 'required|array', // Ahora esperamos un array
+            'files.*' => 'file|max:10240', // Cada archivo individualmente (10MB max)
+            'category' => 'nullable|string|max:50',
+        ]);
+
+        // Procesar la subida múltiple
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $client->addMedia($file) // Usamos addMedia directamente con el objeto archivo
+                    ->withCustomProperties(['category' => $request->input('category', 'General')])
+                    ->toMediaCollection('documents');
+            }
+        }
+
+        return back()->with('success', 'Documentos subidos correctamente.');
+    }
+
     public function getClientDetails(Client $client)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
