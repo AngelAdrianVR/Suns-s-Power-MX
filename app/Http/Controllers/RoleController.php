@@ -16,7 +16,8 @@ class RoleController extends Controller
      */
     public function index()
     {
-        // Solo el usuario ID 1 puede ver/gestionar permisos crudos
+        // Solo el usuario ID 1 puede ver/gestionar la CREACIÓN de permisos nuevos (el botón "Gestionar Permisos")
+        // Pero la ASIGNACIÓN de permisos a roles debe estar disponible para quien tenga acceso a este módulo.
         $isDeveloper = Auth::id() === 1;
 
         $roles = Role::with('permissions')->orderBy('id')->get()->map(function ($role) {
@@ -31,18 +32,18 @@ class RoleController extends Controller
         });
 
         // Agrupamos permisos por 'module' para mostrarlos ordenados en el UI
+        // CORRECCIÓN: Esto ahora está disponible para todos, no solo desarrolladores.
         $permissions = [];
-        if ($isDeveloper) {
-            $allPermissions = Permission::all();
-            foreach ($allPermissions as $perm) {
-                // Asumiendo que tu tabla permissions tiene columna 'module' según tu migración
-                $module = $perm->module ?? 'General'; 
-                $permissions[$module][] = [
-                    'id' => $perm->id,
-                    'name' => $perm->name,
-                    'description' => $perm->description ?? $perm->name,
-                ];
-            }
+        $allPermissions = Permission::all();
+        
+        foreach ($allPermissions as $perm) {
+            // Asumiendo que tu tabla permissions tiene columna 'module' según tu migración
+            $module = $perm->module ?? 'General'; 
+            $permissions[$module][] = [
+                'id' => $perm->id,
+                'name' => $perm->name,
+                'description' => $perm->description ?? $perm->name,
+            ];
         }
 
         return Inertia::render('Setting/Role/Index', [
@@ -65,8 +66,9 @@ class RoleController extends Controller
 
         $role = Role::create(['name' => $validated['name'], 'guard_name' => 'web']);
 
-        // Asignar permisos si se enviaron y si es developer
-        if (Auth::id() === 1 && !empty($validated['permissions'])) {
+        // Asignar permisos si se enviaron.
+        // CORRECCIÓN: Eliminada la restricción de Auth::id() === 1. Ahora cualquier usuario autorizado puede asignar permisos.
+        if (!empty($validated['permissions'])) {
             $role->syncPermissions($validated['permissions']);
         }
 
@@ -89,12 +91,10 @@ class RoleController extends Controller
 
         $role->update(['name' => $validated['name']]);
 
-        // Sincronizar permisos (Solo Developer)
-        if (Auth::id() === 1) {
-            // Si el array existe en el request (aunque esté vacío), sincronizamos
-            if ($request->has('permissions')) {
-                $role->syncPermissions($validated['permissions']);
-            }
+        // Sincronizar permisos
+        // CORRECCIÓN: Eliminada la restricción de Auth::id() === 1.
+        if ($request->has('permissions')) {
+            $role->syncPermissions($validated['permissions']);
         }
 
         return redirect()->back()->with('success', 'Rol actualizado correctamente.');
@@ -121,6 +121,7 @@ class RoleController extends Controller
     
     // --------------------------------------------------------------------------------
     // CRUD DE PERMISOS (SOLO DESARROLLADOR - ID 1)
+    // ESTA SECCIÓN SE MANTIENE RESTRINGIDA TAL COMO SE SOLICITÓ
     // --------------------------------------------------------------------------------
     
     public function storePermission(Request $request)
