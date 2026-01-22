@@ -162,7 +162,16 @@ const createColumns = () => [
         }
     },
     {
-        title: 'Precio',
+        title: hasPermission('products.view_costs') ? 'Costo' : '',
+        key: 'purchase_price',
+        render(row) {
+            if ( hasPermission('products.view_costs') ) {
+                return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
+            }
+        }
+    },
+    {
+        title: 'Precio Venta',
         key: 'sale_price',
         render(row) {
             return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.sale_price));
@@ -251,7 +260,7 @@ const rowProps = (row) => {
         </template>
 
         <div class="py-8 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="max-w-[90rem] mx-auto sm:px-6 lg:px-8">
                 
                 <!-- Barra de búsqueda -->
                 <div class="mb-6 px-4 sm:px-0 flex justify-between items-center">

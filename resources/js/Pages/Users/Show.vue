@@ -2,27 +2,29 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import FileView from "@/Components/MyComponents/FileView.vue"; 
 import { Head, Link, router } from '@inertiajs/vue3';
-import { usePermissions } from '@/Composables/usePermissions'; // 1. Importar composable
-import axios from 'axios'; 
+import { usePermissions } from '@/Composables/usePermissions'; 
 import { 
     NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem, NButton, NIcon, 
-    NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, createDiscreteApi,
-    NSpin 
+    NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, NGrid, NGridItem,
+    createDiscreteApi 
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, 
     CalendarOutline, PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
-    CloudUploadOutline, DocumentAttachOutline, CallOutline
+    CloudUploadOutline, CallOutline, HomeOutline, WalletOutline, 
+    PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline
 } from '@vicons/ionicons5';
 
 export default {
     components: {
         AppLayout, Head, Link, NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem,
-        NButton, NIcon, NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, FileView,
+        NButton, NIcon, NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, 
+        NGrid, NGridItem, FileView,
         // Iconos
         ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, CalendarOutline,
         PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
-        CloudUploadOutline, DocumentAttachOutline, CallOutline
+        CloudUploadOutline, CallOutline, HomeOutline, WalletOutline, 
+        PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline
     },
     props: {
         user: {
@@ -34,15 +36,15 @@ export default {
             default: () => []
         }
     },
-    // 2. Usar setup como puente para Composition API
     setup() {
+        // Agregamos 'dialog' para la confirmación de eliminación
         const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
-        const { hasPermission } = usePermissions(); // Extraer permisos
+        const { hasPermission } = usePermissions(); 
         
         return { 
             notification,
             dialog,
-            hasPermission, // Exponer al template
+            hasPermission, 
             CheckmarkCircleOutline,
             AlertCircleOutline,
             CloudUploadOutline
@@ -53,6 +55,10 @@ export default {
             if (!this.user.created_at) return 'N/A';
             const date = new Date(this.user.created_at);
             return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+        },
+        userInitials() {
+            if (!this.user.first_name) return this.user.name.substring(0, 2).toUpperCase();
+            return (this.user.first_name[0] + (this.user.paternal_surname[0] || '')).toUpperCase();
         }
     },
     methods: {
@@ -75,9 +81,18 @@ export default {
                 }
             });
         },
+        deleteUser() {
+            this.dialog.warning({
+                title: 'Eliminar Usuario',
+                content: `¿Estás seguro de que deseas eliminar permanentemente a ${this.user.name}? Esta acción no se puede deshacer y se perderá todo el expediente.`,
+                positiveText: 'Sí, eliminar',
+                negativeText: 'Cancelar',
+                onPositiveClick: () => {
+                    router.delete(route('users.destroy', this.user.id));
+                }
+            });
+        },
         deleteFile(fileId) {
-            // Eliminar visualmente (la lógica real ya la maneja FileView internamente o el padre)
-            // Asumiendo que FileView emite el evento para que el padre actualice el estado local
             this.user.media = this.user.media.filter(m => m.id !== fileId);
         },
         getTaskStatusType(status) {
@@ -91,7 +106,7 @@ export default {
         formatDateShort(dateString) {
             if (!dateString) return '';
             const date = new Date(dateString);
-            return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+            return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
         }
     }
 }
@@ -107,123 +122,296 @@ export default {
                     </template>
                 </n-button>
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    Perfil de Usuario
+                    Expediente Digital
                 </h2>
             </div>
         </template>
 
-        <div class="py-8 min-h-screen">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+        <div class="py-8 min-h-screen bg-gray-50/50">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
                 
-                <!-- Tarjeta Principal de Información -->
-                <div class="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden p-6 md:p-8">
+                <!-- 1. HEADER DEL PERFIL -->
+                <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 relative overflow-hidden">
+                    <!-- Fondo decorativo sutil -->
+                    <div class="absolute top-0 right-0 w-64 h-64 bg-blue-50 rounded-full mix-blend-multiply filter blur-3xl opacity-30 -translate-y-1/2 translate-x-1/2"></div>
                     
-                    <div class="flex flex-col md:flex-row items-center md:items-start gap-8">
-                        
-                        <!-- Columna Izquierda: Avatar y Estado -->
-                        <div class="flex flex-col items-center space-y-4 min-w-[120px]">
+                    <div class="flex flex-col md:flex-row items-center md:items-start gap-8 relative z-10">
+                        <!-- Avatar -->
+                        <div class="flex flex-col items-center gap-3">
                             <n-avatar 
                                 round 
                                 :size="120" 
                                 :src="user.profile_photo_url" 
-                                class="border-4 border-white shadow-md"
-                            />
-                            <div class="flex flex-col items-center gap-2">
-                                <n-tag 
-                                    :type="user.is_active ? 'success' : 'error'" 
-                                    round 
-                                    size="medium"
-                                    :bordered="false"
-                                >
-                                    <template #icon>
-                                        <n-icon :component="user.is_active ? CheckmarkCircleOutline : AlertCircleOutline" />
-                                    </template>
-                                    {{ user.is_active ? 'Activo' : 'Inactivo' }}
-                                </n-tag>
-                            </div>
+                                class="border-4 border-white shadow-lg bg-gray-200 text-4xl font-bold text-gray-400"
+                            >
+                                <template #default v-if="!user.profile_photo_url">
+                                    {{ userInitials }}
+                                </template>
+                            </n-avatar>
+                            <n-tag 
+                                :type="user.is_active ? 'success' : 'error'" 
+                                round 
+                                :bordered="false"
+                                size="small"
+                                class="px-4"
+                            >
+                                <template #icon>
+                                    <n-icon :component="user.is_active ? CheckmarkCircleOutline : AlertCircleOutline" />
+                                </template>
+                                {{ user.is_active ? 'Activo' : 'Baja' }}
+                            </n-tag>
                         </div>
 
-                        <!-- Columna Derecha: Detalles y Acciones -->
-                        <div class="flex-grow w-full">
-                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-5">
+                        <!-- Info Principal -->
+                        <div class="flex-grow w-full text-center md:text-left">
+                            <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
                                 <div>
                                     <h1 class="text-3xl font-bold text-gray-800">{{ user.name }}</h1>
-                                    <p class="text-gray-500 flex items-center gap-2 mt-1">
-                                        <n-icon><MailOutline /></n-icon>
-                                        {{ user.email }}
-                                    </p>
-                                    <p class="text-gray-500 flex items-center gap-2">
-                                        <n-icon><CallOutline /></n-icon>
-                                        {{ user.phone || 'No proporcionado' }}
-                                    </p>
+                                    <div class="flex flex-wrap justify-center md:justify-start gap-x-6 gap-y-2 mt-2 text-gray-500 text-sm">
+                                        <span class="flex items-center gap-1.5">
+                                            <n-icon class="text-blue-500"><BusinessOutline /></n-icon>
+                                            {{ user.branch ? user.branch.name : 'Sin sucursal' }}
+                                        </span>
+                                        <span class="flex items-center gap-1.5">
+                                            <n-icon class="text-purple-500"><IdCardOutline /></n-icon>
+                                            {{ user.roles && user.roles.length ? user.roles[0].name : 'Sin Rol' }}
+                                        </span>
+                                        <span class="flex items-center gap-1.5">
+                                            <n-icon class="text-green-500"><CalendarOutline /></n-icon>
+                                            Alta: {{ formattedDate }}
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                                    
-                                    <!-- Botón Editar: Protegido por users.edit -->
-                                    <Link v-if="hasPermission('users.edit')" :href="route('users.edit', user.id)" class="flex-1 md:flex-none">
-                                        <n-button type="warning" ghost round block class="md:w-auto">
-                                            <template #icon>
-                                                <n-icon><CreateOutline /></n-icon>
-                                            </template>
-                                            Editar/Reestablecer Contraseña
-                                        </n-button>
-                                    </Link>
-                                    
-                                    <!-- Botón Estado: Protegido por users.toggle_status -->
+                                
+                                <div class="flex gap-2">
+                                    <n-button 
+                                        v-if="hasPermission('users.edit')" 
+                                        type="primary" 
+                                        secondary 
+                                        circle 
+                                        @click="goToEdit"
+                                        title="Editar Expediente"
+                                    >
+                                        <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                    </n-button>
                                     <n-button 
                                         v-if="hasPermission('users.toggle_status')"
-                                        :type="user.is_active ? 'error' : 'success'" 
+                                        :type="user.is_active ? 'warning' : 'success'" 
                                         secondary 
-                                        round 
-                                        class="flex-1 md:flex-none md:w-auto"
+                                        circle 
                                         @click="toggleStatus"
+                                        :title="user.is_active ? 'Desactivar Usuario' : 'Activar Usuario'"
                                     >
-                                        <template #icon>
-                                            <n-icon><PowerOutline /></n-icon>
-                                        </template>
-                                        {{ user.is_active ? 'Desactivar' : 'Activar' }}
+                                        <template #icon><n-icon><PowerOutline /></n-icon></template>
+                                    </n-button>
+                                    
+                                    <!-- Botón Eliminar Agregado -->
+                                    <n-button 
+                                        v-if="hasPermission('users.destroy')"
+                                        type="error" 
+                                        secondary 
+                                        circle 
+                                        @click="deleteUser"
+                                        title="Eliminar Usuario Permanentemente"
+                                    >
+                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
                                     </n-button>
                                 </div>
                             </div>
-
-                            <n-divider class="my-4" />
-
-                            <n-descriptions label-placement="top" :column="2" class="mt-4">
-                                <n-descriptions-item>
-                                    <template #label>
-                                        <div class="flex items-center gap-1 font-semibold text-gray-600 text-xs uppercase tracking-wider">
-                                            <n-icon><BusinessOutline /></n-icon>
-                                            Sucursal
-                                        </div>
-                                    </template>
-                                    <span v-if="user.branch" class="text-base font-medium text-gray-700">
-                                        {{ user.branch.name }}
-                                    </span>
-                                    <span class="text-gray-400 italic" v-else>Sin asignar</span>
-                                </n-descriptions-item>
-
-                                <n-descriptions-item>
-                                    <template #label>
-                                        <div class="flex items-center gap-1 font-semibold text-gray-600 text-xs uppercase tracking-wider">
-                                            <n-icon><CalendarOutline /></n-icon>
-                                            Fecha de Registro
-                                        </div>
-                                    </template>
-                                    <span class="text-base font-medium text-gray-700">
-                                        {{ formattedDate }}
-                                    </span>
-                                </n-descriptions-item>
-                            </n-descriptions>
+                            
+                            <!-- Datos de Contacto Rápido -->
+                            <div class="bg-gray-50 rounded-xl p-4 flex flex-wrap justify-center md:justify-start gap-8 border border-gray-100">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-500 shadow-sm">
+                                        <n-icon size="20"><MailOutline /></n-icon>
+                                    </div>
+                                    <div class="text-left">
+                                        <p class="text-xs text-gray-400 uppercase font-semibold">Correo</p>
+                                        <p class="text-gray-700 font-medium text-sm">{{ user.email }}</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-green-500 shadow-sm">
+                                        <n-icon size="20"><CallOutline /></n-icon>
+                                    </div>
+                                    <div class="text-left">
+                                        <p class="text-xs text-gray-400 uppercase font-semibold">Teléfono</p>
+                                        <p class="text-gray-700 font-medium text-sm">{{ user.phone || 'No registrado' }}</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sección de Pestañas (Tabs) -->
-                <div class="bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[400px]">
-                    <n-tabs type="line" size="large" animated pane-class="p-6">
+                <!-- 2. CONTENIDO DETALLADO (TABS) -->
+                <div class="bg-white rounded-3xl shadow-sm border border-gray-100 min-h-[500px]">
+                    <n-tabs type="segment" size="large" animated pane-class="p-6 md:p-8">
                         
-                        <!-- Tab 1: Últimas Tareas -->
-                        <n-tab-pane name="tasks" tab="Tareas Recientes">
+                        <!-- TAB: DATOS PERSONALES -->
+                        <n-tab-pane name="profile" tab="Información General">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-2">
+                                
+                                <!-- Columna Izquierda: Identidad y Domicilio -->
+                                <div class="space-y-8">
+                                    <section>
+                                        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                            <n-icon class="text-blue-600"><IdCardOutline /></n-icon>
+                                            Datos de Identificación
+                                        </h3>
+                                        <n-list bordered>
+                                            <n-list-item>
+                                                <div class="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <span class="text-xs text-gray-400 uppercase">CURP</span>
+                                                        <p class="font-medium text-gray-700">{{ user.curp || 'N/A' }}</p>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-400 uppercase">RFC</span>
+                                                        <p class="font-medium text-gray-700">{{ user.rfc || 'N/A' }}</p>
+                                                    </div>
+                                                </div>
+                                            </n-list-item>
+                                            <n-list-item>
+                                                <div class="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <span class="text-xs text-gray-400 uppercase">NSS</span>
+                                                        <p class="font-medium text-gray-700">{{ user.nss || 'N/A' }}</p>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-gray-400 uppercase">Fecha Nacimiento</span>
+                                                        <p class="font-medium text-gray-700">{{ formatDateShort(user.birth_date) || 'N/A' }}</p>
+                                                    </div>
+                                                </div>
+                                            </n-list-item>
+                                        </n-list>
+                                    </section>
+
+                                    <section>
+                                        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                            <n-icon class="text-orange-600"><HomeOutline /></n-icon>
+                                            Domicilio
+                                        </h3>
+                                        <div class="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                                            <p class="text-gray-800 font-medium">
+                                                {{ user.street }} {{ user.exterior_number }} <span v-if="user.interior_number">Int. {{ user.interior_number }}</span>
+                                            </p>
+                                            <p class="text-gray-600 text-sm mt-1">
+                                                Col. {{ user.neighborhood }}, CP: {{ user.zip_code }}
+                                            </p>
+                                            <p class="text-gray-600 text-sm">
+                                                {{ user.municipality }}, {{ user.state }}
+                                            </p>
+                                            
+                                            <n-divider v-if="user.address_references" class="my-3" />
+                                            
+                                            <div v-if="user.address_references">
+                                                <p class="text-xs text-gray-400 uppercase mb-1">Referencias</p>
+                                                <p class="text-sm text-gray-600 italic">"{{ user.address_references }}"</p>
+                                            </div>
+                                            <div v-if="user.cross_streets" class="mt-2">
+                                                <p class="text-xs text-gray-400 uppercase mb-1">Entre Calles</p>
+                                                <p class="text-sm text-gray-600">{{ user.cross_streets }}</p>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <!-- Columna Derecha: Emergencia -->
+                                <div>
+                                    <section>
+                                        <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                            <n-icon class="text-red-600"><MedkitOutline /></n-icon>
+                                            Contactos de Emergencia
+                                        </h3>
+                                        
+                                        <div v-if="user.contacts && user.contacts.length > 0" class="space-y-3">
+                                            <div v-for="(contact, index) in user.contacts" :key="index" class="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                                                <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 font-bold text-lg">
+                                                    {{ index + 1 }}
+                                                </div>
+                                                <div>
+                                                    <p class="font-bold text-gray-800">{{ contact.name }}</p>
+                                                    <div class="flex items-center gap-3 text-sm text-gray-600">
+                                                        <span class="bg-gray-100 px-2 py-0.5 rounded text-xs">{{ contact.job_title }}</span> <!-- Usamos job_title para parentesco -->
+                                                        <span class="flex items-center gap-1"><n-icon><CallOutline /></n-icon> {{ contact.phone }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div v-else class="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                                            <p class="text-gray-400 text-sm">No hay contactos de emergencia registrados.</p>
+                                        </div>
+                                    </section>
+                                </div>
+                            </div>
+                        </n-tab-pane>
+
+                        <!-- TAB: FINANCIERO -->
+                        <n-tab-pane name="financial" tab="Financiero y Beneficiarios">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-2">
+                                
+                                <!-- Datos Bancarios -->
+                                <section>
+                                    <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                        <n-icon class="text-green-600"><WalletOutline /></n-icon>
+                                        Datos Bancarios
+                                    </h3>
+                                    <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                                        <div class="absolute top-0 right-0 w-40 h-40 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                                        
+                                        <p class="text-gray-400 text-sm uppercase tracking-widest mb-1">{{ user.bank_name || 'BANCO NO REGISTRADO' }}</p>
+                                        <div class="flex items-center justify-between mt-6 mb-8">
+                                            <div class="text-2xl font-mono tracking-widest">
+                                                {{ user.bank_account_number ? `**** **** **** ${user.bank_account_number.slice(-4)}` : '**** **** **** ****' }}
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-between items-end">
+                                            <div>
+                                                <p class="text-xs text-gray-400 uppercase">Titular</p>
+                                                <p class="font-medium tracking-wide">{{ user.bank_account_holder || user.name }}</p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-xs text-gray-400 uppercase">CLABE</p>
+                                                <p class="font-mono text-sm">{{ user.bank_clabe || 'N/A' }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <!-- Beneficiarios -->
+                                <section>
+                                    <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                        <n-icon class="text-pink-600"><PeopleOutline /></n-icon>
+                                        Beneficiarios Registrados
+                                    </h3>
+                                    
+                                    <n-list bordered class="rounded-xl overflow-hidden">
+                                        <template v-if="user.beneficiaries && user.beneficiaries.length > 0">
+                                            <n-list-item v-for="ben in user.beneficiaries" :key="ben.id">
+                                                <div class="flex justify-between items-center">
+                                                    <div>
+                                                        <p class="font-bold text-gray-800">{{ ben.first_name }} {{ ben.paternal_surname }} {{ ben.maternal_surname }}</p>
+                                                        <p class="text-xs text-gray-500">
+                                                            Nacimiento: {{ formatDateShort(ben.birth_date) }}
+                                                        </p>
+                                                    </div>
+                                                    <n-tag type="info" size="small" round>{{ ben.relationship }}</n-tag>
+                                                </div>
+                                            </n-list-item>
+                                        </template>
+                                        <template v-else>
+                                            <div class="p-8 text-center text-gray-400">
+                                                No hay beneficiarios asignados.
+                                            </div>
+                                        </template>
+                                    </n-list>
+                                </section>
+                            </div>
+                        </n-tab-pane>
+
+                        <!-- TAB: TAREAS -->
+                        <n-tab-pane name="tasks" tab="Tareas">
                             <div v-if="lastTasks.length > 0">
                                 <n-list hoverable clickable>
                                     <n-list-item v-for="task in lastTasks" :key="task.id">
@@ -250,36 +438,27 @@ export default {
                                     </n-list-item>
                                 </n-list>
                                 <div class="mt-4 text-center">
-                                    <span class="text-xs text-gray-400">Mostrando las últimas {{ lastTasks.length }} tareas</span>
+                                    <n-button text type="primary">Ver historial completo de tareas</n-button>
                                 </div>
                             </div>
                             <div v-else class="flex flex-col items-center justify-center py-10">
-                                <n-empty description="Este usuario no tiene tareas asignadas recientemente.">
-                                    <!-- Solo mostrar botón de asignar si tiene permisos para gestionar tareas (opcional, o users.edit) -->
-                                    <template #extra>
-                                        <n-button v-if="hasPermission('users.assign_tasks')" size="small" dashed>
-                                            Asignar Tarea
-                                        </n-button>
-                                        <n-button v-else size="small" dashed disabled>
-                                            Sin actividad reciente
-                                        </n-button>
-                                    </template>
-                                </n-empty>
+                                <n-empty description="Este usuario no tiene tareas recientes." />
                             </div>
                         </n-tab-pane>
 
-                        <!-- Tab 2: Documentación -->
-                        <n-tab-pane name="docs" tab="Documentación">
-                            <!-- Caso: Hay Documentos -->
-                            <div v-if="user.media && user.media.length > 0" class="p-5">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h3 class="text-lg font-bold text-gray-700">Archivos ({{ user.media.length }})</h3>
-                                    <!-- Botón Subir: Protegido por users.edit -->
-                                    <n-button v-if="hasPermission('users.edit')" @click="goToEdit" type="primary" ghost>Subir Documento</n-button>
+                        <!-- TAB: DOCUMENTACIÓN -->
+                        <n-tab-pane name="docs" tab="Documentos">
+                             <!-- Caso: Hay Documentos -->
+                            <div v-if="user.media && user.media.length > 0" class="p-2">
+                                <div class="flex justify-between items-center mb-6">
+                                    <h3 class="text-lg font-bold text-gray-700">Archivos Adjuntos ({{ user.media.length }})</h3>
+                                    <n-button v-if="hasPermission('users.edit')" @click="goToEdit" size="small" type="primary" ghost>
+                                        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
+                                        Subir Nuevo
+                                    </n-button>
                                 </div>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <!-- Renderizamos el componente FileView. Deletable protegido por users.edit -->
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                     <FileView 
                                         v-for="file in user.media" 
                                         :key="file.id" 
@@ -290,43 +469,17 @@ export default {
                                 </div>
                             </div>
 
-                            <!-- Caso: No hay Documentos (Empty State) -->
-                            <div v-else class="flex flex-col items-center justify-center py-16 text-center">
-                                <div class="bg-gray-50 p-6 rounded-full mb-4">
-                                    <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
+                            <!-- Caso: No hay Documentos -->
+                            <div v-else class="flex flex-col items-center justify-center py-16 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                <div class="bg-white p-4 rounded-full mb-4 shadow-sm">
+                                    <n-icon size="40" class="text-gray-300"><CloudUploadOutline /></n-icon>
                                 </div>
-                                <h3 class="text-lg font-medium text-gray-900">Documentación del Empleado</h3>
-                                <p class="text-gray-500 max-w-sm mt-2">Aquí podrás gestionar contratos, identificaciones y otros documentos legales.</p>
+                                <h3 class="text-lg font-medium text-gray-900">Sin Documentación</h3>
+                                <p class="text-gray-500 max-w-sm mt-2 mb-6 text-sm">El expediente digital no contiene archivos adjuntos actualmente.</p>
                                 
-                                <!-- Botón Funcional: Protegido por users.edit -->
-                                <n-button 
-                                    v-if="hasPermission('users.edit')"
-                                    class="mt-6" 
-                                    type="primary" 
-                                    ghost 
-                                    @click="goToEdit"
-                                >
-                                    <template #icon>
-                                        <n-icon :component="CloudUploadOutline" />
-                                    </template>
-                                    Subir Documento
+                                <n-button v-if="hasPermission('users.edit')" type="primary" @click="goToEdit">
+                                    Subir Documentos
                                 </n-button>
-                            </div>
-                        </n-tab-pane>
-
-                        <!-- Tab 3: Nóminas -->
-                        <n-tab-pane name="payroll" tab="Información de Nóminas">
-                            <div class="flex flex-col items-center justify-center py-16 text-center">
-                                <div class="bg-green-50 p-6 rounded-full mb-4">
-                                    <svg class="w-12 h-12 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                    </svg>
-                                </div>
-                                <h3 class="text-lg font-medium text-gray-900">Historial de Pagos</h3>
-                                <p class="text-gray-500 max-w-sm mt-2">Visualiza el historial de pagos, bonos y deducciones del usuario.</p>
-                                <n-button class="mt-6" type="primary" ghost>Ver Detalles de Nómina</n-button>
                             </div>
                         </n-tab-pane>
 

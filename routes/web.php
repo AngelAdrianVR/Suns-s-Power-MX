@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
@@ -17,6 +18,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Illuminate\Support\Facades\Artisan;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -130,9 +132,17 @@ Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class
 // ---------------------------- Rutas de Clientes --------------------------------
 Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
+// API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
+Route::get('/api/clients/{client}/details', [ClientController::class, 'getClientDetails'])
+    ->name('api.clients.details'); 
 // API interna para el componente Vue (obtener deudas)
 Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
-    ->name('api.clients.pending-orders');
+->name('api.clients.pending-orders');
+Route::post('/clients/{client}/documents', [ClientController::class, 'uploadDocument'])->name('clients.documents.store');
+
+
+// ---------------------------- Rutas de categorías --------------------------------
+Route::resource('categories', CategoryController::class);
 
 
 // ---------------------------- Rutas de Pagos --------------------------------
@@ -156,3 +166,20 @@ Route::delete('/media/{media}', function (Media $media) {
         return response()->json(['error' => 'Error al eliminar el archivo.'], 500);
     }
 })->name('media.delete-file');
+
+// ----------------------------- COMANDOS ARTISAN VIA WEB (USAR CON PRECAUCIÓN) -----------------------------
+
+// Ruta para crear el enlace simbólico de storage (si no se ha creado aún)
+Route::get('/storage-link', function () {
+    Artisan::call('storage:link');
+    return 'storage:link ejecutado correctamente';
+});
+
+Route::get('/clear-cache', function () {
+    Artisan::call('cache:clear');
+    Artisan::call('route:clear');
+    Artisan::call('config:clear');
+    Artisan::call('view:clear');
+
+    return 'Cache, config, route y view limpiados correctamente ✔️';
+});

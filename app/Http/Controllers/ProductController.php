@@ -43,6 +43,7 @@ class ProductController extends Controller
                     'sku' => $product->sku,
                     'name' => $product->name,
                     'description' => $product->description,
+                    'purchase_price' => $product->purchase_price,
                     'sale_price' => $product->sale_price,
                     'category' => $product->category ? $product->category->name : 'Sin Categoría',
                     'image_url' => $product->getFirstMediaUrl('product_images'),
@@ -75,7 +76,8 @@ class ProductController extends Controller
             'purchase_price' => 'required|numeric|min:0',
             'sale_price' => 'required|numeric|min:0',
             'description' => 'nullable|string',
-            'image' => 'nullable|image|max:5120',
+            'image' => 'nullable|image|max:5120', // Validación imagen principal
+            'attachments.*' => 'nullable|file|max:10240', // Validación archivos múltiples (10MB max por archivo)
             'initial_stock' => 'nullable|integer|min:0',
             'min_stock_alert' => 'nullable|integer|min:0',
             'location' => 'nullable|string|max:255', 
@@ -90,12 +92,20 @@ class ProductController extends Controller
             'description' => $validated['description'],
         ]);
 
+        // Procesar Imagen Principal
         if ($request->hasFile('image')) {
             $product->addMediaFromRequest('image')->toMediaCollection('product_images');
         }
 
+        // Procesar Archivos Adjuntos Múltiples
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $product->addMedia($file)->toMediaCollection('product_attachments');
+            }
+        }
+
         $initialStock = $request->input('initial_stock', 0);
-        $minStock = $request->input('min_stock_alert', 5);
+        $minStock = $request->input('min_stock_alert');
         $location = $request->input('location', 'Recepción'); 
         
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -118,12 +128,12 @@ class ProductController extends Controller
             }
         }
 
-        return redirect()->route('products.index')->with('success', 'Producto creado exitosamente.');
+        return redirect()->route('products.show', $product)->with('success', 'Producto creado exitosamente.');
     }
 
     /**
      * Muestra el detalle del producto.
-     * MODIFICADO: Ahora carga solo el mes actual inicialmente.
+     * MODIFICADO: Ahora incluye la colección de archivos adjuntos.
      */
     public function show(Product $product)
     {
@@ -152,6 +162,16 @@ class ProductController extends Controller
                 'purchase_price' => $product->purchase_price, 
                 'category' => $product->category ? $product->category->name : 'Sin Categoría',
                 'image_url' => $product->getFirstMediaUrl('product_images'),
+                // Mapeamos los archivos adjuntos para la vista
+                'attachments' => $product->getMedia('product_attachments')->map(function($media) {
+                    return [
+                        'id' => $media->id,
+                        'name' => $media->file_name,
+                        'url' => $media->getUrl(),
+                        'mime_type' => $media->mime_type,
+                        'size' => $media->human_readable_size,
+                    ];
+                }),
                 'stock' => $branchData ? $branchData->current_stock : 0,
                 'location' => $branchData ? $branchData->location_in_warehouse : 'No asignado',
                 'min_stock' => $branchData ? $branchData->min_stock_alert : 1,
@@ -243,6 +263,15 @@ class ProductController extends Controller
                 'purchase_price' => $product->purchase_price,
                 'sale_price' => $product->sale_price,
                 'image_url' => $product->getFirstMediaUrl('product_images'),
+                // Incluimos archivos existentes para mostrarlos en la edición
+                'attachments' => $product->getMedia('product_attachments')->map(function($media) {
+                    return [
+                        'id' => $media->id,
+                        'name' => $media->file_name,
+                        'url' => $media->getUrl(),
+                        'size' => $media->human_readable_size,
+                    ];
+                }),
                 'current_stock' => $branchData ? $branchData->current_stock : 0,
                 'location' => $branchData ? $branchData->location_in_warehouse : '',
                 'min_stock_alert' => $branchData ? $branchData->min_stock_alert : 5, 
@@ -261,10 +290,13 @@ class ProductController extends Controller
             'sale_price' => 'required|numeric|min:0',
             'description' => 'nullable|string',
             'image' => 'nullable|image|max:5120',
+            'attachments.*' => 'nullable|file|max:10240',
             'current_stock' => 'nullable|integer|min:0',
+            'min_stock_alert' => 'nullable|integer|min:0',
             'location' => 'nullable|string|max:255',
         ]);
 
+        // 1. Actualizar datos generales del producto
         $product->update([
             'name' => $validated['name'],
             'sku' => $validated['sku'],
@@ -272,31 +304,48 @@ class ProductController extends Controller
             'purchase_price' => $validated['purchase_price'],
             'sale_price' => $validated['sale_price'],
             'description' => $validated['description'],
+            // Si tu base de datos tiene min_stock_alert en la tabla products, déjalo aquí.
+            // Si solo existe en la tabla pivote, puedes quitar esta línea.
+            'min_stock_alert' => $validated['min_stock_alert'], 
         ]);
 
+        // 2. Procesar imágenes
         if ($request->hasFile('image')) {
             $product->clearMediaCollection('product_images');
             $product->addMediaFromRequest('image')->toMediaCollection('product_images');
         }
 
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $product->addMedia($file)->toMediaCollection('product_attachments');
+            }
+        }
+
+        // 3. Actualizar datos específicos de la Sucursal (Pivote)
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
         if ($branchId) {
             $newStock = $request->input('current_stock');
             $location = $request->input('location');
+            $minStock = $request->input('min_stock_alert'); // <-- CORRECCIÓN: Capturar el valor
             
             $pivotData = [];
+            
+            // Agregar al array de actualización si no son nulos
             if (!is_null($newStock)) $pivotData['current_stock'] = $newStock;
             if (!is_null($location)) $pivotData['location_in_warehouse'] = $location;
+            if (!is_null($minStock)) $pivotData['min_stock_alert'] = $minStock; // <-- CORRECCIÓN: Agregarlo al sync
 
             if (!empty($pivotData)) {
+                // Usamos syncWithoutDetaching para actualizar solo los campos especificados
+                // sin borrar la relación existente.
                 $product->branches()->syncWithoutDetaching([
                     $branchId => $pivotData
                 ]);
             }
         }
 
-        return redirect()->route('products.index')->with('success', 'Producto actualizado correctamente.');
+        return redirect()->route('products.show', $product)->with('success', 'Producto actualizado correctamente.');
     }
 
     public function destroy(Product $product)

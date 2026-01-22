@@ -8,40 +8,44 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class SupplierController extends Controller
 {
-    /**
-     * Muestra el listado de proveedores PERTENECIENTES a la sucursal actual.
-     */
     public function index(Request $request)
     {
         $filters = $request->only(['search']);
         $search = $filters['search'] ?? null;
-
-        // LÓGICA MULTI-TENANT: Obtenemos la sucursal actual (Sesión o Usuario)
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-
+        
         $suppliers = Supplier::query()
-            ->where('branch_id', $branchId) // Filtro estricto por sucursal
+            ->withCount('contacts') 
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('company_name', 'like', "%{$search}%")
-                      ->orWhere('contact_name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      ->orWhere('rfc', 'like', "%{$search}%")
+                      ->orWhereHas('contacts', function($q) use ($search) {
+                          $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                      });
                 });
             })
             ->orderBy('created_at', 'desc')
             ->paginate(30)
             ->withQueryString()
             ->through(function ($supplier) {
+                $mainContact = $supplier->mainContact; 
+                
                 return [
                     'id' => $supplier->id,
                     'company_name' => $supplier->company_name,
-                    'contact_name' => $supplier->contact_name,
-                    'email' => $supplier->email,
-                    'phone' => $supplier->phone,
+                    'rfc' => $supplier->rfc,
+                    'bank_name' => $supplier->bank_name,
+                    'website' => $supplier->website,
+                    'contact_name' => $mainContact ? $mainContact->name : 'Sin contacto',
+                    'email' => $mainContact ? $mainContact->email : '-',
+                    'phone' => $mainContact ? $mainContact->phone : '-',
                     'products_count' => $supplier->products()->count(),
+                    'origin_branch_id' => $supplier->branch_id, 
                 ];
             });
 
@@ -60,35 +64,81 @@ class SupplierController extends Controller
     {
         $validated = $request->validate([
             'company_name' => 'required|string|max:255',
-            'contact_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:14',
+            'website' => 'nullable|url|max:255',
+            
+            // Nuevas validaciones
+            'rfc' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:1000',
+            'bank_account_holder' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:255',
+            'clabe' => 'nullable|string|max:20',
+            'account_number' => 'nullable|string|max:20',
+            
+            // Validación de documentos (array de archivos)
+            'documents' => 'nullable|array',
+            'documents.*' => 'file|max:10240', // Max 10MB
+
+            'contacts' => 'required|array|min:1',
+            'contacts.*.name' => 'required|string|max:255',
+            'contacts.*.email' => 'nullable|email|max:255',
+            'contacts.*.phone' => 'nullable|string|max:20',
+            'contacts.*.job_title' => 'nullable|string|max:100',
+            'contacts.*.is_primary' => 'boolean',
+            'contacts.*.notes' => 'nullable|string',
         ]);
 
-        // Inyectamos el branch_id automáticamente
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
-        // Verificación de seguridad básica (opcional si el middleware ya lo garantiza)
         if (!$branchId) {
             return back()->with('error', 'No se ha identificado la sucursal activa.');
         }
 
-        $validated['branch_id'] = $branchId;
+        DB::transaction(function () use ($validated, $branchId, $request) {
+            
+            $supplier = Supplier::create([
+                'branch_id' => $branchId,
+                'company_name' => $validated['company_name'],
+                'website' => $validated['website'] ?? null,
+                'rfc' => $validated['rfc'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'bank_account_holder' => $validated['bank_account_holder'] ?? null,
+                'bank_name' => $validated['bank_name'] ?? null,
+                'clabe' => $validated['clabe'] ?? null,
+                'account_number' => $validated['account_number'] ?? null,
+            ]);
 
-       $supplier = Supplier::create($validated);
+            // Lógica Spatie Media Library
+            if ($request->hasFile('documents')) {
+                foreach ($request->file('documents') as $file) {
+                    $supplier->addMedia($file)
+                             ->toMediaCollection('supplier_documents');
+                }
+            }
 
-        return redirect()->route('suppliers.show', $supplier->id)->with('success', 'Proveedor registrado exitosamente.');
+            foreach ($validated['contacts'] as $contactData) {
+                $contactData['branch_id'] = $branchId;
+                $supplier->contacts()->create($contactData);
+            }
+        });
+
+        return redirect()->route('suppliers.index')->with('success', 'Proveedor registrado exitosamente.');
     }
 
     public function show(Supplier $supplier)
     {
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403, 'No tienes permiso para ver este proveedor.');
-        }
+        $supplier->load('contacts');
 
-        // Solo cargamos los productos que YA tiene el proveedor (Relación directa)
-        // Esto es rápido y no sobrecarga la vista inicial.
+        // Transformamos los medios de Spatie para el frontend
+        $documents = $supplier->getMedia('supplier_documents')->map(function ($media) {
+            return [
+                'id' => $media->id,
+                'name' => $media->file_name,
+                'mime_type' => $media->mime_type,
+                'size' => $media->size,
+                'url' => $media->getUrl(), // URL pública
+            ];
+        });
+
         $assignedProducts = $supplier->products()
             ->with('media')
             ->select('products.id', 'products.name', 'products.sku', 'products.purchase_price as default_price')
@@ -108,26 +158,99 @@ class SupplierController extends Controller
 
         return Inertia::render('Suppliers/Show', [
             'supplier' => $supplier,
+            'documents' => $documents,
             'assigned_products' => $assignedProducts,
-            // NO enviamos available_products aquí para no alentar la carga
         ]);
     }
 
-    /**
-     * API Interna: Obtiene los productos ASIGNADOS a un proveedor (con precios pactados).
-     * Ruta esperada: suppliers.products.assigned
-     */
+    public function update(Request $request, Supplier $supplier)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        $validated = $request->validate([
+            'company_name' => 'required|string|max:255',
+            'website' => 'nullable|url|max:255',
+            'rfc' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:1000',
+            'bank_account_holder' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:255',
+            'clabe' => 'nullable|string|max:20',
+            'account_number' => 'nullable|string|max:20',
+            
+            // Nuevos archivos a agregar
+            'documents' => 'nullable|array',
+            'documents.*' => 'file|max:10240',
+
+            'contacts' => 'required|array|min:1',
+            'contacts.*.id' => 'nullable|integer',
+            'contacts.*.name' => 'required|string|max:255',
+            'contacts.*.email' => 'nullable|email|max:255',
+            'contacts.*.phone' => 'nullable|string|max:20',
+            'contacts.*.job_title' => 'nullable|string|max:100',
+            'contacts.*.is_primary' => 'boolean',
+            'contacts.*.notes' => 'nullable|string',
+        ]);
+
+        DB::transaction(function () use ($supplier, $validated, $branchId, $request) {
+            $supplier->update([
+                'company_name' => $validated['company_name'],
+                'website' => $validated['website'] ?? null,
+                'rfc' => $validated['rfc'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'bank_account_holder' => $validated['bank_account_holder'] ?? null,
+                'bank_name' => $validated['bank_name'] ?? null,
+                'clabe' => $validated['clabe'] ?? null,
+                'account_number' => $validated['account_number'] ?? null,
+            ]);
+
+            // Agregar NUEVOS archivos a la colección existente
+            if ($request->hasFile('documents')) {
+                foreach ($request->file('documents') as $file) {
+                    $supplier->addMedia($file)
+                             ->toMediaCollection('supplier_documents');
+                }
+            }
+
+            $inputContacts = collect($validated['contacts']);
+            $inputIds = $inputContacts->pluck('id')->filter();
+            
+            // Eliminar contactos que ya no vienen en el request
+            $supplier->contacts()->whereNotIn('id', $inputIds)->delete();
+
+            foreach ($inputContacts as $contactData) {
+                if (!isset($contactData['id']) || !$contactData['id']) {
+                    $contactData['branch_id'] = $branchId; 
+                }
+
+                if (isset($contactData['id']) && $contactData['id']) {
+                    $supplier->contacts()->where('id', $contactData['id'])->update($contactData);
+                } else {
+                    $supplier->contacts()->create($contactData);
+                }
+            }
+        });
+
+        return redirect()->route('suppliers.show', $supplier)->with('success', 'Proveedor actualizado correctamente.');
+    }
+
+    public function destroy(Supplier $supplier)
+    {
+        if ($supplier->purchaseOrders()->exists()) {
+            return back()->with('error', 'No se puede eliminar porque tiene Órdenes de Compra.');
+        }
+        
+        // Spatie borra automáticamente los archivos relacionados al eliminar el modelo.
+        $supplier->delete();
+        
+        return redirect()->route('suppliers.index')->with('success', 'Proveedor eliminado.');
+    }
+
+    // ... Resto de métodos (edit, assignProduct, fetch...) se mantienen igual
+    
     public function fetchAssignedProducts(Supplier $supplier)
     {
-        // Seguridad Tenant
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
         $assignedProducts = $supplier->products()
             ->with('media')
-            // Seleccionamos campos base del producto
             ->select('products.id', 'products.name', 'products.sku')
             ->get()
             ->map(function ($product) {
@@ -135,10 +258,7 @@ class SupplierController extends Controller
                     'id' => $product->id,
                     'name' => $product->name,
                     'sku' => $product->sku,
-                    // Priorizamos imagen de Spatie, fallback a path simple si existe
                     'image_url' => $product->getFirstMediaUrl('product_images') ?: $product->image_path,
-                    
-                    // DATOS PIVOTE (Cruciales para la orden de compra)
                     'purchase_price' => $product->pivot->purchase_price,
                     'currency' => $product->pivot->currency,
                     'supplier_sku' => $product->pivot->supplier_sku,
@@ -148,21 +268,11 @@ class SupplierController extends Controller
 
         return response()->json($assignedProducts);
     }
-
-    /**
-     * NUEVO MÉTODO: API Interna para cargar productos disponibles asíncronamente.
-     */
+    
     public function fetchAvailableProducts(Supplier $supplier)
     {
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        // Obtenemos IDs que ya tiene para excluirlos
         $assignedIds = $supplier->products()->pluck('products.id')->toArray();
         
-        // Cargamos el catálogo restante (Heavy Load)
         $availableProducts = Product::whereNotIn('id', $assignedIds)
             ->with('media')
             ->select('id', 'name', 'sku', 'purchase_price', 'sale_price')
@@ -184,66 +294,17 @@ class SupplierController extends Controller
 
     public function edit(Supplier $supplier)
     {
-        // SEGURIDAD
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403);
-        }
-
+        $supplier->load('contacts');
+        // Para editar, opcionalmente podrías querer mostrar los docs existentes
+        // $supplier->documents = $supplier->getMedia('supplier_documents');
+        
         return Inertia::render('Suppliers/Edit', [
             'supplier' => $supplier
         ]);
     }
 
-    public function update(Request $request, Supplier $supplier)
-    {
-        // SEGURIDAD
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403);
-        }
-
-        $validated = $request->validate([
-            'company_name' => 'required|string|max:255',
-            'contact_name' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:50',
-        ]);
-
-        $supplier->update($validated);
-
-        return redirect()->route('suppliers.show', $supplier)->with('success', 'Proveedor actualizado correctamente.');
-    }
-
-    public function destroy(Supplier $supplier)
-    {
-        // SEGURIDAD
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403);
-        }
-
-        if ($supplier->purchaseOrders()->exists()) {
-            return back()->with('error', 'No se puede eliminar el proveedor porque tiene Órdenes de Compra asociadas.');
-        }
-
-        $supplier->delete();
-
-        return redirect()->route('suppliers.index')->with('success', 'Proveedor eliminado.');
-    }
-
-    // -------------------------------------------------------------------------
-    // MÉTODOS PARA ASIGNACIÓN DE PRODUCTOS
-    // -------------------------------------------------------------------------
-
     public function assignProduct(Request $request, Supplier $supplier)
     {
-        // SEGURIDAD
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403);
-        }
-
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'purchase_price' => 'required|numeric|min:0',
@@ -266,14 +327,7 @@ class SupplierController extends Controller
 
     public function detachProduct(Request $request, Supplier $supplier, Product $product)
     {
-        // SEGURIDAD
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($supplier->branch_id !== $branchId) {
-            abort(403);
-        }
-
         $supplier->products()->detach($product->id);
-        
         return back()->with('success', 'Producto removido del proveedor.');
     }
 }

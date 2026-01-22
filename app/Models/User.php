@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -32,12 +33,38 @@ class User extends Authenticatable implements HasMedia
      * @var array<int, string>
      */
     protected $fillable = [
-        'name',
+        'name', // Legacy (Nombre completo concatenado)
+        'first_name',
+        'paternal_surname',
+        'maternal_surname',
         'email',
         'password',
         'branch_id',
         'is_active',
-        'phone',
+        'phone', // Whatsapp
+        
+        // Datos Legales
+        'birth_date',
+        'curp',
+        'rfc',
+        'nss',
+
+        // Domicilio
+        'street',
+        'exterior_number',
+        'interior_number',
+        'neighborhood',
+        'zip_code',
+        'municipality',
+        'state',
+        'address_references',
+        'cross_streets',
+
+        // Datos Bancarios
+        'bank_account_holder',
+        'bank_name',
+        'bank_clabe',
+        'bank_account_number',
     ];
 
     /**
@@ -59,6 +86,7 @@ class User extends Authenticatable implements HasMedia
      */
     protected $appends = [
         'profile_photo_url',
+        'full_name_label', // Opcional: para usar en frontend si se desea
     ];
 
     /**
@@ -71,7 +99,16 @@ class User extends Authenticatable implements HasMedia
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'birth_date' => 'date',
+            'is_active' => 'boolean',
         ];
+    }
+
+    // --- Accessors ---
+
+    public function getFullNameLabelAttribute(): string
+    {
+        return trim("{$this->first_name} {$this->paternal_surname} {$this->maternal_surname}");
     }
 
     // --- Relaciones ---
@@ -82,6 +119,22 @@ class User extends Authenticatable implements HasMedia
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * Relación con Beneficiarios (1 a Muchos).
+     */
+    public function beneficiaries(): HasMany
+    {
+        return $this->hasMany(Beneficiary::class);
+    }
+
+    /**
+     * Relación Polimórfica para Contactos de Emergencia.
+     */
+    public function contacts(): MorphMany
+    {
+        return $this->morphMany(Contact::class, 'contactable');
     }
 
     // Tareas asignadas AL usuario

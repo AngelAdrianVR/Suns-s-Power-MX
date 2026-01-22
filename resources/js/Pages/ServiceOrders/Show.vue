@@ -42,6 +42,51 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// --- NUEVO: Propiedades Computadas para Dirección ---
+const formattedAddress = computed(() => {
+    const o = props.order;
+    
+    // Intentar construir dirección atomizada
+    const parts = [
+        o.installation_street ? (o.installation_street + (o.installation_exterior_number ? ` #${o.installation_exterior_number}` : '')) : null,
+        o.installation_interior_number ? `Int. ${o.installation_interior_number}` : null,
+        o.installation_neighborhood ? `Col. ${o.installation_neighborhood}` : null,
+        o.installation_zip_code ? `CP ${o.installation_zip_code}` : null,
+        o.installation_municipality,
+        o.installation_state
+    ];
+    
+    const atomized = parts.filter(Boolean).join(', ');
+    
+    // Si no hay datos atomizados (legacy), intentar mostrar el campo antiguo si existe
+    if (!atomized && o.installation_address) return o.installation_address;
+    
+    return atomized || 'Sin dirección registrada';
+});
+
+const googleMapsUrl = computed(() => {
+    const o = props.order;
+    
+    // Construir query de búsqueda
+    const addressQuery = [
+        o.installation_street,
+        o.installation_exterior_number,
+        o.installation_neighborhood,
+        o.installation_municipality,
+        o.installation_state,
+        o.installation_country || 'México'
+    ].filter(Boolean).join(', ');
+
+    // Fallback a campo antiguo si es necesario
+    const finalQuery = addressQuery || o.installation_address;
+
+    if (!finalQuery) return null;
+    
+    // Usamos 'dir' (direcciones) para que trace la ruta desde la ubicación del usuario
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(finalQuery)}`;
+});
+// ----------------------------------------------------
+
 const generalProgress = computed(() => {
     if (!props.stats || props.stats.total_tasks === 0) return 0;
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
@@ -274,21 +319,31 @@ const isImage = (file) => {
                             </n-grid-item>
                         </n-grid>
                     </n-card>
+                    
+                    <!-- Tarjeta de Ubicación Actualizada -->
                     <n-card size="small" class="rounded-2xl shadow-sm bg-blue-50/30 border-blue-100">
                         <div class="flex flex-col h-full justify-between">
                             <div>
                                 <div class="flex items-center gap-2 text-blue-800 font-semibold mb-2">
                                     <n-icon><LocationOutline /></n-icon> Ubicación
                                 </div>
-                                <p class="text-sm text-gray-600 line-clamp-3">{{ order.installation_address }}</p>
+                                <!-- Usamos la propiedad computada para la dirección formateada -->
+                                <p class="text-sm text-gray-600 line-clamp-3 leading-snug">
+                                    {{ formattedAddress }}
+                                </p>
                             </div>
+                            <!-- Usamos la propiedad computada para el enlace -->
                             <a 
-                                :href="`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.installation_address)}`" 
+                                v-if="googleMapsUrl"
+                                :href="googleMapsUrl" 
                                 target="_blank"
                                 class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
                             >
                                 Cómo llegar <n-icon size="10" class="-rotate-45"><ArrowBackOutline/></n-icon>
                             </a>
+                            <div v-else class="mt-3 text-xs text-gray-400 italic">
+                                Sin ubicación precisa
+                            </div>
                         </div>
                     </n-card>
                 </div>
@@ -342,8 +397,8 @@ const isImage = (file) => {
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ item.quantity }}</td>
                                                 <!-- VISIBILIDAD CONDICIONAL: Celdas de Precio -->
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.price) }}</td>
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.price * item.quantity) }}</td>
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.product.purchase_price) }}</td>
+                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.product.purchase_price * item.quantity) }}</td>
                                                 <td class="px-6 py-4 whitespace-nowrap text-right">
                                                     <!-- Botón quitar: Requiere 'service_orders.edit' -->
                                                     <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="removeProduct(item.id)">
@@ -365,7 +420,7 @@ const isImage = (file) => {
                                             <tr>
                                                 <td colspan="3" class="px-6 py-3 text-right">Total Materiales (Costo Interno):</td>
                                                 <td class="px-6 py-3 text-right text-indigo-600">
-                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.price * i.quantity), 0) || 0) }}
+                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.product.purchase_price * i.quantity), 0) || 0) }}
                                                 </td>
                                                 <td></td>
                                             </tr>

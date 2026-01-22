@@ -1,7 +1,7 @@
 <script setup>
-import { ref, h } from 'vue';
-import { usePermissions } from '@/Composables/usePermissions'; // Importar permisos
-import { Head, Link, router } from '@inertiajs/vue3';
+import { ref, h, computed } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
 import { 
@@ -12,19 +12,27 @@ import {
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
-    CreateOutline, AddOutline, EyeOutline
+    CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline,
+    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline
 } from '@vicons/ionicons5';
 
+// Definición de Props explícita
 const props = defineProps({
-    client: Object,
-    stats: Object, // { total_debt, total_paid, balance, services_count }
+    client: {
+        type: Object,
+        required: true
+    },
+    stats: {
+        type: Object,
+        required: true
+    }
 });
 
 // Inicializar permisos
 const { hasPermission } = usePermissions();
 
-// Configuración Global de Notificaciones
-const { notification } = createDiscreteApi(['notification'], {
+// Configuración Global de Notificaciones y Diálogos
+const { notification, dialog } = createDiscreteApi(['notification', 'dialog'], {
     notificationProviderProps: {
         duration: 4000,
         keepAliveOnHover: true
@@ -34,6 +42,7 @@ const { notification } = createDiscreteApi(['notification'], {
 // --- ESTADO Y UTILIDADES ---
 const activeTab = ref('services');
 const showPaymentModal = ref(false);
+const fileInput = ref(null);
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
@@ -43,6 +52,105 @@ const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+// --- COMPUTED: CONTACTO PRINCIPAL ---
+const primaryContact = computed(() => {
+    if (!props.client.contacts || props.client.contacts.length === 0) return null;
+    return props.client.contacts.find(c => c.is_primary) || props.client.contacts[0];
+});
+
+// --- COMPUTED: DIRECCIÓN Y MAPAS ---
+const formattedAddress = computed(() => {
+    const c = props.client;
+    // Construir la calle con su tipo de vialidad
+    const streetPart = c.street 
+        ? ((c.road_type ? c.road_type + ' ' : '') + c.street + (c.exterior_number ? ` #${c.exterior_number}` : '')) 
+        : null;
+
+    const parts = [
+        streetPart,
+        c.interior_number ? `Int. ${c.interior_number}` : null,
+        c.neighborhood ? `Col. ${c.neighborhood}` : null,
+        c.zip_code ? `CP ${c.zip_code}` : null,
+        c.municipality,
+        c.state
+    ];
+    return parts.filter(Boolean).join(', ');
+});
+
+const googleMapsUrl = computed(() => {
+    if (!props.client.street && !props.client.municipality) return null;
+    
+    const addressQuery = [
+        props.client.street,
+        props.client.exterior_number,
+        props.client.neighborhood,
+        props.client.municipality,
+        props.client.state,
+        props.client.country || 'México'
+    ].filter(Boolean).join(', ');
+    
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
+});
+
+// --- COLUMNAS CONTACTOS ---
+const contactColumns = [
+    {
+        title: '',
+        key: 'is_primary',
+        width: 40,
+        render(row) {
+            return row.is_primary 
+                ? h(NIcon, { color: '#f59e0b', size: 18 }, { default: () => h(Star) }) 
+                : null;
+        }
+    },
+    { 
+        title: 'Nombre', 
+        key: 'name', 
+        render(row) {
+            return h('div', { class: 'font-medium text-gray-800' }, row.name);
+        }
+    },
+    { 
+        title: 'Puesto / Parentesco', 
+        key: 'job_title',
+        render(row) {
+             return row.job_title 
+                ? h(NTag, { size: 'small', bordered: false, type: 'default' }, { default: () => row.job_title }) 
+                : '-';
+        }
+    },
+    { 
+        title: 'Email', 
+        key: 'email',
+        render(row) {
+            if (!row.email) return '-';
+            return h('a', { 
+                href: `mailto:${row.email}`, 
+                class: 'text-indigo-600 hover:underline flex items-center gap-1' 
+            }, [
+                h(NIcon, null, { default: () => h(MailOutline) }),
+                row.email
+            ]);
+        }
+    },
+    { 
+        title: 'Teléfono', 
+        key: 'phone',
+        render(row) {
+            if (!row.phone) return '-';
+             return h('a', { 
+                href: `tel:${row.phone}`, 
+                class: 'text-green-600 hover:underline flex items-center gap-1' 
+            }, [
+                h(NIcon, null, { default: () => h(CallOutline) }),
+                row.phone
+            ]);
+        }
+    },
+    { title: 'Notas', key: 'notes', ellipsis: { tooltip: true } }
+];
 
 // --- COLUMNAS SERVICIOS ---
 const serviceColumns = [
@@ -55,7 +163,6 @@ const serviceColumns = [
                 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 
                 'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' 
             };
-            // Usamos size 'tiny' para ahorrar espacio en tablas móviles
             return h(NTag, { type: types[row.status] || 'default', size: 'tiny', bordered: false, round: true }, { default: () => row.status });
         }
     },
@@ -106,7 +213,16 @@ const paymentColumns = [
 
 // --- COLUMNAS DOCUMENTOS ---
 const docColumns = [
-    { title: 'Nombre', key: 'name', render: (row) => h('div', { class: 'font-medium text-gray-700 text-xs sm:text-sm' }, row.name) },
+    { 
+        title: 'Nombre', 
+        key: 'name', 
+        // Hacemos que el nombre sea un link explícito
+        render: (row) => h('a', { 
+            class: 'font-medium text-indigo-600 hover:underline text-xs sm:text-sm cursor-pointer',
+            href: row.url,
+            target: '_blank'
+        }, row.name) 
+    },
     { title: 'Categoría', key: 'category', render: (row) => h(NTag, { size: 'tiny' }, { default: () => row.category }) },
     { title: 'Fecha', key: 'created_at', render: (row) => formatDate(row.created_at) },
     {
@@ -114,12 +230,74 @@ const docColumns = [
         key: 'actions',
         align: 'right',
         render(row) {
-            return h(NButton, { 
-                circle: true, size: 'small', quaternary: true, type: 'info',
-            }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) });
+            const buttons = [];
+
+            // Botón de Descarga
+            buttons.push(h(NTooltip, { trigger: 'hover' }, {
+                trigger: () => h(NButton, { 
+                    circle: true, 
+                    size: 'small', 
+                    quaternary: true, 
+                    type: 'info',
+                    tag: 'a',
+                    href: row.url,
+                    target: '_blank',
+                    download: row.name,
+                    class: 'mr-1',
+                    onClick: (e) => e.stopPropagation()
+                }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) }),
+                default: () => 'Descargar'
+            }));
+
+            // Botón de Eliminar (Solo si tiene permisos)
+            if (hasPermission('clients.edit')) {
+                buttons.push(h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, { 
+                        circle: true, 
+                        size: 'small', 
+                        quaternary: true, 
+                        type: 'error',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            dialog.warning({
+                                title: 'Eliminar archivo',
+                                content: '¿Estás seguro de que deseas eliminar este archivo? Esta acción no se puede deshacer.',
+                                positiveText: 'Eliminar',
+                                negativeText: 'Cancelar',
+                                onPositiveClick: () => {
+                                    router.delete(route('media.delete-file', row.id), {
+                                        preserveScroll: true,
+                                        onSuccess: () => {
+                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.' });
+                                        },
+                                        onError: () => {
+                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.' });
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                    default: () => 'Eliminar'
+                }));
+            }
+
+            return h('div', { class: 'flex items-center justify-end' }, buttons);
         }
     }
 ];
+
+// Propiedades de fila para hacerlas clickeables y abrir en nueva pestaña
+const docRowProps = (row) => {
+    return {
+        style: 'cursor: pointer;',
+        onClick: (e) => {
+            // Evitar conflicto si se clickea en un botón o link interno explícito
+            if (e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) return;
+            window.open(row.url, '_blank');
+        }
+    }
+}
 
 // --- ACCIONES ---
 const openPaymentModal = () => {
@@ -137,6 +315,43 @@ const openPaymentModal = () => {
 const createServiceOrder = () => {
     router.visit(route('service-orders.create', { client_id: props.client.id }));
 };
+
+// --- LÓGICA DE SUBIDA DE ARCHIVOS (MÚLTIPLE) ---
+const uploadForm = useForm({
+    files: [], // Cambiado de 'file' a 'files' array
+    category: 'General'
+});
+
+const triggerFileInput = () => {
+    fileInput.value.click();
+};
+
+const handleFileChange = (event) => {
+    // Convertir FileList a Array
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    uploadForm.files = files;
+
+    // Inertia maneja arrays de archivos automáticamente
+    uploadForm.post(route('clients.documents.store', props.client.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ 
+                title: 'Éxito', 
+                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.` 
+            });
+            uploadForm.reset();
+            if (fileInput.value) fileInput.value.value = '';
+        },
+        onError: () => {
+            notification.error({ 
+                title: 'Error', 
+                content: 'Hubo un problema al subir los documentos.' 
+            });
+        }
+    });
+};
 </script>
 
 <template>
@@ -153,7 +368,6 @@ const createServiceOrder = () => {
                         </n-button>
                     </Link>
                     
-                    <!-- Botón Editar: Protegido por clients.edit -->
                     <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
                         <n-button secondary round type="warning" size="small">
                             <template #icon><n-icon><CreateOutline /></n-icon></template>
@@ -169,7 +383,7 @@ const createServiceOrder = () => {
                     <div class="flex flex-col lg:flex-row justify-between gap-6 relative z-10">
                         
                         <!-- Columna Identidad -->
-                        <div class="flex items-start gap-3 sm:gap-5">
+                        <div class="flex items-start gap-3 sm:gap-5 max-w-4xl">
                             <n-avatar 
                                 :size="60" 
                                 class="bg-indigo-100 text-indigo-600 shadow-inner flex-shrink-0 sm:w-20 sm:h-20"
@@ -182,24 +396,49 @@ const createServiceOrder = () => {
                                 <h1 class="text-xl sm:text-3xl font-black text-gray-800 tracking-tight leading-tight mb-2 break-words">
                                     {{ client.name }}
                                 </h1>
-                                <div class="flex flex-col gap-1 text-xs sm:text-sm text-gray-500">
-                                    <div v-if="client.contact_person" class="font-medium text-gray-600 flex items-center gap-1">
-                                        <n-icon><PersonOutline/></n-icon> {{ client.contact_person }}
+                                
+                                <div class="flex flex-col gap-2 text-xs sm:text-sm text-gray-600">
+                                    
+                                    <div class="flex flex-wrap gap-x-4 gap-y-1 items-center">
+                                        <div v-if="client.contact_person" class="font-medium flex items-center gap-1.5">
+                                            <n-icon class="text-gray-400"><PersonOutline/></n-icon> {{ client.contact_person }}
+                                        </div>
+                                        <div v-if="client.tax_id" class="flex items-center gap-1.5 uppercase bg-gray-100 px-2 py-0.5 rounded text-gray-500 text-[10px] font-bold tracking-wide">
+                                            <n-icon><ReceiptOutline /></n-icon> {{ client.tax_id }}
+                                        </div>
                                     </div>
-                                    <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                                        <span v-if="client.email" class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors break-all">
-                                            <n-icon class="text-indigo-400 flex-shrink-0"><MailOutline /></n-icon> {{ client.email }}
-                                        </span>
-                                        <span v-if="client.phone" class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
-                                            <n-icon class="text-green-500 flex-shrink-0"><CallOutline /></n-icon> {{ client.phone }}
-                                        </span>
-                                        <span v-if="client.tax_id" class="flex items-center gap-1.5 whitespace-nowrap">
-                                            <n-icon class="text-gray-400 flex-shrink-0"><ReceiptOutline /></n-icon> {{ client.tax_id }}
-                                        </span>
+
+                                    <!-- Datos de Contacto (DINÁMICO DESDE CONTACTOS) -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-1" v-if="primaryContact">
+                                        <div v-if="primaryContact.email" class="flex flex-col">
+                                            <span class="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
+                                                <n-icon class="text-indigo-400"><MailOutline /></n-icon> {{ primaryContact.email }}
+                                            </span>
+                                        </div>
+                                        
+                                        <div v-if="primaryContact.phone" class="flex flex-col">
+                                            <span class="flex items-center gap-1.5 hover:text-green-600 transition-colors">
+                                                <n-icon class="text-green-500"><CallOutline /></n-icon> {{ primaryContact.phone }}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div v-if="client.address" class="flex items-start gap-1.5 mt-1 max-w-xl text-gray-400">
-                                        <n-icon class="mt-0.5 flex-shrink-0"><LocationOutline /></n-icon> 
-                                        <span class="leading-snug">{{ client.address }}</span>
+                                    <div v-else class="text-gray-400 italic mt-1">
+                                        Sin medios de contacto registrados
+                                    </div>
+
+                                    <!-- Dirección Atomizada -->
+                                    <div v-if="formattedAddress" class="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                                        <div class="flex items-start gap-1.5 text-gray-500">
+                                            <n-icon class="mt-0.5 text-red-500 flex-shrink-0"><LocationOutline /></n-icon> 
+                                            <span class="leading-snug">{{ formattedAddress }}</span>
+                                        </div>
+                                        
+                                        <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-block">
+                                            <n-button size="tiny" secondary round type="info">
+                                                <template #icon><n-icon><MapOutline/></n-icon></template>
+                                                Ver en Mapa
+                                            </n-button>
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -208,7 +447,6 @@ const createServiceOrder = () => {
                         <!-- Columna Estado Financiero -->
                         <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             
-                            <!-- Tarjeta de Saldo Principal -->
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
@@ -227,7 +465,6 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
                             
-                            <!-- Stats secundarios -->
                             <div class="grid grid-cols-2 sm:flex sm:flex-col gap-2 w-full sm:w-auto">
                                 <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
                                     <div class="text-[10px] text-gray-400 uppercase truncate">Facturado</div>
@@ -277,7 +514,6 @@ const createServiceOrder = () => {
                                     <h3 class="text-base sm:text-lg font-bold text-gray-800">Historial</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Gestión operativa</p>
                                 </div>
-                                <!-- Botón Nueva Orden: Protegido por service_orders.create -->
                                 <n-button 
                                     v-if="hasPermission('service_orders.create')"
                                     type="primary" 
@@ -347,7 +583,39 @@ const createServiceOrder = () => {
                             </div>
                         </n-tab-pane>
 
-                        <!-- PESTAÑA 3: DOCUMENTOS -->
+                        <!-- PESTAÑA 3: CONTACTOS -->
+                        <n-tab-pane name="contacts" tab="Contactos">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <n-icon size="18"><PeopleOutline /></n-icon> 
+                                    <span class="hidden sm:inline">Contactos</span>
+                                    <span class="sm:hidden text-xs">Contactos</span>
+                                    <n-badge :value="client.contacts?.length || 0" type="success" :max="99" class="scale-75 origin-left" />
+                                </div>
+                            </template>
+
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                                <div>
+                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Directorio</h3>
+                                    <p class="text-xs sm:text-sm text-gray-500">Personas de contacto registradas</p>
+                                </div>
+                            </div>
+
+                            <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+                                <div class="min-w-[600px] sm:min-w-full">
+                                    <n-data-table
+                                        :columns="contactColumns"
+                                        :data="client.contacts"
+                                        :bordered="false"
+                                        size="medium"
+                                        class="mb-2"
+                                    />
+                                    <n-empty v-if="!client.contacts || client.contacts.length === 0" description="No hay contactos registrados" class="py-8"/>
+                                </div>
+                            </div>
+                        </n-tab-pane>
+
+                        <!-- PESTAÑA 4: DOCUMENTOS -->
                         <n-tab-pane name="documents" tab="Documentos">
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
@@ -363,13 +631,28 @@ const createServiceOrder = () => {
                                 </div>
                             </div>
 
-                            <!-- Opcional: Proteger subida de documentos con clients.edit si se desea -->
-                            <div v-if="hasPermission('clients.edit')" class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-gray-50 transition-colors cursor-pointer group">
+                            <input 
+                                type="file" 
+                                ref="fileInput" 
+                                class="hidden" 
+                                multiple
+                                @change="handleFileChange"
+                            >
+
+                            <div 
+                                v-if="hasPermission('clients.edit')" 
+                                @click="triggerFileInput"
+                                class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center mb-6 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer group relative"
+                            >
+                                <div v-if="uploadForm.processing" class="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-xl">
+                                    <span class="text-indigo-600 font-bold animate-pulse">Subiendo...</span>
+                                </div>
+
                                 <div class="bg-blue-50 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
                                     <n-icon size="20" class="text-blue-500"><CloudDownloadOutline /></n-icon>
                                 </div>
-                                <h4 class="font-bold text-gray-700 text-sm">Subir documento</h4>
-                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar archivos</p>
+                                <h4 class="font-bold text-gray-700 text-sm">Subir documentos</h4>
+                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar (soporta múltiples archivos)</p>
                             </div>
 
                             <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
@@ -379,6 +662,8 @@ const createServiceOrder = () => {
                                         :data="client.documents"
                                         :bordered="false"
                                         size="small"
+                                        :row-props="docRowProps"
+                                        class="cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -389,7 +674,6 @@ const createServiceOrder = () => {
             </div>
         </div>
 
-        <!-- MODAL DE PAGOS -->
         <PaymentModal 
             v-model:show="showPaymentModal" 
             :client="client"
@@ -454,5 +738,9 @@ const createServiceOrder = () => {
     :deep(.n-data-table .n-data-table-td) {
         padding: 12px 16px;
     }
+}
+/* Efecto hover en filas de documentos */
+:deep(.n-data-table-tr:hover) {
+    background-color: #f3f4f6 !important;
 }
 </style>

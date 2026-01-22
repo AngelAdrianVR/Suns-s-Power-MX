@@ -1,5 +1,5 @@
-<script>
-import { defineComponent, h, ref, onMounted, watch } from 'vue';
+<script setup>
+import { computed, ref, watch, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -7,219 +7,233 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
     NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NInputNumber, createDiscreteApi, NDatePicker, NSkeleton,
-    NConfigProvider, esAR, dateEsAR // <--- IMPORTANTE: Importamos dateEsAR
+    NConfigProvider, esAR, dateEsAR, NList, NListItem, NThing, NEmpty, NPopconfirm, NGridItem
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
-    TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline
+    TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline, AttachOutline, 
+    DocumentTextOutline, CloudDownloadOutline, ImageOutline, TrashOutline
 } from '@vicons/ionicons5';
 
-export default defineComponent({
-    name: 'ProductShow',
-    components: {
-        AppLayout, Head, Link,
-        NCard, NButton, NIcon, NTag, NNumberAnimation, NStatistic, NGrid, NGi, NDivider, NSpace, NSelect, NAvatar, NSpin,
-        NTimeline, NTimelineItem, NModal, NForm, NFormItem, NInput, NInputNumber, NDatePicker, NSkeleton, NConfigProvider,
-        ArrowBackOutline, CubeOutline, PricetagOutline, LocationOutline, AlertCircleOutline, CreateOutline, SearchOutline,
-        TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline
+defineOptions({
+    name: 'ProductShow'
+});
+
+const props = defineProps({
+    product: {
+        type: Object,
+        required: true
     },
-    props: {
-        product: {
-            type: Object,
-            required: true
-        },
-        initial_movements: {
-            type: Array,
-            default: () => []
-        },
-        server_date: {
-            type: Number,
-            default: Date.now()
-        }
+    initial_movements: {
+        type: Array,
+        default: () => []
     },
-    setup(props) {
-        // Lógica de Notificaciones
-        const { notification } = createDiscreteApi(['notification']);
-        const { hasPermission } = usePermissions();
-
-        // --- Lógica del Historial por Mes ---
-        const selectedMonth = ref(props.server_date); // Inicia con la fecha del servidor
-        const movements = ref(props.initial_movements);
-        const loadingHistory = ref(false);
-        
-        // Configuración de localización
-        const locale = esAR; 
-        const dateLocale = dateEsAR; // <--- Usamos el objeto correcto para fechas
-
-        // Función para cargar historial
-        const fetchHistory = async (timestamp) => {
-            // Si el usuario limpia el input (null), recargamos el mes actual por defecto
-            const targetDate = timestamp ? new Date(timestamp) : new Date();
-            
-            // Si era null, actualizamos el v-model visualmente también para que no quede vacío
-            if (!timestamp) {
-                const now = Date.now();
-                selectedMonth.value = now;
-                return; // El watcher se disparará de nuevo al cambiar el valor, así que retornamos para evitar doble llamada
-            }
-
-            loadingHistory.value = true;
-            const month = targetDate.getMonth() + 1; // JS es 0-11
-            const year = targetDate.getFullYear();
-
-            try {
-                const response = await axios.get(route('products.history', props.product.id), {
-                    params: { month, year }
-                });
-                movements.value = response.data;
-            } catch (error) {
-                console.error("Error cargando historial:", error);
-                notification.error({ 
-                    title: 'Error de conexión', 
-                    content: 'No se pudo cargar el historial. Verifica tu conexión.' 
-                });
-            } finally {
-                loadingHistory.value = false;
-            }
-        };
-
-        // WATCHER: Detecta cambios en selectedMonth automáticamente
-        watch(selectedMonth, (newValue) => {
-            if (newValue) {
-                fetchHistory(newValue);
-            }
-        });
-
-        // --- Lógica del Modal de Ajuste ---
-        const showAdjustmentModal = ref(false);
-        const adjustmentFormRef = ref(null);
-        
-        const adjustmentForm = useForm({
-            current_stock: props.product.stock, 
-            adjustment_note: '', 
-        });
-
-        const adjustmentRules = {
-            current_stock: { required: true, type: 'number', message: 'Ingresa la cantidad real', trigger: 'blur' },
-            adjustment_note: { required: true, message: 'La nota es obligatoria para auditoría', trigger: 'blur' }
-        };
-
-        const openAdjustmentModal = () => {
-            adjustmentForm.current_stock = props.product.stock;
-            adjustmentForm.adjustment_note = '';
-            showAdjustmentModal.value = true;
-        };
-
-        const submitAdjustment = () => {
-            adjustmentFormRef.value?.validate((errors) => {
-                if (!errors) {
-                    adjustmentForm.post(route('products.adjust_stock', props.product.id), {
-                        preserveScroll: true,
-                        onSuccess: () => {
-                            showAdjustmentModal.value = false;
-                            notification.success({
-                                title: 'Inventario Ajustado',
-                                content: 'El stock se ha actualizado y registrado en el historial.',
-                                duration: 3000
-                            });
-                            // Recargar historial actual para ver el ajuste
-                            fetchHistory(selectedMonth.value);
-                        },
-                        onError: () => {
-                            notification.error({ title: 'Error', content: 'No se pudo procesar el ajuste.' });
-                        }
-                    });
-                }
-            });
-        };
-
-        return {
-            selectedMonth,
-            movements,
-            loadingHistory,
-            fetchHistory,
-            showAdjustmentModal,
-            adjustmentForm,
-            adjustmentRules,
-            adjustmentFormRef,
-            openAdjustmentModal,
-            submitAdjustment,
-            locale,
-            dateLocale,
-            hasPermission
-        };
-    },
-    data() {
-        return {
-            searchQuery: null,
-            searchOptions: [],
-            loadingSearch: false,
-        };
-    },
-    computed: {
-        formattedPrice() {
-            return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(this.product.sale_price);
-        },
-        stockStatus() {
-            if (this.product.stock <= 0) return { type: 'error', text: 'Agotado', color: 'bg-red-100 text-red-600' };
-            if (this.product.stock <= this.product.min_stock) return { type: 'warning', text: 'Stock Bajo', color: 'bg-amber-100 text-amber-600' };
-            return { type: 'success', text: 'Disponible', color: 'bg-green-100 text-green-600' };
-        }
-    },
-    methods: {
-        goBack() {
-            router.visit(route('products.index'));
-        },
-        goToEdit() {
-            router.visit(route('products.edit', this.product.id));
-        },
-        async handleSearch(query) {
-            if (!query) {
-                this.searchOptions = [];
-                return;
-            }
-            this.loadingSearch = true;
-            try {
-                const response = await axios.get(route('products.search'), { params: { query } });
-                this.searchOptions = response.data;
-            } catch (error) {
-                console.error("Error buscando productos:", error);
-            } finally {
-                this.loadingSearch = false;
-            }
-        },
-        handleSelectProduct(id) {
-            router.visit(route('products.show', id));
-        },
-        renderProductOption(option) {
-            if (!option) return null;
-            const imageUrl = option.image_url && option.image_url.length > 0 ? option.image_url : undefined;
-
-            return h('div', { class: 'flex items-center gap-3 p-1' }, [
-                h(NAvatar, {
-                    src: imageUrl,
-                    shape: 'square',
-                    size: 40,
-                    class: 'flex-shrink-0 bg-gray-100 rounded-lg border border-gray-100 block',
-                    style: { width: '40px', height: '40px' }, 
-                    objectFit: 'cover',
-                    fallbackSrc: ''
-                }, { 
-                    default: () => h(NIcon, { class: 'text-gray-300' }, { default: () => h(CubeOutline) }) 
-                }),
-                h('div', { class: 'flex flex-col text-left' }, [
-                    h('span', { class: 'font-semibold text-gray-800 text-sm leading-tight' }, option.name),
-                    h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, option.sku)
-                ])
-            ]);
-        },
-        getTimelineType(type) {
-            if (type === 'Entrada') return 'success';
-            if (type === 'Salida') return 'error';
-            return 'info';
-        }
+    server_date: {
+        type: Number,
+        default: Date.now()
     }
 });
+
+// Lógica de Notificaciones
+const { notification } = createDiscreteApi(['notification']);
+const { hasPermission } = usePermissions();
+
+// --- Data Refs (convertido de data()) ---
+const searchQuery = ref(null);
+const searchOptions = ref([]);
+const loadingSearch = ref(false);
+
+// --- Lógica del Historial por Mes ---
+const selectedMonth = ref(props.server_date);
+const movements = ref(props.initial_movements);
+const loadingHistory = ref(false);
+
+// Configuración de localización
+const locale = esAR; 
+const dateLocale = dateEsAR; 
+
+// Función para cargar historial
+const fetchHistory = async (timestamp) => {
+    const targetDate = timestamp ? new Date(timestamp) : new Date();
+    
+    if (!timestamp) {
+        const now = Date.now();
+        selectedMonth.value = now;
+        return; 
+    }
+
+    loadingHistory.value = true;
+    const month = targetDate.getMonth() + 1; 
+    const year = targetDate.getFullYear();
+
+    try {
+        const response = await axios.get(route('products.history', props.product.id), {
+            params: { month, year }
+        });
+        movements.value = response.data;
+    } catch (error) {
+        console.error("Error cargando historial:", error);
+        notification.error({ 
+            title: 'Error de conexión', 
+            content: 'No se pudo cargar el historial. Verifica tu conexión.' 
+        });
+    } finally {
+        loadingHistory.value = false;
+    }
+};
+
+watch(selectedMonth, (newValue) => {
+    if (newValue) {
+        fetchHistory(newValue);
+    }
+});
+
+// --- Lógica del Modal de Ajuste ---
+const showAdjustmentModal = ref(false);
+const adjustmentFormRef = ref(null);
+
+const adjustmentForm = useForm({
+    current_stock: props.product.stock, 
+    adjustment_note: '', 
+});
+
+const adjustmentRules = {
+    current_stock: { required: true, type: 'number', message: 'Ingresa la cantidad real', trigger: 'blur' },
+    adjustment_note: { required: true, message: 'La nota es obligatoria para auditoría', trigger: 'blur' }
+};
+
+const openAdjustmentModal = () => {
+    adjustmentForm.current_stock = props.product.stock;
+    adjustmentForm.adjustment_note = '';
+    showAdjustmentModal.value = true;
+};
+
+const submitAdjustment = () => {
+    adjustmentFormRef.value?.validate((errors) => {
+        if (!errors) {
+            adjustmentForm.post(route('products.adjust_stock', props.product.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    showAdjustmentModal.value = false;
+                    notification.success({
+                        title: 'Inventario Ajustado',
+                        content: 'El stock se ha actualizado y registrado en el historial.',
+                        duration: 3000
+                    });
+                    fetchHistory(selectedMonth.value);
+                },
+                onError: () => {
+                    notification.error({ title: 'Error', content: 'No se pudo procesar el ajuste.' });
+                }
+            });
+        }
+    });
+};
+
+// --- Computed ---
+const formattedPrice = computed(() => {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(props.product.sale_price);
+});
+
+const stockStatus = computed(() => {
+    if (props.product.stock <= 0) return { type: 'error', text: 'Agotado', color: 'bg-red-100 text-red-600' };
+    if (props.product.stock <= props.product.min_stock) return { type: 'warning', text: 'Stock Bajo', color: 'bg-amber-100 text-amber-600' };
+    return { type: 'success', text: 'Disponible', color: 'bg-green-100 text-green-600' };
+});
+
+// --- Methods (convertidos a funciones constantes) ---
+const goBack = () => {
+    router.visit(route('products.index'));
+};
+
+const goToEdit = () => {
+    router.visit(route('products.edit', props.product.id));
+};
+
+const handleSearch = async (query) => {
+    if (!query) {
+        searchOptions.value = [];
+        return;
+    }
+    loadingSearch.value = true;
+    try {
+        const response = await axios.get(route('products.search'), { params: { query } });
+        searchOptions.value = response.data;
+    } catch (error) {
+        console.error("Error buscando productos:", error);
+    } finally {
+        loadingSearch.value = false;
+    }
+};
+
+const handleSelectProduct = (id) => {
+    router.visit(route('products.show', id));
+};
+
+const renderProductOption = (option) => {
+    if (!option) return null;
+    const imageUrl = option.image_url && option.image_url.length > 0 ? option.image_url : undefined;
+
+    return h('div', { class: 'flex items-center gap-3 p-1' }, [
+        h(NAvatar, {
+            src: imageUrl,
+            shape: 'square',
+            size: 40,
+            class: 'flex-shrink-0 bg-gray-100 rounded-lg border border-gray-100 block',
+            style: { width: '40px', height: '40px' }, 
+            objectFit: 'cover',
+            fallbackSrc: ''
+        }, { 
+            default: () => h(NIcon, { class: 'text-gray-300' }, { default: () => h(CubeOutline) }) 
+        }),
+        h('div', { class: 'flex flex-col text-left' }, [
+            h('span', { class: 'font-semibold text-gray-800 text-sm leading-tight' }, option.name),
+            h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, option.sku)
+        ])
+    ]);
+};
+
+const getTimelineType = (type) => {
+    if (type === 'Entrada') return 'success';
+    if (type === 'Salida') return 'error';
+    return 'info';
+};
+
+const getFileIcon = (mimeType) => {
+    if (mimeType && mimeType.includes('image')) return ImageOutline;
+    if (mimeType && mimeType.includes('pdf')) return DocumentTextOutline;
+    return AttachOutline;
+};
+
+// --- Nueva Función para Eliminar Archivo ---
+const deleteFile = (fileId) => {
+    router.delete(route('media.delete-file', fileId), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({
+                title: 'Archivo Eliminado',
+                content: 'El archivo adjunto se ha eliminado correctamente.',
+                duration: 3000
+            });
+        },
+        onError: () => {
+            notification.error({
+                title: 'Error',
+                content: 'No se pudo eliminar el archivo. Inténtalo de nuevo.',
+                duration: 4000
+            });
+        }
+    });
+};
+
+// === SOLUCIÓN FIX 403 PARA ARCHIVOS ===
+// Abre el archivo forzando una URL "nueva" con un timestamp
+const openFileWithRetry = (url) => {
+    if (!url) return;
+    const separator = url.includes('?') ? '&' : '?';
+    const safeUrl = `${url}${separator}retry=${new Date().getTime()}`;
+    window.open(safeUrl, '_blank');
+};
 </script>
 
 <template>
@@ -262,10 +276,11 @@ export default defineComponent({
                     
                     <!-- Columna Izquierda: Imagen y Stock -->
                     <div class="md:col-span-1 space-y-6">
-                        <!-- Imagen -->
+                        <!-- Imagen (Ya incluye tu fix de @error) -->
                         <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
                             <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
                                 <img 
+                                    @error="$event.target.src = product.image_url + '?retry=' + new Date().getTime()"
                                     v-if="product.image_url" 
                                     :src="product.image_url" 
                                     class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -367,8 +382,68 @@ export default defineComponent({
 
                             <div class="prose prose-sm text-gray-500 max-w-none">
                                 <h4 class="text-gray-800 font-semibold mb-2">Descripción</h4>
-                                <p>{{ product.description || 'No hay descripción disponible para este producto.' }}</p>
+                                <p class="whitespace-pre-line">{{ product.description || 'No hay descripción disponible para este producto.' }}</p>
                             </div>
+                        </div>
+
+                        <!-- SECCIÓN: Documentos Adjuntos (MODIFICADA) -->
+                        <div v-if="product.attachments && product.attachments.length > 0" class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2 mb-4">
+                                <n-icon class="text-blue-500"><AttachOutline /></n-icon>
+                                Archivos y Documentos
+                            </h3>
+                            
+                            <n-grid x-gap="12" y-gap="12" cols="1 md:2">
+                                <n-grid-item v-for="file in product.attachments" :key="file.id">
+                                    <div class="group relative flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all">
+                                        <!-- Icono según tipo -->
+                                        <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500 shadow-sm group-hover:scale-110 transition-transform">
+                                            <n-icon size="20">
+                                                <component :is="getFileIcon(file.mime_type)" />
+                                            </n-icon>
+                                        </div>
+                                        
+                                        <!-- Info del archivo (Click con Retry) -->
+                                        <div class="flex-1 min-w-0 cursor-pointer" @click="openFileWithRetry(file.url)">
+                                            <p class="text-sm font-semibold text-gray-700 truncate group-hover:text-blue-700">
+                                                {{ file.name }}
+                                            </p>
+                                            <p class="text-xs text-gray-400">
+                                                {{ file.size }}
+                                            </p>
+                                        </div>
+                                        
+                                        <!-- Botones de Acción -->
+                                        <div class="flex items-center gap-1">
+                                            <!-- Botón Descargar (Click con Retry) -->
+                                            <n-button 
+                                                size="tiny" 
+                                                circle 
+                                                secondary 
+                                                type="info" 
+                                                @click.stop="openFileWithRetry(file.url)"
+                                                title="Descargar"
+                                            >
+                                                <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+                                            </n-button>
+                                            
+                                            <!-- Botón de Eliminar -->
+                                            <n-popconfirm
+                                                @positive-click="deleteFile(file.id)"
+                                                positive-text="Sí, eliminar"
+                                                negative-text="Cancelar"
+                                            >
+                                                <template #trigger>
+                                                    <n-button size="tiny" circle secondary type="error">
+                                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                    </n-button>
+                                                </template>
+                                                ¿Estás seguro de eliminar este archivo permanentemente?
+                                            </n-popconfirm>
+                                        </div>
+                                    </div>
+                                </n-grid-item>
+                            </n-grid>
                         </div>
 
                         <!-- Sección de Historial de Movimientos -->
@@ -484,8 +559,7 @@ export default defineComponent({
                                 <n-input 
                                     v-model:value="adjustmentForm.adjustment_note" 
                                     type="textarea" 
-                                    placeholder="Ej. Conteo cíclico, merma por daño, regalo a cliente..."
-                                    :rows="3"
+                                    placeholder="Ej. Conteo cíclico, merma por daño, regalo a cliente" :rows="3"
                                 />
                             </n-form-item>
                         </n-form>

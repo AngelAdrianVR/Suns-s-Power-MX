@@ -96,15 +96,7 @@ const formatTimeAgo = (dateString) => {
                     <!-- Badge indicador rojo -->
                     <n-badge :value="unreadNotificationsCount" :max="99" :show="unreadNotificationsCount > 0" processing>
                         <div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-white/50 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md border border-gray-100 group-active:scale-95">
-                            <!-- Icono -->
-                            <img 
-                                src="/images/notification3d.png" 
-                                alt="Notificaciones" 
-                                class="w-6 h-6 object-contain"
-                                onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-                            >
-                            <!-- Fallback icon si la imagen falla -->
-                            <n-icon size="22" class="text-blue-600 hidden">
+                            <n-icon size="22" class="text-blue-600">
                                 <NotificationsOutline />
                             </n-icon>
                         </div>
