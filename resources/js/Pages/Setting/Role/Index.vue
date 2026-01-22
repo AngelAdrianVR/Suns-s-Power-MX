@@ -208,10 +208,12 @@ import { h } from 'vue';
                     <p class="text-sm text-gray-500">Administra los niveles de acceso del sistema</p>
                 </div>
                 <div class="mt-2 lg:mt-0 flex gap-2">
+                    <!-- Botón restringido solo para desarrolladores (crear nuevos permisos) -->
                     <n-button v-if="isDeveloper" secondary type="info" @click="showPermissionModal = true">
                         <template #icon><n-icon><KeyOutline /></n-icon></template>
                         Gestionar Permisos (Dev)
                     </n-button>
+                    <!-- Botón para usuarios con permisos de gestión de roles -->
                     <n-button v-if="hasPermission('roles.manage')" type="primary" @click="openCreateRole">
                         <template #icon><n-icon><AddOutline /></n-icon></template>
                         Nuevo Rol
@@ -245,8 +247,9 @@ import { h } from 'vue';
                             <n-input v-model:value="formRole.name" placeholder="Nombre descriptivo" />
                         </n-form-item>
 
-                        <!-- SECCIÓN DE PERMISOS (Solo visible para desarrollador ID 1) -->
-                        <div v-if="isDeveloper && groupedPermissions">
+                        <!-- SECCIÓN DE PERMISOS -->
+                        <!-- CORRECCIÓN: Eliminado v-if="isDeveloper". Ahora es visible si existen permisos cargados -->
+                        <div v-if="groupedPermissions">
                             <n-divider title-placement="left" class="text-gray-500 text-xs uppercase font-bold tracking-wider">
                                 Asignación de Permisos
                             </n-divider>
@@ -283,9 +286,9 @@ import { h } from 'vue';
                                 </n-collapse>
                             </div>
                         </div>
-                        <div v-else class="p-4 bg-orange-50 text-orange-600 rounded-lg text-sm flex items-center gap-2">
+                        <div v-else class="p-4 bg-gray-50 text-gray-500 rounded-lg text-sm flex items-center gap-2">
                             <n-icon><SettingsOutline /></n-icon>
-                            La edición avanzada de permisos está restringida al desarrollador. Solo puedes editar el nombre del rol.
+                            No hay permisos disponibles para asignar.
                         </div>
                     </n-form>
 
@@ -301,6 +304,7 @@ import { h } from 'vue';
                 </n-modal>
 
                 <!-- MODAL GESTIÓN DE PERMISOS (SOLO DEV) -->
+                <!-- Este modal sigue existiendo pero solo se abre desde el botón restringido en el header -->
                 <n-modal v-model:show="showPermissionModal" preset="card" :style="{ width: '900px' }" title="Gestión Avanzada de Permisos">
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         
