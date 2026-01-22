@@ -25,7 +25,7 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $branchId = session('current_branch_id') ?? $user->branch_id;
         
-        $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas']);
+        $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
 
         // 1. Recibimos los nuevos filtros
         $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range']);
@@ -35,7 +35,6 @@ class ServiceOrderController extends Controller
         $state = $filters['state'] ?? null;
 
         // 2. Obtenemos listas únicas para los selectores (Filtrado por sucursal para no mezclar datos)
-        // Usamos cache o consulta directa dependiendo del volumen, aquí consulta directa por simplicidad
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
             ->where('installation_municipality', '!=', '')
@@ -74,9 +73,11 @@ class ServiceOrderController extends Controller
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
+                      // --- NUEVO: Búsqueda por número de servicio ---
+                      ->orWhere('service_number', 'like', "%{$search}%")
+                      // ----------------------------------------------
                       ->orWhere('installation_street', 'like', "%{$search}%")
                       ->orWhere('installation_neighborhood', 'like', "%{$search}%")
-                      // Opcional: Agregar municipio/estado a la búsqueda general también
                       ->orWhere('installation_municipality', 'like', "%{$search}%") 
                       ->orWhereHas('client', function ($cq) use ($search) {
                           $cq->where('name', 'like', "%{$search}%");
@@ -86,7 +87,6 @@ class ServiceOrderController extends Controller
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
             })
-            // 3. Aplicamos los nuevos filtros específicos
             ->when($municipality, function ($query, $municipality) {
                 $query->where('installation_municipality', $municipality);
             })
@@ -104,8 +104,11 @@ class ServiceOrderController extends Controller
                         'id' => $order->client->id,
                         'name' => $order->client->name,
                     ] : null,
+                    // --- NUEVOS CAMPOS EN LISTADO ---
+                    'service_number' => $order->service_number,
+                    'rate_type' => $order->rate_type,
+                    // --------------------------------
                     'installation_address' => $order->full_installation_address, 
-                    // Enviamos municipio y estado por si los necesitas mostrar explícitamente en el front
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
@@ -127,7 +130,6 @@ class ServiceOrderController extends Controller
             'orders' => $orders,
             'filters' => $filters,
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
-            // 4. Pasamos las listas al frontend
             'municipalities' => $availableMunicipalities,
             'states' => $availableStates,
             'can_view_financials' => $hasFullAccess
@@ -138,7 +140,6 @@ class ServiceOrderController extends Controller
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         return Inertia::render('ServiceOrders/Create', [
-            // Mandamos solo lo básico para que cargue rápido
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
@@ -157,7 +158,11 @@ class ServiceOrderController extends Controller
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
             
-            // Nuevas validaciones para dirección atomizada
+            // --- NUEVOS CAMPOS ---
+            'service_number' => 'nullable|string|max:255',
+            'rate_type' => 'nullable|string|max:50',
+            // ---------------------
+
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
             'installation_interior_number' => 'nullable|string|max:50',
@@ -186,8 +191,7 @@ class ServiceOrderController extends Controller
         
         $user = Auth::user();
 
-        // 1. Determinar Permisos Financieros
-        $canViewFinancials = $user->hasAnyRole(['Admin', 'Ventas']);
+        $canViewFinancials = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
 
         $serviceOrder->load([
             'client',
@@ -199,12 +203,8 @@ class ServiceOrderController extends Controller
             'media',
         ]);
 
-        // 2. Generar URL Firmada (Seguridad anti-modificación de ID)
-        // Esto genera una URL tipo: domain.com/service-orders/1?signature=abc1234...
-        // Si alguien cambia el "1" por un "2", la firma no coincidirá.
         $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
 
-        // 3. Ocultar datos sensibles si no tiene permisos
         if (!$canViewFinancials) {
             $serviceOrder->total_amount = 0;
             $serviceOrder->items->transform(function ($item) {
@@ -251,7 +251,7 @@ class ServiceOrderController extends Controller
         });
 
         $assignableUsers = User::where('branch_id', $branchId)
-            ->where('id', '!=', 1) // Ocultamos al usuario de soporte (ID 1)
+            ->where('id', '!=', 1) 
             ->where('is_active', true)
             ->select('id', 'name', 'phone')
             ->orderBy('name')
@@ -270,7 +270,7 @@ class ServiceOrderController extends Controller
         }
 
         return Inertia::render('ServiceOrders/Show', [
-            'order' => $serviceOrder,
+            'order' => $serviceOrder, // Los campos nuevos ya vienen en el objeto completo
             'diagram_data' => $diagramData,
             'stats' => [
                 'total_tasks' => $serviceOrder->tasks->count(),
@@ -308,8 +308,12 @@ class ServiceOrderController extends Controller
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
+
+            // --- NUEVOS CAMPOS ---
+            'service_number' => 'nullable|string|max:255',
+            'rate_type' => 'nullable|string|max:50',
+            // ---------------------
             
-            // Actualizamos validación en update también
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
             'installation_interior_number' => 'nullable|string|max:50',
@@ -349,11 +353,10 @@ class ServiceOrderController extends Controller
         return back()->with('success', "Estatus actualizado a {$newStatus}.");
     }
 
-    // Método para subir evidencias (Media Library)
     public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
     {
         $request->validate([
-            'file' => 'required|file|max:10240', // Max 10MB
+            'file' => 'required|file|max:10240', 
         ]);
 
         $serviceOrder->addMediaFromRequest('file')->toMediaCollection('evidences');
@@ -419,11 +422,7 @@ class ServiceOrderController extends Controller
             return back()->with('error', 'No se puede eliminar una orden completada o facturada.');
         }
 
-        // Usamos una transacción para asegurar que se borre todo o nada
         DB::transaction(function () use ($serviceOrder) {
-            
-            // 1. Restaurar inventario: Iterar sobre los items y devolver el stock
-            // Esto es crucial en un ERP para evitar perdida de material
             foreach ($serviceOrder->items as $item) {
                 if ($item->product) {
                     InventoryService::addStock(
@@ -437,15 +436,8 @@ class ServiceOrderController extends Controller
                 }
             }
 
-            // 2. Eliminar relaciones dependientes
-            // Aquí está la corrección específica para tu error SQL 1451
-            $serviceOrder->payments()->delete(); // Elimina los pagos asociados
-            $serviceOrder->items()->delete();    // Elimina los items de la orden
-            
-            // Opcional: Si tienes tareas y estas tienen otras dependencias, podrías necesitar borrarlas también
-            // $serviceOrder->tasks()->delete(); 
-
-            // 3. Eliminar la orden principal
+            $serviceOrder->payments()->delete(); 
+            $serviceOrder->items()->delete();    
             $serviceOrder->delete(); 
         });
 

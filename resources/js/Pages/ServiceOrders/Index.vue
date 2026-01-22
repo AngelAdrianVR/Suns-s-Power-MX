@@ -10,7 +10,7 @@ import {
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     ConstructOutline, CalendarOutline, PersonOutline, LocationOutline, 
-    CheckmarkCircleOutline, ChevronDownOutline 
+    CheckmarkCircleOutline, ChevronDownOutline, FlashOutline, PricetagOutline 
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -130,6 +130,7 @@ const createColumns = () => {
         {
             title: 'Cliente / Ubicación',
             key: 'client',
+            width: 250,
             render(row) {
                 return h('div', { class: 'flex flex-col' }, [
                     h('span', { class: 'font-bold text-gray-800 text-sm' }, row.client?.name || 'Cliente Eliminado'),
@@ -140,10 +141,36 @@ const createColumns = () => {
                 ]);
             }
         },
+        // --- NUEVA COLUMNA: Datos de Servicio ---
+        {
+            title: 'Info. Servicio',
+            key: 'service_info',
+            width: 150,
+            render(row) {
+                if (!row.service_number && !row.rate_type) {
+                    return h('span', { class: 'text-gray-300 italic text-xs' }, '-');
+                }
+
+                return h('div', { class: 'flex flex-col gap-1 items-start' }, [
+                    row.service_number ? h(NTag, { size: 'small', bordered: false, class: 'bg-indigo-50 text-indigo-700' }, { 
+                        default: () => [
+                            h(NIcon, { class: 'mr-1' }, { default: () => h(FlashOutline) }),
+                            row.service_number
+                        ]
+                    }) : null,
+                    
+                    row.rate_type ? h('div', { class: 'flex items-center gap-1 text-xs text-gray-500' }, [
+                         h(NIcon, { component: PricetagOutline }),
+                         h('span', `Tarifa: ${row.rate_type}`)
+                    ]) : null
+                ]);
+            }
+        },
+        // ----------------------------------------
         {
             title: 'Estado & Avance',
             key: 'status',
-            width: 220, 
+            width: 200, 
             render(row) {
                 const canChangeStatus = hasPermission('service_orders.change_status');
                 const statusTag = h(NTag, { 
@@ -179,8 +206,9 @@ const createColumns = () => {
                             type: 'line', 
                             percentage: row.progress, 
                             color: row.status === 'Cancelado' ? '#ff4d4f' : undefined,
-                            height: 10,
-                            'indicator-placement': 'inside'
+                            height: 6,
+                            'indicator-placement': 'inside',
+                            'show-indicator': false
                         })
                     ])
                 ]);
@@ -409,6 +437,18 @@ const rowProps = (row) => ({
                                 <n-icon :component="LocationOutline" class="mt-0.5"/>
                                 <span class="line-clamp-2">{{ order.installation_address }}</span>
                             </div>
+                            
+                            <!-- NUEVA INFO EN MOVIL: SERVICIO Y TARIFA -->
+                            <div class="flex flex-wrap gap-2 mt-2" v-if="order.service_number || order.rate_type">
+                                <n-tag v-if="order.service_number" size="small" :bordered="false" class="bg-indigo-50 text-indigo-700">
+                                    <template #icon><n-icon :component="FlashOutline" /></template>
+                                    {{ order.service_number }}
+                                </n-tag>
+                                <n-tag v-if="order.rate_type" size="small" :bordered="false" type="default" class="text-gray-500">
+                                    Tarifa: {{ order.rate_type }}
+                                </n-tag>
+                            </div>
+                            <!-- -------------------------------------- -->
                         </div>
 
                         <!-- Técnico y Progreso -->

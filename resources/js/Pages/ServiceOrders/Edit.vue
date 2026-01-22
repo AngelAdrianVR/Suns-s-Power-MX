@@ -9,7 +9,7 @@ import {
 import { 
     SaveOutline, ArrowBackOutline, PersonOutline, ConstructOutline, 
     LocationOutline, CalendarOutline, CashOutline, DocumentTextOutline,
-    BriefcaseOutline, PersonAddOutline, RefreshOutline
+    BriefcaseOutline, PersonAddOutline, RefreshOutline, FlashOutline // Agregado icono Flash
 } from '@vicons/ionicons5';
 import axios from 'axios';
 
@@ -52,6 +52,12 @@ const form = useForm({
     sales_rep_id: props.order.sales_rep_id,
     status: props.order.status,
     start_date: formatInitialDate(props.order.start_date), 
+    
+    // --- NUEVOS CAMPOS ---
+    service_number: props.order.service_number,
+    rate_type: props.order.rate_type,
+    // ---------------------
+
     total_amount: Number(props.order.total_amount),
     
     // Dirección Atomizada (Cargada desde la orden existente)
@@ -74,6 +80,57 @@ const statusOptions = [
     { label: 'Completado', value: 'Completado' },
     { label: 'Facturado', value: 'Facturado' },
     { label: 'Cancelado', value: 'Cancelado' }, 
+];
+
+// Opciones de Tipo de Tarifa (Igual que en Create.vue)
+const rateTypeOptions = [
+    { label: '01', value: '01' },
+    { label: '1A', value: '1A' },
+    { label: '1B', value: '1B' },
+    { label: '1C', value: '1C' },
+    { label: '1D', value: '1D' },
+    { label: '1F', value: '1F' },
+    { label: 'DAC', value: 'DAC' },
+    { label: 'PDBT', value: 'PDBT' },
+    { label: 'GDBT', value: 'GDBT' },
+    { label: 'GDMTO', value: 'GDMTO' },
+    { label: 'N/A', value: 'N/A' },
+];
+
+// Lista de Estados de México
+const mexicoStates = [
+    { label: 'Aguascalientes', value: 'Aguascalientes' },
+    { label: 'Baja California', value: 'Baja California' },
+    { label: 'Baja California Sur', value: 'Baja California Sur' },
+    { label: 'Campeche', value: 'Campeche' },
+    { label: 'Chiapas', value: 'Chiapas' },
+    { label: 'Chihuahua', value: 'Chihuahua' },
+    { label: 'Ciudad de México', value: 'Ciudad de México' },
+    { label: 'Coahuila', value: 'Coahuila' },
+    { label: 'Colima', value: 'Colima' },
+    { label: 'Durango', value: 'Durango' },
+    { label: 'Estado de México', value: 'Estado de México' },
+    { label: 'Guanajuato', value: 'Guanajuato' },
+    { label: 'Guerrero', value: 'Guerrero' },
+    { label: 'Hidalgo', value: 'Hidalgo' },
+    { label: 'Jalisco', value: 'Jalisco' },
+    { label: 'Michoacán', value: 'Michoacán' },
+    { label: 'Morelos', value: 'Morelos' },
+    { label: 'Nayarit', value: 'Nayarit' },
+    { label: 'Nuevo León', value: 'Nuevo León' },
+    { label: 'Oaxaca', value: 'Oaxaca' },
+    { label: 'Puebla', value: 'Puebla' },
+    { label: 'Querétaro', value: 'Querétaro' },
+    { label: 'Quintana Roo', value: 'Quintana Roo' },
+    { label: 'San Luis Potosí', value: 'San Luis Potosí' },
+    { label: 'Sinaloa', value: 'Sinaloa' },
+    { label: 'Sonora', value: 'Sonora' },
+    { label: 'Tabasco', value: 'Tabasco' },
+    { label: 'Tamaulipas', value: 'Tamaulipas' },
+    { label: 'Tlaxcala', value: 'Tlaxcala' },
+    { label: 'Veracruz', value: 'Veracruz' },
+    { label: 'Yucatán', value: 'Yucatán' },
+    { label: 'Zacatecas', value: 'Zacatecas' }
 ];
 
 const rules = {
@@ -285,10 +342,35 @@ const submit = () => {
                                             />
                                         </n-form-item>
                                     </n-grid-item>
+                                    
+                                    <!-- NUEVOS CAMPOS -->
+                                    <n-grid-item>
+                                        <n-form-item label="Número de Servicio" path="service_number">
+                                            <n-input 
+                                                v-model:value="form.service_number" 
+                                                placeholder="Ej. 123456789"
+                                            >
+                                                <template #prefix><n-icon :component="FlashOutline"/></template>
+                                            </n-input>
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item>
+                                        <n-form-item label="Tipo de Tarifa" path="rate_type">
+                                            <n-select 
+                                                v-model:value="form.rate_type" 
+                                                :options="rateTypeOptions" 
+                                                placeholder="Selecciona tarifa"
+                                                filterable
+                                            />
+                                        </n-form-item>
+                                    </n-grid-item>
+                                    <!-- FIN NUEVOS CAMPOS -->
+
                                 </n-grid>
 
                                 <div class="mt-4 border-t pt-4">
-                                    <label class="block text-gray-500 font-medium mb-3 text-sm flex items-center gap-1">
+                                    <label class="text-gray-500 font-medium mb-3 text-sm flex items-center gap-1">
                                         <n-icon :component="LocationOutline"/> Dirección del Sitio
                                     </label>
                                     
@@ -297,44 +379,73 @@ const submit = () => {
                                         <!-- Calle -->
                                         <n-grid-item span="1 m:2">
                                             <n-form-item label="Calle" path="installation_street">
-                                                <n-input v-model:value="form.installation_street" placeholder="Av. Principal" />
+                                                <n-input 
+                                                    v-model:value="form.installation_street" 
+                                                    placeholder="Av. Principal" 
+                                                    :input-props="{ autocomplete: 'new-password' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <n-grid-item>
                                             <n-form-item label="No. Exterior" path="installation_exterior_number">
-                                                <n-input v-model:value="form.installation_exterior_number" placeholder="123" />
+                                                <n-input 
+                                                    v-model:value="form.installation_exterior_number" 
+                                                    placeholder="123" 
+                                                    :input-props="{ autocomplete: 'off' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <n-grid-item>
                                             <n-form-item label="No. Interior" path="installation_interior_number">
-                                                <n-input v-model:value="form.installation_interior_number" placeholder="4B" />
+                                                <n-input 
+                                                    v-model:value="form.installation_interior_number" 
+                                                    placeholder="4B" 
+                                                    :input-props="{ autocomplete: 'off' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <!-- Fila 2 -->
                                         <n-grid-item span="1 m:2">
                                             <n-form-item label="Colonia" path="installation_neighborhood">
-                                                <n-input v-model:value="form.installation_neighborhood" placeholder="Centro" />
+                                                <n-input 
+                                                    v-model:value="form.installation_neighborhood" 
+                                                    placeholder="Centro" 
+                                                    :input-props="{ autocomplete: 'off' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <n-grid-item>
                                             <n-form-item label="C.P." path="installation_zip_code">
-                                                <n-input v-model:value="form.installation_zip_code" placeholder="00000" />
+                                                <n-input 
+                                                    v-model:value="form.installation_zip_code" 
+                                                    placeholder="00000" 
+                                                    :input-props="{ autocomplete: 'off' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <n-grid-item>
                                             <n-form-item label="Estado" path="installation_state">
-                                                <n-input v-model:value="form.installation_state" placeholder="Estado" />
+                                                <n-select 
+                                                    v-model:value="form.installation_state" 
+                                                    filterable 
+                                                    placeholder="Selecciona un estado" 
+                                                    :options="mexicoStates"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
 
                                         <n-grid-item span="1 m:2">
                                             <n-form-item label="Municipio" path="installation_municipality">
-                                                <n-input v-model:value="form.installation_municipality" placeholder="Municipio" />
+                                                <n-input 
+                                                    v-model:value="form.installation_municipality" 
+                                                    placeholder="Municipio" 
+                                                    :input-props="{ autocomplete: 'off' }"
+                                                />
                                             </n-form-item>
                                         </n-grid-item>
                                     </n-grid>
