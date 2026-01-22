@@ -17,6 +17,9 @@ const props = defineProps({
     orders: Object, // Paginado
     filters: Object,
     statuses: Array,
+    // Nuevos Props que vienen del controlador
+    municipalities: Array,
+    states: Array,
     can_view_financials: Boolean // Check para ver montos/dinero
 });
 
@@ -28,12 +31,17 @@ const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 // Lógica de búsqueda y filtrado
 const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || null);
+const municipalityFilter = ref(props.filters.municipality || null); // Nuevo filtro Municipio
+const stateFilter = ref(props.filters.state || null); // Nuevo filtro Estado
+
 let searchTimeout;
 
 const applyFilters = () => {
     router.get(route('service-orders.index'), { 
         search: search.value,
-        status: statusFilter.value 
+        status: statusFilter.value,
+        municipality: municipalityFilter.value, // Enviamos filtro
+        state: stateFilter.value // Enviamos filtro
     }, { preserveState: true, replace: true });
 };
 
@@ -42,7 +50,8 @@ watch(search, (value) => {
     searchTimeout = setTimeout(applyFilters, 300);
 });
 
-watch(statusFilter, applyFilters);
+// Observamos todos los filtros
+watch([statusFilter, municipalityFilter, stateFilter], applyFilters);
 
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
@@ -50,7 +59,6 @@ const goToShow = (id) => router.visit(route('service-orders.show', id));
 
 // Lógica para cambiar estatus
 const handleStatusUpdate = (row, newStatus) => {
-    // Verificación de permiso específico para cambiar estatus
     if (!hasPermission('service_orders.change_status')) {
         notification.error({ title: 'Sin permiso', content: 'No tienes permisos para cambiar el estatus.' });
         return;
@@ -103,8 +111,10 @@ const getStatusColor = (status) => {
     return map[status] || 'default';
 };
 
-// Opciones para el select de filtro y cambio de estado
+// Opciones para los selects
 const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
+const municipalityOptions = props.municipalities.map(m => ({ label: m, value: m }));
+const stateOptions = props.states.map(s => ({ label: s, value: s }));
 
 // --- Configuración de Columnas Desktop ---
 const createColumns = () => {
@@ -135,10 +145,7 @@ const createColumns = () => {
             key: 'status',
             width: 220, 
             render(row) {
-                // Verificar si tiene permiso para cambiar el estatus
                 const canChangeStatus = hasPermission('service_orders.change_status');
-
-                // Renderizado condicional del Tag de estatus
                 const statusTag = h(NTag, { 
                     type: getStatusColor(row.status), 
                     size: 'small', 
@@ -148,12 +155,10 @@ const createColumns = () => {
                         cursor: canChangeStatus ? 'pointer' : 'default', 
                         width: 'fit-content' 
                     },
-                    // Solo detenemos la propagación del click si es editable (para abrir el popselect)
                     onClick: (e) => canChangeStatus && e.stopPropagation(),
                 }, { 
                     default: () => [
                         row.status,
-                        // Solo mostramos el icono de flecha si tiene permiso
                         canChangeStatus 
                             ? h(NIcon, { class: 'ml-1 text-xs opacity-70' }, { default: () => h(ChevronDownOutline) }) 
                             : null
@@ -161,14 +166,13 @@ const createColumns = () => {
                 });
 
                 return h('div', { class: 'flex flex-col gap-2 w-full' }, [
-                    // Si tiene permiso, envolvemos en Popselect
                     canChangeStatus ? h(NPopselect, {
                         options: statusOptions,
                         trigger: 'click',
                         onUpdateValue: (val) => handleStatusUpdate(row, val)
                     }, {
                         default: () => statusTag
-                    }) : statusTag, // Si no, solo mostramos el tag estático
+                    }) : statusTag,
                     
                     h('div', { class: 'w-full pr-4' }, [
                         h(NProgress, { 
@@ -201,7 +205,6 @@ const createColumns = () => {
         }
     ];
 
-    // Condicional para columna Total (Protegida por can_view_financials)
     if (props.can_view_financials) {
         columns.push({
             title: 'Total',
@@ -213,7 +216,6 @@ const createColumns = () => {
         });
     }
 
-    // Columna de Acciones siempre al final
     columns.push({
         title: '',
         key: 'actions',
@@ -249,7 +251,13 @@ const createColumns = () => {
 const columns = createColumns();
 
 const handlePageChange = (page) => {
-    router.get(route('service-orders.index'), { page, search: search.value, status: statusFilter.value }, { preserveState: true });
+    router.get(route('service-orders.index'), { 
+        page, 
+        search: search.value, 
+        status: statusFilter.value,
+        municipality: municipalityFilter.value,
+        state: stateFilter.value 
+    }, { preserveState: true });
 };
 
 const rowProps = (row) => ({
@@ -269,7 +277,6 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión operativa e instalaciones</p>
                 </div>
-                <!-- Botón Crear (Permiso: service_orders.create) -->
                 <Link v-if="hasPermission('service_orders.create')" :href="route('service-orders.create')">
                     <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                         <template #icon>
@@ -284,25 +291,50 @@ const rowProps = (row) => ({
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 
-                <!-- Filtros -->
-                <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row justify-between items-center gap-4">
+                <!-- Filtros Actualizados -->
+                <div class="mb-6 px-4 sm:px-0 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+                    <!-- Barra de búsqueda -->
                     <n-input 
                         v-model:value="search" 
                         type="text" 
-                        placeholder="Buscar por folio, cliente o dirección..." 
-                        class="w-full md:max-w-md shadow-sm rounded-full"
-                        clearable round size="large"
+                        placeholder="Buscar..." 
+                        class="w-full xl:max-w-xs shadow-sm rounded-full"
+                        clearable round
                     >
                         <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
                     </n-input>
 
-                    <n-select 
-                        v-model:value="statusFilter"
-                        :options="statusOptions"
-                        placeholder="Filtrar por Estado"
-                        clearable
-                        class="w-full md:w-48"
-                    />
+                    <!-- Grupo de Selectores (Municipo, Estado, Estatus) -->
+                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+                         <!-- Filtro Municipio -->
+                        <n-select 
+                            v-model:value="municipalityFilter"
+                            :options="municipalityOptions"
+                            placeholder="Municipio"
+                            filterable
+                            clearable
+                            class="w-full md:w-48"
+                        />
+                        
+                        <!-- Filtro Estado -->
+                        <n-select 
+                            v-model:value="stateFilter"
+                            :options="stateOptions"
+                            placeholder="Estado"
+                            filterable
+                            clearable
+                            class="w-full md:w-48"
+                        />
+
+                        <!-- Filtro Estatus -->
+                        <n-select 
+                            v-model:value="statusFilter"
+                            :options="statusOptions"
+                            placeholder="Estatus"
+                            clearable
+                            class="w-full md:w-48"
+                        />
+                    </div>
                 </div>
 
                 <!-- TABLA (Escritorio) -->
@@ -316,7 +348,6 @@ const rowProps = (row) => ({
                         :row-props="rowProps"
                         class="custom-table"
                     />
-                    <!-- Paginación -->
                     <div class="p-4 flex justify-end border-t border-gray-100" v-if="orders.total > 0">
                         <n-pagination
                             :page="orders.current_page"
@@ -347,7 +378,6 @@ const rowProps = (row) => ({
                                 <span class="text-xs text-gray-400">{{ order.created_at_human }}</span>
                             </div>
                             
-                            <!-- Estado: Editable solo si tiene permiso service_orders.change_status -->
                             <n-popselect 
                                 v-if="hasPermission('service_orders.change_status')"
                                 :options="statusOptions" 
@@ -361,7 +391,6 @@ const rowProps = (row) => ({
                                 </n-tag>
                             </n-popselect>
 
-                            <!-- Estado: Solo lectura para quienes no tienen permiso -->
                             <n-tag 
                                 v-else
                                 :type="getStatusColor(order.status)" 
@@ -399,7 +428,6 @@ const rowProps = (row) => ({
 
                         <!-- Footer Actions -->
                         <div class="flex justify-between items-center border-t border-gray-100 pt-3">
-                            <!-- Montos: Solo visibles con permiso can_view_financials -->
                             <span v-if="can_view_financials" class="font-bold text-gray-800">{{ formatCurrency(order.total_amount) }}</span>
                             <span v-else class="text-xs text-gray-400 italic">Confidencial</span>
                             

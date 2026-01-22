@@ -13,7 +13,7 @@ import {
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
     CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline,
-    PeopleOutline, Star, StarOutline
+    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline
 } from '@vicons/ionicons5';
 
 // Definición de Props explícita
@@ -31,8 +31,8 @@ const props = defineProps({
 // Inicializar permisos
 const { hasPermission } = usePermissions();
 
-// Configuración Global de Notificaciones
-const { notification } = createDiscreteApi(['notification'], {
+// Configuración Global de Notificaciones y Diálogos
+const { notification, dialog } = createDiscreteApi(['notification', 'dialog'], {
     notificationProviderProps: {
         duration: 4000,
         keepAliveOnHover: true
@@ -213,7 +213,16 @@ const paymentColumns = [
 
 // --- COLUMNAS DOCUMENTOS ---
 const docColumns = [
-    { title: 'Nombre', key: 'name', render: (row) => h('div', { class: 'font-medium text-gray-700 text-xs sm:text-sm' }, row.name) },
+    { 
+        title: 'Nombre', 
+        key: 'name', 
+        // Hacemos que el nombre sea un link explícito
+        render: (row) => h('a', { 
+            class: 'font-medium text-indigo-600 hover:underline text-xs sm:text-sm cursor-pointer',
+            href: row.url,
+            target: '_blank'
+        }, row.name) 
+    },
     { title: 'Categoría', key: 'category', render: (row) => h(NTag, { size: 'tiny' }, { default: () => row.category }) },
     { title: 'Fecha', key: 'created_at', render: (row) => formatDate(row.created_at) },
     {
@@ -221,19 +230,74 @@ const docColumns = [
         key: 'actions',
         align: 'right',
         render(row) {
-            return h(NButton, { 
-                circle: true, 
-                size: 'small', 
-                quaternary: true, 
-                type: 'info',
-                tag: 'a',
-                href: row.url,
-                target: '_blank',
-                download: row.name
-            }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) });
+            const buttons = [];
+
+            // Botón de Descarga
+            buttons.push(h(NTooltip, { trigger: 'hover' }, {
+                trigger: () => h(NButton, { 
+                    circle: true, 
+                    size: 'small', 
+                    quaternary: true, 
+                    type: 'info',
+                    tag: 'a',
+                    href: row.url,
+                    target: '_blank',
+                    download: row.name,
+                    class: 'mr-1',
+                    onClick: (e) => e.stopPropagation()
+                }, { icon: () => h(NIcon, null, { default: () => h(CloudDownloadOutline) }) }),
+                default: () => 'Descargar'
+            }));
+
+            // Botón de Eliminar (Solo si tiene permisos)
+            if (hasPermission('clients.edit')) {
+                buttons.push(h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, { 
+                        circle: true, 
+                        size: 'small', 
+                        quaternary: true, 
+                        type: 'error',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            dialog.warning({
+                                title: 'Eliminar archivo',
+                                content: '¿Estás seguro de que deseas eliminar este archivo? Esta acción no se puede deshacer.',
+                                positiveText: 'Eliminar',
+                                negativeText: 'Cancelar',
+                                onPositiveClick: () => {
+                                    router.delete(route('media.delete-file', row.id), {
+                                        preserveScroll: true,
+                                        onSuccess: () => {
+                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.' });
+                                        },
+                                        onError: () => {
+                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.' });
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                    default: () => 'Eliminar'
+                }));
+            }
+
+            return h('div', { class: 'flex items-center justify-end' }, buttons);
         }
     }
 ];
+
+// Propiedades de fila para hacerlas clickeables y abrir en nueva pestaña
+const docRowProps = (row) => {
+    return {
+        style: 'cursor: pointer;',
+        onClick: (e) => {
+            // Evitar conflicto si se clickea en un botón o link interno explícito
+            if (e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) return;
+            window.open(row.url, '_blank');
+        }
+    }
+}
 
 // --- ACCIONES ---
 const openPaymentModal = () => {
@@ -252,9 +316,9 @@ const createServiceOrder = () => {
     router.visit(route('service-orders.create', { client_id: props.client.id }));
 };
 
-// --- LÓGICA DE SUBIDA DE ARCHIVOS ---
+// --- LÓGICA DE SUBIDA DE ARCHIVOS (MÚLTIPLE) ---
 const uploadForm = useForm({
-    file: null,
+    files: [], // Cambiado de 'file' a 'files' array
     category: 'General'
 });
 
@@ -263,17 +327,19 @@ const triggerFileInput = () => {
 };
 
 const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    // Convertir FileList a Array
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
 
-    uploadForm.file = file;
+    uploadForm.files = files;
 
+    // Inertia maneja arrays de archivos automáticamente
     uploadForm.post(route('clients.documents.store', props.client.id), {
         preserveScroll: true,
         onSuccess: () => {
             notification.success({ 
                 title: 'Éxito', 
-                content: 'Documento subido correctamente.' 
+                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.` 
             });
             uploadForm.reset();
             if (fileInput.value) fileInput.value.value = '';
@@ -281,7 +347,7 @@ const handleFileChange = (event) => {
         onError: () => {
             notification.error({ 
                 title: 'Error', 
-                content: 'Hubo un problema al subir el documento.' 
+                content: 'Hubo un problema al subir los documentos.' 
             });
         }
     });
@@ -569,6 +635,7 @@ const handleFileChange = (event) => {
                                 type="file" 
                                 ref="fileInput" 
                                 class="hidden" 
+                                multiple
                                 @change="handleFileChange"
                             >
 
@@ -584,8 +651,8 @@ const handleFileChange = (event) => {
                                 <div class="bg-blue-50 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
                                     <n-icon size="20" class="text-blue-500"><CloudDownloadOutline /></n-icon>
                                 </div>
-                                <h4 class="font-bold text-gray-700 text-sm">Subir documento</h4>
-                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar archivos (Max 10MB)</p>
+                                <h4 class="font-bold text-gray-700 text-sm">Subir documentos</h4>
+                                <p class="text-gray-400 text-[10px] mt-1">Clic para explorar (soporta múltiples archivos)</p>
                             </div>
 
                             <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
@@ -595,6 +662,8 @@ const handleFileChange = (event) => {
                                         :data="client.documents"
                                         :bordered="false"
                                         size="small"
+                                        :row-props="docRowProps"
+                                        class="cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -669,5 +738,9 @@ const handleFileChange = (event) => {
     :deep(.n-data-table .n-data-table-td) {
         padding: 12px 16px;
     }
+}
+/* Efecto hover en filas de documentos */
+:deep(.n-data-table-tr:hover) {
+    background-color: #f3f4f6 !important;
 }
 </style>

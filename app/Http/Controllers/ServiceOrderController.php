@@ -27,9 +27,28 @@ class ServiceOrderController extends Controller
         
         $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas']);
 
-        $filters = $request->only(['search', 'status', 'date_range']);
+        // 1. Recibimos los nuevos filtros
+        $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
+        $municipality = $filters['municipality'] ?? null;
+        $state = $filters['state'] ?? null;
+
+        // 2. Obtenemos listas únicas para los selectores (Filtrado por sucursal para no mezclar datos)
+        // Usamos cache o consulta directa dependiendo del volumen, aquí consulta directa por simplicidad
+        $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
+            ->whereNotNull('installation_municipality')
+            ->where('installation_municipality', '!=', '')
+            ->distinct()
+            ->orderBy('installation_municipality')
+            ->pluck('installation_municipality');
+
+        $availableStates = ServiceOrder::where('branch_id', $branchId)
+            ->whereNotNull('installation_state')
+            ->where('installation_state', '!=', '')
+            ->distinct()
+            ->orderBy('installation_state')
+            ->pluck('installation_state');
 
         $query = ServiceOrder::query()
             ->with([
@@ -55,9 +74,10 @@ class ServiceOrderController extends Controller
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
-                      // Buscamos en los campos atomizados (ej. calle o colonia)
                       ->orWhere('installation_street', 'like', "%{$search}%")
                       ->orWhere('installation_neighborhood', 'like', "%{$search}%")
+                      // Opcional: Agregar municipio/estado a la búsqueda general también
+                      ->orWhere('installation_municipality', 'like', "%{$search}%") 
                       ->orWhereHas('client', function ($cq) use ($search) {
                           $cq->where('name', 'like', "%{$search}%");
                       });
@@ -65,6 +85,13 @@ class ServiceOrderController extends Controller
             })
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
+            })
+            // 3. Aplicamos los nuevos filtros específicos
+            ->when($municipality, function ($query, $municipality) {
+                $query->where('installation_municipality', $municipality);
+            })
+            ->when($state, function ($query, $state) {
+                $query->where('installation_state', $state);
             })
             ->orderBy('created_at', 'desc')
             ->paginate(20)
@@ -77,8 +104,10 @@ class ServiceOrderController extends Controller
                         'id' => $order->client->id,
                         'name' => $order->client->name,
                     ] : null,
-                    // Devolvemos la dirección formateada para la tabla
                     'installation_address' => $order->full_installation_address, 
+                    // Enviamos municipio y estado por si los necesitas mostrar explícitamente en el front
+                    'municipality' => $order->installation_municipality,
+                    'state' => $order->installation_state,
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
                     'technician' => $order->technician ? [
                         'name' => $order->technician->name,
@@ -98,6 +127,9 @@ class ServiceOrderController extends Controller
             'orders' => $orders,
             'filters' => $filters,
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
+            // 4. Pasamos las listas al frontend
+            'municipalities' => $availableMunicipalities,
+            'states' => $availableStates,
             'can_view_financials' => $hasFullAccess
         ]);
     }
