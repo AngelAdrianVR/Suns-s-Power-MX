@@ -556,7 +556,7 @@ const handleFileChange = (event) => {
                                     <h3 class="text-base sm:text-lg font-bold text-gray-800">Cobranza</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Abonos y pagos</p>
                                 </div>
-                                <n-button type="success" secondary round size="small" class="w-full sm:w-auto" @click="openPaymentModal" :disabled="stats.balance <= 0">
+                                <n-button v-if="hasPermission('collection.create')" type="success" secondary round size="small" class="w-full sm:w-auto" @click="openPaymentModal" :disabled="stats.balance <= 0">
                                     <template #icon><n-icon><CashOutline /></n-icon></template>
                                     Registrar Abono
                                 </n-button>

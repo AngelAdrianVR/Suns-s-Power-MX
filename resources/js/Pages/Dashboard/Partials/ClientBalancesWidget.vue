@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { NCard, NList, NListItem, NAvatar, NEmpty, NButton, NIcon, NTooltip } from 'naive-ui';
 import { Link, router } from '@inertiajs/vue3';
 import { CashOutline, EyeOutline } from '@vicons/ionicons5';
@@ -22,6 +23,9 @@ const getInitials = (name) => {
         .join('')
         .toUpperCase();
 };
+
+// Permisos
+const { hasPermission } = usePermissions();
 
 // --- LÓGICA DE PAGOS Y NAVEGACIÓN ---
 const showPaymentModal = ref(false);
@@ -71,7 +75,7 @@ const goToShow = (id) => {
 
                             <div class="flex gap-2">
                                 <!-- Botón Abonar -->
-                                <n-tooltip trigger="hover">
+                                <n-tooltip v-if="hasPermission('collection.create')" trigger="hover">
                                     <template #trigger>
                                         <n-button 
                                             circle 

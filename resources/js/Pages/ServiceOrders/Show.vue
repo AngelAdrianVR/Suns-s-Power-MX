@@ -15,7 +15,7 @@ import {
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
     AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline,
-    ChevronDownOutline
+    ChevronDownOutline, FlashOutline, PricetagOutline // Nuevos iconos importados
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -452,6 +452,23 @@ const isImage = (file) => {
                                         </div>
                                         <span v-else class="text-gray-400 italic">No asignado</span>
                                     </n-descriptions-item>
+                                    
+                                    <!-- --- NUEVOS CAMPOS --- -->
+                                    <n-descriptions-item label="Número de Servicio">
+                                        <div v-if="order.service_number" class="flex items-center gap-2 font-mono text-indigo-700 bg-indigo-50 px-2 py-1 rounded w-fit">
+                                            <n-icon><FlashOutline /></n-icon> {{ order.service_number }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">No especificado</span>
+                                    </n-descriptions-item>
+
+                                    <n-descriptions-item label="Tipo de Tarifa">
+                                         <div v-if="order.rate_type" class="flex items-center gap-2">
+                                            <n-icon class="text-gray-500"><PricetagOutline /></n-icon> {{ order.rate_type }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">N/A</span>
+                                    </n-descriptions-item>
+                                    <!-- --------------------- -->
+
                                     <n-descriptions-item label="Notas">
                                         {{ order.notes || 'Sin notas registradas.' }}
                                     </n-descriptions-item>

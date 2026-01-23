@@ -80,6 +80,42 @@ const roadTypeOptions = [
     { label: 'Circuito', value: 'Circuito' },
 ];
 
+// Lista de Estados de México
+const mexicoStates = [
+    { label: 'Aguascalientes', value: 'Aguascalientes' },
+    { label: 'Baja California', value: 'Baja California' },
+    { label: 'Baja California Sur', value: 'Baja California Sur' },
+    { label: 'Campeche', value: 'Campeche' },
+    { label: 'Chiapas', value: 'Chiapas' },
+    { label: 'Chihuahua', value: 'Chihuahua' },
+    { label: 'Ciudad de México', value: 'Ciudad de México' },
+    { label: 'Coahuila', value: 'Coahuila' },
+    { label: 'Colima', value: 'Colima' },
+    { label: 'Durango', value: 'Durango' },
+    { label: 'Estado de México', value: 'Estado de México' },
+    { label: 'Guanajuato', value: 'Guanajuato' },
+    { label: 'Guerrero', value: 'Guerrero' },
+    { label: 'Hidalgo', value: 'Hidalgo' },
+    { label: 'Jalisco', value: 'Jalisco' },
+    { label: 'Michoacán', value: 'Michoacán' },
+    { label: 'Morelos', value: 'Morelos' },
+    { label: 'Nayarit', value: 'Nayarit' },
+    { label: 'Nuevo León', value: 'Nuevo León' },
+    { label: 'Oaxaca', value: 'Oaxaca' },
+    { label: 'Puebla', value: 'Puebla' },
+    { label: 'Querétaro', value: 'Querétaro' },
+    { label: 'Quintana Roo', value: 'Quintana Roo' },
+    { label: 'San Luis Potosí', value: 'San Luis Potosí' },
+    { label: 'Sinaloa', value: 'Sinaloa' },
+    { label: 'Sonora', value: 'Sonora' },
+    { label: 'Tabasco', value: 'Tabasco' },
+    { label: 'Tamaulipas', value: 'Tamaulipas' },
+    { label: 'Tlaxcala', value: 'Tlaxcala' },
+    { label: 'Veracruz', value: 'Veracruz' },
+    { label: 'Yucatán', value: 'Yucatán' },
+    { label: 'Zacatecas', value: 'Zacatecas' }
+];
+
 const rules = {
     name: { 
         required: true, 
@@ -204,6 +240,7 @@ const submit = () => {
                                                 v-model:value="form.name" 
                                                 placeholder="Ej. Juan Pérez o Energías Renovables S.A." 
                                                 class="font-semibold text-lg"
+                                                :input-props="{ autocomplete: 'off' }"
                                             >
                                                 <template #prefix>
                                                     <n-icon :component="BusinessOutline" class="text-gray-400"/>
@@ -222,6 +259,7 @@ const submit = () => {
                                                     v-model:value="form.tax_id" 
                                                     placeholder="XAXX010101000" 
                                                     class="uppercase"
+                                                    :input-props="{ autocomplete: 'off' }"
                                                 >
                                                     <template #prefix>
                                                         <n-icon :component="ReceiptOutline" class="text-gray-400"/>
@@ -236,6 +274,7 @@ const submit = () => {
                                                 <n-input 
                                                     v-model:value="form.contact_person" 
                                                     placeholder="Si es empresa, ¿quién atiende?" 
+                                                    :input-props="{ autocomplete: 'off' }"
                                                 >
                                                     <template #prefix>
                                                         <n-icon :component="PersonOutline" class="text-gray-400"/>
@@ -273,51 +312,84 @@ const submit = () => {
                                     <!-- Calle -->
                                     <n-grid-item span="1 m:3">
                                         <n-form-item label="Nombre de Vialidad (Calle)" path="street">
-                                            <n-input v-model:value="form.street" placeholder="Av. Principal" />
+                                            <n-input 
+                                                v-model:value="form.street" 
+                                                placeholder="Av. Principal" 
+                                                :input-props="{ autocomplete: 'new-password' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <n-grid-item>
                                         <n-form-item label="No. Exterior" path="exterior_number">
-                                            <n-input v-model:value="form.exterior_number" placeholder="123" />
+                                            <n-input 
+                                                v-model:value="form.exterior_number" 
+                                                placeholder="123" 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <n-grid-item>
                                         <n-form-item label="No. Interior" path="interior_number">
-                                            <n-input v-model:value="form.interior_number" placeholder="Apt 4B" />
+                                            <n-input 
+                                                v-model:value="form.interior_number" 
+                                                placeholder="Apt 4B" 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <!-- Fila 2 -->
                                     <n-grid-item span="1 m:2">
                                         <n-form-item label="Colonia / Barrio" path="neighborhood">
-                                            <n-input v-model:value="form.neighborhood" placeholder="Centro" />
+                                            <n-input 
+                                                v-model:value="form.neighborhood" 
+                                                placeholder="Centro" 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <n-grid-item>
                                         <n-form-item label="Código Postal" path="zip_code">
-                                            <n-input v-model:value="form.zip_code" placeholder="00000" />
+                                            <n-input 
+                                                v-model:value="form.zip_code" 
+                                                placeholder="00000" 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <n-grid-item>
                                         <n-form-item label="País" path="country">
-                                            <n-input v-model:value="form.country" placeholder="México" />
+                                            <n-input 
+                                                v-model:value="form.country" 
+                                                placeholder="México" 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <!-- Fila 3 -->
                                     <n-grid-item span="1 m:2">
                                         <n-form-item label="Municipio / Alcaldía" path="municipality">
-                                            <n-input v-model:value="form.municipality" placeholder="Delegación..." />
+                                            <n-input 
+                                                v-model:value="form.municipality" 
+                                                placeholder="Delegación..." 
+                                                :input-props="{ autocomplete: 'off' }"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
                                     <n-grid-item span="1 m:2">
                                         <n-form-item label="Estado / Provincia" path="state">
-                                            <n-input v-model:value="form.state" placeholder="Estado..." />
+                                            <n-select 
+                                                v-model:value="form.state" 
+                                                filterable 
+                                                placeholder="Selecciona un estado" 
+                                                :options="mexicoStates"
+                                            />
                                         </n-form-item>
                                     </n-grid-item>
 
@@ -403,7 +475,12 @@ const submit = () => {
                                         <n-grid :x-gap="12" :y-gap="8" cols="1">
                                             <n-grid-item>
                                                 <n-form-item label="Nombre Completo" :path="`contacts[${index}].name`" :show-label="true">
-                                                    <n-input v-model:value="contact.name" placeholder="Ej. Roberto Gómez" size="small">
+                                                    <n-input 
+                                                        v-model:value="contact.name" 
+                                                        placeholder="Ej. Roberto Gómez" 
+                                                        size="small"
+                                                        :input-props="{ autocomplete: 'off' }"
+                                                    >
                                                         <template #prefix><n-icon :component="PersonOutline"/></template>
                                                     </n-input>
                                                 </n-form-item>
