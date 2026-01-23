@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { usePermissions } from '@/Composables/usePermissions';
 import { Head } from '@inertiajs/vue3';
 import { NGrid, NGridItem, NStatistic, NIcon } from 'naive-ui';
 
@@ -16,6 +17,8 @@ const props = defineProps({
     clientsWithBalance: Array,
     kpis: Object,
 });
+
+const { hasPermission } = usePermissions();
 
 // Formateador de moneda
 const formatCurrency = (value) => {
@@ -52,7 +55,7 @@ const formatCurrency = (value) => {
                         </n-statistic>
                     </div>
 
-                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-2xl p-6 transition-transform hover:scale-[1.01]">
+                    <div v-if="hasPermission('sales.view_sales_amount')" class="bg-white overflow-hidden shadow-sm sm:rounded-2xl p-6 transition-transform hover:scale-[1.01]">
                         <n-statistic label="Ventas del Mes" :value="formatCurrency(kpis.monthly_sales)">
                         </n-statistic>
                     </div>
@@ -65,10 +68,10 @@ const formatCurrency = (value) => {
                     <n-grid-item>
                         <div class="flex flex-col gap-6">
                             <!-- Widget de Servicios -->
-                            <ServiceOrdersWidget :orders="pendingServiceOrders" />
+                            <ServiceOrdersWidget v-if="hasPermission('service_orders.index')" :orders="pendingServiceOrders" />
                             
                             <!-- Widget de Clientes con Deuda -->
-                            <ClientBalancesWidget :clients="clientsWithBalance" />
+                            <ClientBalancesWidget v-if="hasPermission('clients.index') || hasPermission('collection.create')" :clients="clientsWithBalance" />
                         </div>
                     </n-grid-item>
 
@@ -79,7 +82,7 @@ const formatCurrency = (value) => {
                             <LowStockWidget :products="lowStockProducts" />
                             
                             <!-- Widget de Compras Pendientes -->
-                            <PurchaseOrdersWidget :orders="pendingPurchaseOrders" />
+                            <PurchaseOrdersWidget v-if="hasPermission('purchases.index')" :orders="pendingPurchaseOrders" />
                         </div>
                     </n-grid-item>
 
