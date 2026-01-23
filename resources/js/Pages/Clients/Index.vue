@@ -161,7 +161,7 @@ const createColumns = () => [
         width: 190, // Ajusté un poco el ancho
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                row.has_debt ? h(NTooltip, { trigger: 'hover' }, {
+                row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
                     trigger: () => h(NButton, {
                         circle: true, size: 'small', quaternary: true, type: 'success',
                         class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',

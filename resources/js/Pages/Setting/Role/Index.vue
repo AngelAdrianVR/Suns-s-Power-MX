@@ -94,14 +94,14 @@ const submitRole = () => {
         formRole.put(route('roles.update', editingRole.value.id), {
             onSuccess: () => {
                 showRoleModal.value = false;
-                notification.success({ content: 'Rol actualizado correctamente' });
+                notification.success({ content: 'Rol actualizado correctamente', duration: 3000 });
             }
         });
     } else {
         formRole.post(route('roles.store'), {
             onSuccess: () => {
                 showRoleModal.value = false;
-                notification.success({ content: 'Rol creado correctamente' });
+                notification.success({ content: 'Rol creado correctamente', duration: 3000 });
             }
         });
     }
@@ -109,8 +109,8 @@ const submitRole = () => {
 
 const deleteRole = (role) => {
     router.delete(route('roles.destroy', role.id), {
-        onSuccess: () => notification.success({ content: 'Rol eliminado' }),
-        onError: () => notification.error({ content: 'No se pudo eliminar el rol' })
+        onSuccess: () => notification.success({ content: 'Rol eliminado', duration: 3000 }),
+        onError: () => notification.error({ content: 'No se pudo eliminar el rol', duration: 3000 })
     });
 };
 
@@ -168,7 +168,7 @@ const submitPermission = () => {
         formPermission.post(route('permissions.store'), {
             preserveScroll: true,
             onSuccess: () => {
-                notification.success({ content: 'Permiso creado' });
+                notification.success({ content: 'Permiso creado', duration: 3000 });
                 formPermission.reset();
             }
         });

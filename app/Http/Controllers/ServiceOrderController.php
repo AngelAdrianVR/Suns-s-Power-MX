@@ -191,7 +191,7 @@ class ServiceOrderController extends Controller
         
         $user = Auth::user();
 
-        $canViewFinancials = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
+        $canViewFinancials = $user->hasAnyRole(['Admin']);
 
         $serviceOrder->load([
             'client',

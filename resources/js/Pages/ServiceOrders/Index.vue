@@ -233,7 +233,7 @@ const createColumns = () => {
         }
     ];
 
-    if (props.can_view_financials) {
+    if (hasPermission('sales.view_sales_amount')) {
         columns.push({
             title: 'Total',
             key: 'total_amount',
