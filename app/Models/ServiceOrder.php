@@ -30,6 +30,7 @@ class ServiceOrder extends Model implements HasMedia
         'total_amount',
         'service_number',
         'rate_type',
+        'meter_number',
         
         // Installation Address Fields
         'installation_street',

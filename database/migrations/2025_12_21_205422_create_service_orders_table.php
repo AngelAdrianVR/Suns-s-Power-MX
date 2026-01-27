@@ -25,6 +25,7 @@ return new class extends Migration
             $table->dateTime('start_date')->nullable();
             $table->string('service_number')->nullable(); // Número de servicio
             $table->string('rate_type')->nullable();      // Tipo de tarifa
+            $table->string('meter_number')->nullable();   // Número de medidor
             $table->dateTime('completion_date')->nullable();
             $table->decimal('total_amount', 12, 2)->default(0); 
             
