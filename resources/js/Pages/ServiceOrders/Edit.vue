@@ -56,6 +56,7 @@ const form = useForm({
     // --- NUEVOS CAMPOS ---
     service_number: props.order.service_number,
     rate_type: props.order.rate_type,
+    meter_number: props.order.meter_number,
     // ---------------------
 
     total_amount: Number(props.order.total_amount),
@@ -364,7 +365,15 @@ const submit = () => {
                                                 filterable
                                             />
                                         </n-form-item>
+
                                     </n-grid-item>
+                                        <n-grid-item span="2">
+                                            <n-form-item label="Número de Medidor" path="meter_number">
+                                                <n-input v-model:value="form.meter_number" placeholder="Ingrese el número de serie del medidor">
+                                                    <template #prefix><n-icon :component="SpeedometerOutline"/></template>
+                                                </n-input>
+                                            </n-form-item>
+                                        </n-grid-item>
                                     <!-- FIN NUEVOS CAMPOS -->
 
                                 </n-grid>

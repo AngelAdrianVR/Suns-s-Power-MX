@@ -70,7 +70,7 @@ const confirmDelete = (client) => {
         onPositiveClick: () => {
             router.delete(route('clients.destroy', client.id), {
                 onSuccess: () => notification.success({ title: 'Éxito', content: 'Cliente eliminado', duration: 3000 }),
-                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar un cliente con historial activo.', duration: 4000 })
+                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar un cliente con ordenes de servicio ligadas.', duration: 4000 })
             });
         }
     });

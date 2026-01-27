@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 
 class ClientController extends Controller
 {
@@ -158,18 +159,30 @@ class ClientController extends Controller
         }
 
         $client->load([
-            'contacts', // Cargar contactos polimórficos
+            'contacts', 
             'serviceOrders' => function ($q) {
                 $q->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'start_date')
                   ->orderBy('created_at', 'desc')
                   ->take(10);
             },
             'payments' => function ($q) {
-                $q->with('serviceOrder:id,total_amount,created_at')
+                $q->with('serviceOrder:id,total_amount,created_at', 'media') 
                   ->orderBy('payment_date', 'desc')
                   ->take(10);
             },
         ]);
+
+        // --- NUEVA LÓGICA ---
+        // Transformamos los pagos para inyectar la URL del comprobante
+        $client->payments->transform(function ($payment) {
+            // Busca en la colección 'payments' o en la 'default'
+            $url = $payment->getFirstMediaUrl('payments') ?: $payment->getFirstMediaUrl('default');
+            
+            // Asignamos una propiedad temporal para fácil acceso en Vue
+            $payment->receipt_url = $url ? $url : null;
+            return $payment;
+        });
+        // --------------------
 
         $totalDebt = $client->serviceOrders()->whereNotIn('status', ['Cancelado', 'Cotización'])->sum('total_amount');
         $totalPaid = $client->payments()->sum('amount');
@@ -274,25 +287,35 @@ class ClientController extends Controller
 
     public function destroy(Client $client)
     {
+        // Validar sucursal
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($client->branch_id !== $branchId) return inertia('Forbidden403');
+        if ($client->branch_id !== $branchId) {
+            return inertia('Forbidden403');
+        }
 
+        // En lugar de usar back()->with('error'), lanzamos excepciones de validación.
+        // Esto hace que Inertia ejecute el callback 'onError' en el frontend.
+        
         if ($client->serviceOrders()->exists()) {
-            return back()->with('error', 'No se puede eliminar: El cliente tiene historial de servicios.');
+            throw ValidationException::withMessages([
+                'delete' => 'No se puede eliminar: El cliente tiene historial de órdenes de servicio.'
+            ]);
         }
         
         if ($client->payments()->exists()) {
-            return back()->with('error', 'No se puede eliminar: El cliente tiene pagos registrados.');
+            throw ValidationException::withMessages([
+                'delete' => 'No se puede eliminar: El cliente tiene pagos registrados.'
+            ]);
         }
 
-        // Al borrar el modelo padre, los contactos polimórficos deberían borrarse si tienes configured onDelete cascade en la BD,
-        // o manualmente aquí si no. Laravel suele manejar esto si el foreign key está bien puesto.
-        // Si no hay FK cascade en la tabla contacts:
+        // Eliminar contactos relacionados (Polimórficos)
         $client->contacts()->delete(); 
 
+        // Eliminar cliente
         $client->delete();
 
-        return redirect()->route('clients.index')->with('success', 'Cliente eliminado.');
+        // Si llega aquí, es un éxito real y redirigimos
+        return redirect()->route('clients.index')->with('success', 'Cliente eliminado correctamente.');
     }
 
     /**

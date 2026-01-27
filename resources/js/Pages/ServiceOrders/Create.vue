@@ -35,6 +35,7 @@ const form = useForm({
     // Nuevos campos
     service_number: '',
     rate_type: null,
+    meter_number: '',
 
     total_amount: 0,
     
@@ -389,6 +390,14 @@ const submit = () => {
                                                 placeholder="Selecciona tarifa"
                                                 filterable
                                             />
+                                        </n-form-item>
+                                    </n-grid-item>
+
+                                    <n-grid-item span="2">
+                                        <n-form-item label="Número de Medidor" path="meter_number">
+                                            <n-input v-model:value="form.meter_number" placeholder="Ingrese el número de serie del medidor">
+                                                <template #prefix><n-icon :component="SpeedometerOutline"/></template>
+                                            </n-input>
                                         </n-form-item>
                                     </n-grid-item>
                                     <!-- FIN NUEVOS CAMPOS -->

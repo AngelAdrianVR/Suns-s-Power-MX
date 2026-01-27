@@ -13,7 +13,7 @@ import {
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
     CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline,
-    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline
+    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline, AttachOutline
 } from '@vicons/ionicons5';
 
 // Definición de Props explícita
@@ -181,13 +181,13 @@ const serviceColumns = [
     }
 ];
 
-// --- COLUMNAS PAGOS ---
+// --- COLUMNAS PAGOS (MODIFICADO) ---
 const paymentColumns = [
-    { title: 'Fecha', key: 'payment_date', width: 90, render: (row) => formatDate(row.payment_date) },
+    { title: 'Fecha', key: 'payment_date', width: 125, render: (row) => formatDate(row.payment_date) },
     { 
         title: 'Concepto', 
         key: 'service_order_id',
-        minWidth: 120,
+        minWidth: 100,
         render(row) {
             if (row.service_order) {
                 return h('div', { class: 'flex flex-col leading-tight' }, [
@@ -201,13 +201,40 @@ const paymentColumns = [
             return h('span', { class: 'text-gray-400 italic text-xs' }, 'Saldo General');
         }
     },
-    { title: 'Método', key: 'method', width: 80, render: (row) => h('span', { class: 'text-xs' }, row.method) },
+    { title: 'Método', key: 'method', width: 120, render: (row) => h('span', { class: 'text-xs' }, row.method) },
     { 
         title: 'Monto', 
         key: 'amount', 
         align: 'right', 
-        width: 100,
+        width: 150,
         render: (row) => h('span', { class: 'font-bold text-emerald-600 text-xs' }, formatCurrency(row.amount)) 
+    },
+    // NUEVA COLUMNA: COMPROBANTE
+    {
+        title: 'Comp.',
+        key: 'receipt',
+        width: 120,
+        align: 'center',
+        render(row) {
+            // Verifica primero la propiedad que inyectamos en el controller, sino busca en media
+            const url = row.receipt_url || (row.media && row.media[0]?.original_url);
+            
+            if (url) {
+                return h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, {
+                        tag: 'a',
+                        href: url,
+                        target: '_blank', // Abre en nueva pestaña
+                        circle: true,
+                        size: 'small',
+                        quaternary: true,
+                        type: 'info'
+                    }, { icon: () => h(NIcon, null, { default: () => h(AttachOutline) }) }), // Icono de clip/adjunto
+                    default: () => 'Ver Comprobante'
+                });
+            }
+            return null; // Si no hay archivo, celda vacía
+        }
     }
 ];
 
@@ -511,7 +538,7 @@ const handleFileChange = (event) => {
 
                             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                                 <div>
-                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Historial</h3>
+                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Pago</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Gestión operativa</p>
                                 </div>
                                 <n-button 
@@ -546,7 +573,7 @@ const handleFileChange = (event) => {
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
                                     <n-icon size="18"><WalletOutline /></n-icon> 
-                                    <span class="hidden sm:inline">Historial</span>
+                                    <span class="hidden sm:inline">Pagos</span>
                                     <span class="sm:hidden text-xs">Pagos</span>
                                 </div>
                             </template>
