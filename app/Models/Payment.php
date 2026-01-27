@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Traits\BelongsToBranchTrait; // Trait Multi-sucursal
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Payment extends Model
+class Payment extends Model implements HasMedia
 {
+    use InteractsWithMedia;
     use BelongsToBranchTrait;
 
     protected $fillable = [

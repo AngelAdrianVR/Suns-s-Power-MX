@@ -90,7 +90,7 @@ const confirmDelete = (order) => {
         onPositiveClick: () => {
             router.delete(route('service-orders.destroy', order.id), {
                 onSuccess: () => notification.success({ title: 'Éxito', content: 'Orden eliminada', duration: 3000 }),
-                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar esta orden.', duration: 4000 })
+                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar una orden Completada o Facturada.', duration: 4000 })
             });
         }
     });
@@ -159,9 +159,9 @@ const createColumns = () => {
                         ]
                     }) : null,
                     
-                    row.rate_type ? h('div', { class: 'flex items-center gap-1 text-xs text-gray-500' }, [
-                         h(NIcon, { component: PricetagOutline }),
-                         h('span', `Tarifa: ${row.rate_type}`)
+                    row.rate_type ? h('div', { class: 'items-center gap-1 text-xs text-gray-500' }, [
+                         h('p', `Tarifa: ${row.rate_type}`),
+                         h('p', `N° Medidor: ${row.meter_number}`),
                     ]) : null
                 ]);
             }

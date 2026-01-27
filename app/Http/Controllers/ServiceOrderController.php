@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL; // Importante para Signed Routes
+use Illuminate\Validation\ValidationException;
 
 class ServiceOrderController extends Controller
 {
@@ -27,14 +28,12 @@ class ServiceOrderController extends Controller
         
         $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
 
-        // 1. Recibimos los nuevos filtros
         $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
         $municipality = $filters['municipality'] ?? null;
         $state = $filters['state'] ?? null;
 
-        // 2. Obtenemos listas únicas para los selectores (Filtrado por sucursal para no mezclar datos)
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
             ->where('installation_municipality', '!=', '')
@@ -73,9 +72,8 @@ class ServiceOrderController extends Controller
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
-                      // --- NUEVO: Búsqueda por número de servicio ---
                       ->orWhere('service_number', 'like', "%{$search}%")
-                      // ----------------------------------------------
+                      ->orWhere('meter_number', 'like', "%{$search}%") // Búsqueda por medidor
                       ->orWhere('installation_street', 'like', "%{$search}%")
                       ->orWhere('installation_neighborhood', 'like', "%{$search}%")
                       ->orWhere('installation_municipality', 'like', "%{$search}%") 
@@ -104,10 +102,9 @@ class ServiceOrderController extends Controller
                         'id' => $order->client->id,
                         'name' => $order->client->name,
                     ] : null,
-                    // --- NUEVOS CAMPOS EN LISTADO ---
                     'service_number' => $order->service_number,
+                    'meter_number' => $order->meter_number, // Agregado a la respuesta
                     'rate_type' => $order->rate_type,
-                    // --------------------------------
                     'installation_address' => $order->full_installation_address, 
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
@@ -158,10 +155,9 @@ class ServiceOrderController extends Controller
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
             
-            // --- NUEVOS CAMPOS ---
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            // ---------------------
+            'meter_number' => 'nullable|string|max:255', // NUEVO CAMPO
 
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -190,7 +186,6 @@ class ServiceOrderController extends Controller
         if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
         
         $user = Auth::user();
-
         $canViewFinancials = $user->hasAnyRole(['Admin']);
 
         $serviceOrder->load([
@@ -270,7 +265,7 @@ class ServiceOrderController extends Controller
         }
 
         return Inertia::render('ServiceOrders/Show', [
-            'order' => $serviceOrder, // Los campos nuevos ya vienen en el objeto completo
+            'order' => $serviceOrder, 
             'diagram_data' => $diagramData,
             'stats' => [
                 'total_tasks' => $serviceOrder->tasks->count(),
@@ -309,10 +304,9 @@ class ServiceOrderController extends Controller
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
 
-            // --- NUEVOS CAMPOS ---
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            // ---------------------
+            'meter_number' => 'nullable|string|max:255', // NUEVO CAMPO
             
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -415,32 +409,48 @@ class ServiceOrderController extends Controller
 
     public function destroy(ServiceOrder $serviceOrder)
     {
+        // Validar sucursal
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
-
-        if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
-            return back()->with('error', 'No se puede eliminar una orden completada o facturada.');
+        if ($serviceOrder->branch_id !== $branchId) {
+            return inertia('Forbidden403');
         }
 
-        DB::transaction(function () use ($serviceOrder) {
-            foreach ($serviceOrder->items as $item) {
-                if ($item->product) {
-                    InventoryService::addStock(
-                        product: $item->product,
-                        branchId: $serviceOrder->branch_id,
-                        quantity: $item->quantity,
-                        reason: 'Cancelación Orden',
-                        reference: $serviceOrder,
-                        notes: "Eliminación de Orden de Servicio #{$serviceOrder->id}"
-                    );
+        // Validar si el estatus permite la eliminación
+        if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
+            throw ValidationException::withMessages([
+                'delete' => 'No se puede eliminar una orden que ya ha sido completada o facturada.'
+            ]);
+        }
+
+        try {
+            DB::transaction(function () use ($serviceOrder) {
+                // Restaurar stock de los productos incluidos en la orden
+                foreach ($serviceOrder->items as $item) {
+                    if ($item->product) {
+                        InventoryService::addStock(
+                            product: $item->product,
+                            branchId: $serviceOrder->branch_id,
+                            quantity: $item->quantity,
+                            reason: 'Cancelación Orden',
+                            reference: $serviceOrder,
+                            notes: "Eliminación de Orden de Servicio #{$serviceOrder->id}"
+                        );
+                    }
                 }
-            }
 
-            $serviceOrder->payments()->delete(); 
-            $serviceOrder->items()->delete();    
-            $serviceOrder->delete(); 
-        });
+                // Limpiar relaciones y eliminar
+                $serviceOrder->payments()->delete(); 
+                $serviceOrder->items()->delete();    
+                $serviceOrder->delete(); 
+            });
 
-        return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
+            return redirect()->route('service-orders.index')
+                ->with('success', 'Orden eliminada y stock restaurado correctamente.');
+
+        } catch (\Exception $e) {
+            throw ValidationException::withMessages([
+                'delete' => 'Ocurrió un error inesperado al intentar eliminar la orden.'
+            ]);
+        }
     }
 }

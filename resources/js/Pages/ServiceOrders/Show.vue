@@ -260,7 +260,7 @@ const isImage = (file) => {
 
                     <!-- BOTÓN ELIMINAR -->
                     <n-button 
-                        v-if="hasPermission('service_orders.delete')" 
+                        v-if="hasPermission('service_orders.delete') && order.status !== 'Completado' && order.status !== 'Facturado'" 
                         quaternary 
                         type="error" 
                         @click="confirmDelete"
@@ -454,9 +454,9 @@ const isImage = (file) => {
                                     </n-descriptions-item>
                                     
                                     <!-- --- NUEVOS CAMPOS --- -->
-                                    <n-descriptions-item label="Número de Servicio">
+                                    <n-descriptions-item label="Número de Servicio / N° Medidor">
                                         <div v-if="order.service_number" class="flex items-center gap-2 font-mono text-indigo-700 bg-indigo-50 px-2 py-1 rounded w-fit">
-                                            <n-icon><FlashOutline /></n-icon> {{ order.service_number }}
+                                            <n-icon><FlashOutline /></n-icon> {{ order.service_number }} / {{ order.meter_number }}
                                         </div>
                                         <span v-else class="text-gray-400 italic">No especificado</span>
                                     </n-descriptions-item>
