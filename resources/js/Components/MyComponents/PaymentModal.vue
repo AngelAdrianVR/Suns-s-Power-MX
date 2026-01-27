@@ -5,11 +5,10 @@ import axios from 'axios';
 import { 
     NModal, NCard, NForm, NFormItem, NSelect, NInputNumber, 
     NDatePicker, NInput, NButton, NSpin, NAlert, NGrid, NGridItem,
-    NUpload, NUploadDragger, NIcon, createDiscreteApi
+    NUpload, NUploadDragger, NIcon, createDiscreteApi, NText
 } from 'naive-ui';
 import { 
-    CloudUploadOutline, CashOutline, ReceiptOutline, 
-    AlertCircleOutline, WalletOutline, CloseOutline 
+    CloudUploadOutline, ReceiptOutline, WalletOutline, CloseOutline 
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -30,7 +29,7 @@ const loadingOrders = ref(false);
 const serviceOrders = ref([]);
 const fetchError = ref(null);
 
-// Formulario Inertia con el nuevo campo para el comprobante
+// Formulario Inertia
 const form = useForm({
     client_id: null,
     service_order_id: null,
@@ -39,7 +38,7 @@ const form = useForm({
     method: 'Transferencia',
     reference: '',
     notes: '',
-    proof: null // Archivo obligatorio
+    proof: null
 });
 
 // Opciones de método de pago
@@ -106,7 +105,6 @@ const handleFileChange = (options) => {
 };
 
 const submit = () => {
-    // Validaciones manuales antes del envío
     if (!form.service_order_id) {
         notification.warning({ title: 'Atención', content: 'Debes seleccionar una orden de servicio.' });
         return;
@@ -116,7 +114,7 @@ const submit = () => {
         return;
     }
     if (!form.proof) {
-        notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante para registrar el abono.' });
+        notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.' });
         return;
     }
     if (selectedOrder.value && form.amount > selectedOrder.value.pending_balance + 1) {
@@ -130,11 +128,11 @@ const submit = () => {
     })).post(route('payments.store'), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Éxito', content: 'Abono y comprobante registrados correctamente.' });
+            notification.success({ title: 'Éxito', content: 'Abono registrado correctamente.' });
             closeModal();
         },
         onError: () => {
-            notification.error({ title: 'Error', content: 'Hubo un problema al procesar el pago. Verifica los campos.' });
+            notification.error({ title: 'Error', content: 'Hubo un problema al procesar el pago.' });
         }
     });
 };
@@ -148,10 +146,10 @@ const closeModal = () => {
 <template>
     <NModal :show="show" @update:show="(val) => emit('update:show', val)">
         <NCard 
-            style="width: 650px; border-radius: 1rem;" 
+            style="width: 650px; border-radius: 0.75rem;" 
             :title="`Registrar Abono`"
             :bordered="false"
-            size="huge"
+            size="small"
             role="dialog"
             aria-modal="true"
         >
@@ -161,61 +159,63 @@ const closeModal = () => {
                 </NButton>
             </template>
 
-            <!-- Encabezado con información del cliente -->
-            <div v-if="client" class="mb-6 p-4 bg-indigo-50 rounded-2xl flex items-center gap-4 border border-indigo-100">
-                <div class="bg-white p-3 rounded-xl shadow-sm">
-                    <NIcon size="28" class="text-indigo-500"><WalletOutline /></NIcon>
+            <!-- Encabezado Compacto -->
+            <div v-if="client" class="mb-3 p-2 bg-indigo-50 rounded-lg flex items-center gap-3 border border-indigo-100">
+                <div class="bg-white p-1.5 rounded-md shadow-sm text-indigo-500 flex items-center justify-center">
+                    <NIcon size="18"><WalletOutline /></NIcon>
                 </div>
                 <div>
-                    <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Cliente</p>
-                    <p class="text-xl font-bold text-indigo-900 leading-none">{{ client.name }}</p>
+                    <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest leading-none">Cliente</p>
+                    <p class="text-base font-bold text-indigo-900 leading-tight">{{ client.name }}</p>
                 </div>
             </div>
 
-            <div v-if="loadingOrders" class="py-12 flex justify-center">
-                <NSpin size="large" description="Cargando estados de cuenta..." />
+            <div v-if="loadingOrders" class="py-8 flex justify-center">
+                <NSpin size="medium" />
             </div>
 
-            <div v-else-if="fetchError" class="py-4">
+            <div v-else-if="fetchError" class="py-2">
                 <NAlert type="error" :title="fetchError" />
             </div>
 
-            <div v-else-if="serviceOrders.length === 0" class="py-6">
+            <div v-else-if="serviceOrders.length === 0" class="py-4">
                 <NAlert type="success" title="¡Sin deudas pendientes!">
                     Este cliente no tiene órdenes de servicio pendientes de pago.
                 </NAlert>
-                <div class="mt-6 flex justify-end">
-                    <NButton @click="closeModal" round>Cerrar Ventana</NButton>
+                <div class="mt-4 flex justify-end">
+                    <NButton @click="closeModal" size="medium">Cerrar Ventana</NButton>
                 </div>
             </div>
 
+            <!-- Formulario con espaciado vertical reducido (y-gap="10") -->
             <NForm v-else :model="form" @submit.prevent="submit">
-                <NGrid :cols="2" x-gap="12">
+                <NGrid :cols="2" x-gap="12" y-gap="8">
                     <NGridItem :span="2">
-                        <NFormItem label="Seleccionar Orden de Servicio" required>
+                        <NFormItem label="Seleccionar Orden de Servicio" path="service_order_id" required>
                             <NSelect 
                                 v-model:value="form.service_order_id" 
                                 :options="orderOptions" 
                                 placeholder="Elija la orden a abonar"
                                 filterable
+                                size="medium"
                             />
                         </NFormItem>
                     </NGridItem>
 
-                    <!-- Resumen visual de la deuda -->
+                    <!-- Resumen visual compacto -->
                     <NGridItem :span="2" v-if="selectedOrder">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4 grid grid-cols-3 gap-4">
+                        <div class="bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 mb-1 grid grid-cols-3 gap-2">
                             <div class="text-center border-r border-slate-200">
-                                <p class="text-[10px] text-slate-400 uppercase font-bold">Total</p>
-                                <p class="font-bold text-slate-700">${{ selectedOrder.total_amount.toLocaleString('es-MX') }}</p>
+                                <p class="text-[9px] text-slate-400 uppercase font-bold">Total</p>
+                                <p class="font-bold text-slate-700 text-sm">${{ selectedOrder.total_amount.toLocaleString('es-MX') }}</p>
                             </div>
                             <div class="text-center border-r border-slate-200">
-                                <p class="text-[10px] text-emerald-500 uppercase font-bold">Abonado</p>
-                                <p class="font-bold text-emerald-600">${{ selectedOrder.paid_amount.toLocaleString('es-MX') }}</p>
+                                <p class="text-[9px] text-emerald-500 uppercase font-bold">Abonado</p>
+                                <p class="font-bold text-emerald-600 text-sm">${{ selectedOrder.paid_amount.toLocaleString('es-MX') }}</p>
                             </div>
                             <div class="text-center">
-                                <p class="text-[10px] text-red-400 uppercase font-bold">Pendiente</p>
-                                <p class="font-black text-red-600">${{ selectedOrder.pending_balance.toLocaleString('es-MX') }}</p>
+                                <p class="text-[9px] text-red-400 uppercase font-bold">Pendiente</p>
+                                <p class="font-black text-red-600 text-sm">${{ selectedOrder.pending_balance.toLocaleString('es-MX') }}</p>
                             </div>
                         </div>
                     </NGridItem>
@@ -227,7 +227,7 @@ const closeModal = () => {
                                 :min="0.01" 
                                 :precision="2"
                                 class="w-full"
-                                size="large"
+                                size="medium"
                                 placeholder="0.00"
                             >
                                 <template #prefix>$</template>
@@ -237,69 +237,73 @@ const closeModal = () => {
 
                     <NGridItem>
                         <NFormItem label="Fecha de Pago" required>
-                            <NDatePicker v-model:value="form.payment_date" type="date" class="w-full" size="large" />
+                            <NDatePicker v-model:value="form.payment_date" type="date" class="w-full" size="medium" />
                         </NFormItem>
                     </NGridItem>
 
                     <NGridItem>
                         <NFormItem label="Método de Pago">
-                            <NSelect v-model:value="form.method" :options="paymentMethods" size="large" />
+                            <NSelect v-model:value="form.method" :options="paymentMethods" size="medium" />
                         </NFormItem>
                     </NGridItem>
 
                     <NGridItem>
                         <NFormItem label="Referencia / Folio">
-                            <NInput v-model:value="form.reference" placeholder="Ej. Folio 5521" size="large" />
+                            <NInput v-model:value="form.reference" placeholder="Ej. Folio 5521" size="medium" />
                         </NFormItem>
                     </NGridItem>
 
-                    <!-- Zona de Carga de Comprobante Obligatoria -->
+                    <!-- Zona de Carga Compacta -->
                     <NGridItem :span="2">
-                        <NFormItem label="Comprobante de Pago (Obligatorio)" required>
+                        <NFormItem label="Comprobante (Obligatorio)" required>
                             <NUpload
                                 :max="1"
                                 @change="handleFileChange"
                                 :default-upload="false"
                                 accept=".pdf,.jpg,.jpeg,.png"
+                                class="w-full"
                             >
-                                <NUploadDragger class="border-2 border-dashed hover:border-indigo-400 transition-colors bg-gray-50/50">
-                                    <div class="mb-3">
-                                        <NIcon size="40" :depth="3" class="text-indigo-400">
+                                <NUploadDragger class="compact-dragger bg-gray-50/50 hover:bg-indigo-50/30 transition-colors border border-dashed border-gray-300">
+                                    <div class="flex items-center justify-center gap-3 py-1">
+                                        <NIcon size="24" :depth="3" class="text-indigo-400">
                                             <CloudUploadOutline />
                                         </NIcon>
+                                        <div class="text-left">
+                                            <p class="text-xs font-bold text-gray-700">Clic o arrastra archivo aquí</p>
+                                            <p class="text-[9px] text-gray-400 uppercase">PDF, JPG o PNG</p>
+                                        </div>
                                     </div>
-                                    <p class="text-sm font-bold text-gray-700">Arrastre aquí el comprobante</p>
-                                    <p class="text-[10px] text-gray-400 mt-1 uppercase">PDF, JPG o PNG (Máx. 10MB)</p>
                                 </NUploadDragger>
                             </NUpload>
                         </NFormItem>
                     </NGridItem>
 
                     <NGridItem :span="2">
-                        <NFormItem label="Notas Adicionales">
+                        <NFormItem label="Notas" :show-label="false">
                             <NInput 
                                 v-model:value="form.notes" 
                                 type="textarea" 
-                                placeholder="Notas u observaciones..." 
-                                :autosize="{ minRows: 2 }"
+                                placeholder="Notas adicionales (opcional)..." 
+                                :autosize="{ minRows: 1, maxRows: 3 }"
+                                size="medium"
                             />
                         </NFormItem>
                     </NGridItem>
                 </NGrid>
 
-                <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-100">
-                    <NButton @click="closeModal" :disabled="form.processing" round>Cancelar</NButton>
+                <div class="flex justify-end gap-3 mt-4 pt-3 border-t border-gray-100">
+                    <NButton @click="closeModal" :disabled="form.processing" size="medium" round>Cancelar</NButton>
                     <NButton 
                         type="primary" 
                         @click="submit" 
                         :loading="form.processing"
                         :disabled="!form.service_order_id || form.amount <= 0"
-                        size="large"
+                        size="medium"
                         round
-                        class="px-8 shadow-lg shadow-indigo-100"
+                        class="px-6 shadow-md shadow-indigo-100"
                     >
                         <template #icon><NIcon><ReceiptOutline /></NIcon></template>
-                        Registrar Abono
+                        Registrar
                     </NButton>
                 </div>
             </NForm>
@@ -308,8 +312,20 @@ const closeModal = () => {
 </template>
 
 <style scoped>
-:deep(.n-card-header__main) {
-    font-weight: 800;
-    color: #1f2937;
+:deep(.n-card-header) {
+    padding-bottom: 10px;
+}
+:deep(.n-card__content) {
+    padding-top: 0;
+}
+:deep(.n-form-item) {
+    margin-bottom: 0; /* Controlamos el espacio con NGrid y-gap */
+}
+:deep(.n-form-item-label) {
+    font-size: 12px; /* Etiquetas más pequeñas */
+    padding-bottom: 2px !important;
+}
+.compact-dragger {
+    padding: 8px !important; /* Forzar padding pequeño en el dragger */
 }
 </style>
