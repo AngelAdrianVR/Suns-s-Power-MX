@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'; // Agregamos computed
+import { ref, computed, watch } from 'vue'; // Agregamos watch
 import { useForm, Link, router } from '@inertiajs/vue3'; // Agregamos router
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -9,7 +9,8 @@ import {
 import { 
     SaveOutline, ArrowBackOutline, PersonOutline, ConstructOutline, 
     LocationOutline, CashOutline, DocumentTextOutline, BriefcaseOutline,
-    PersonAddOutline, RefreshOutline, FlashOutline // Nuevo icono para electricidad/servicio
+    PersonAddOutline, RefreshOutline, FlashOutline, SpeedometerOutline,
+    HardwareChipOutline // Nuevo icono para tipo de sistema
 } from '@vicons/ionicons5';
 import axios from 'axios';
 
@@ -24,6 +25,10 @@ const formRef = ref(null);
 const loadingClientData = ref(false);
 const loadingClientsList = ref(false); // Estado para el botón de refrescar
 
+// Variables para manejar lógica de "Otro" tipo de sistema
+const selectedSystemOption = ref(null);
+const customSystemTypeText = ref('');
+
 // Formulario
 const form = useForm({
     client_id: null,
@@ -35,6 +40,7 @@ const form = useForm({
     // Nuevos campos
     service_number: '',
     rate_type: null,
+    system_type: null, // Campo para guardar en BD
     meter_number: '',
 
     total_amount: 0,
@@ -73,6 +79,16 @@ const rateTypeOptions = [
     { label: 'GDBT', value: 'GDBT' },
     { label: 'GDMTO', value: 'GDMTO' },
     { label: 'N/A', value: 'N/A' },
+];
+
+// Opciones de Tipo de Sistema
+const systemTypeOptions = [
+    { label: 'Interconectado', value: 'Interconectado' },
+    { label: 'Autónomo', value: 'Autónomo' },
+    { label: 'Multimodo', value: 'Multimodo' },
+    { label: 'Respaldo', value: 'Respaldo' },
+    { label: 'Bombeo', value: 'Bombeo' },
+    { label: 'Otro', value: 'Otro' },
 ];
 
 // Lista de Estados de México
@@ -136,10 +152,25 @@ const rules = {
 };
 
 // --- CAMBIO IMPORTANTE: Options ahora son Computed ---
-// Para que se actualicen cuando refresquemos las props con router.reload
 const clientOptions = computed(() => props.clients.map(c => ({ label: c.name, value: c.id })));
 const techOptions = computed(() => props.technicians.map(t => ({ label: t.name, value: t.id })));
 const salesOptions = computed(() => props.sales_reps.map(s => ({ label: s.name, value: s.id })));
+
+// --- Watchers para lógica de "Otro" ---
+watch(selectedSystemOption, (newVal) => {
+    if (newVal !== 'Otro') {
+        form.system_type = newVal;
+    } else {
+        // Si selecciona otro, seteamos el valor actual del input de texto
+        form.system_type = customSystemTypeText.value;
+    }
+});
+
+watch(customSystemTypeText, (newVal) => {
+    if (selectedSystemOption.value === 'Otro') {
+        form.system_type = newVal;
+    }
+});
 
 // --- FUNCIONES ---
 
@@ -392,6 +423,32 @@ const submit = () => {
                                             />
                                         </n-form-item>
                                     </n-grid-item>
+                                    
+                                    <!-- INICIO MODIFICACIÓN: TIPO DE SISTEMA -->
+                                    <n-grid-item span="2">
+                                        <n-form-item label="Tipo de Sistema" path="system_type">
+                                            <div class="flex gap-2 w-full">
+                                                <!-- Select Principal -->
+                                                <n-select 
+                                                    v-model:value="selectedSystemOption" 
+                                                    :options="systemTypeOptions" 
+                                                    placeholder="Selecciona tipo de sistema"
+                                                    class="w-full"
+                                                >
+                                                    <template #prefix><n-icon :component="HardwareChipOutline"/></template>
+                                                </n-select>
+                                                
+                                                <!-- Input condicional para 'Otro' -->
+                                                <n-input 
+                                                    v-if="selectedSystemOption === 'Otro'"
+                                                    v-model:value="customSystemTypeText" 
+                                                    placeholder="Especifique tipo..."
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                        </n-form-item>
+                                    </n-grid-item>
+                                    <!-- FIN MODIFICACIÓN -->
 
                                     <n-grid-item span="2">
                                         <n-form-item label="Número de Medidor" path="meter_number">
