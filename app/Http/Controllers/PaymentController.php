@@ -63,7 +63,7 @@ class PaymentController extends Controller
             ],
             'amount' => 'required|numeric|min:1',
             'payment_date' => 'required|date',
-            'method' => 'required|string|in:Efectivo,Transferencia,Tarjeta,Cheque,Otro',
+            'method' => 'required|string|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:500',
             // NUEVO: Validación de archivo obligatorio

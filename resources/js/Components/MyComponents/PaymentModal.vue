@@ -47,6 +47,7 @@ const paymentMethods = [
     { label: 'Efectivo', value: 'Efectivo' },
     { label: 'Tarjeta de Crédito/Débito', value: 'Tarjeta' },
     { label: 'Cheque', value: 'Cheque' },
+    { label: 'Depósito', value: 'Depósito' },
     { label: 'Otro', value: 'Otro' }
 ];
 
@@ -106,19 +107,19 @@ const handleFileChange = (options) => {
 
 const submit = () => {
     if (!form.service_order_id) {
-        notification.warning({ title: 'Atención', content: 'Debes seleccionar una orden de servicio.' });
+        notification.warning({ title: 'Atención', content: 'Debes seleccionar una orden de servicio.', duration: 3000 });
         return;
     }
     if (form.amount <= 0) {
-        notification.warning({ title: 'Atención', content: 'El monto debe ser mayor a cero.' });
+        notification.warning({ title: 'Atención', content: 'El monto debe ser mayor a cero.', duration: 3000 });
         return;
     }
     if (!form.proof) {
-        notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.' });
+        notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.', duration: 3000 });
         return;
     }
     if (selectedOrder.value && form.amount > selectedOrder.value.pending_balance + 1) {
-        notification.error({ title: 'Error de Monto', content: 'El monto no puede ser mayor al saldo pendiente.' });
+        notification.error({ title: 'Error de Monto', content: 'El monto no puede ser mayor al saldo pendiente.', duration: 3000 });
         return;
     }
 
@@ -128,11 +129,11 @@ const submit = () => {
     })).post(route('payments.store'), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Éxito', content: 'Abono registrado correctamente.' });
+            notification.success({ title: 'Éxito', content: 'Abono registrado correctamente.', duration: 3000 });
             closeModal();
         },
         onError: () => {
-            notification.error({ title: 'Error', content: 'Hubo un problema al procesar el pago.' });
+            notification.error({ title: 'Error', content: 'Hubo un problema al procesar el pago.', duration: 3000 });
         }
     });
 };
