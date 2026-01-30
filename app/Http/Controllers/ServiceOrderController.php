@@ -26,9 +26,7 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $branchId = session('current_branch_id') ?? $user->branch_id;
         
-        $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
-
-        // Agregamos system_type a los filtros
+        // Filtros
         $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range', 'system_type']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
@@ -36,6 +34,7 @@ class ServiceOrderController extends Controller
         $state = $filters['state'] ?? null;
         $systemType = $filters['system_type'] ?? null;
 
+        // Catálogos para los filtros
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
             ->where('installation_municipality', '!=', '')
@@ -50,6 +49,8 @@ class ServiceOrderController extends Controller
             ->orderBy('installation_state')
             ->pluck('installation_state');
 
+        // Consulta limpia: Traemos todo lo de la sucursal
+        // Las validaciones de acceso se manejan vía Middleware en las rutas
         $query = ServiceOrder::query()
             ->with([
                 'client:id,name,branch_id',
@@ -59,29 +60,18 @@ class ServiceOrderController extends Controller
             ->withCount('tasks')
             ->where('branch_id', $branchId);
 
-        if (!$hasFullAccess) {
-            $query->where(function ($q) use ($user) {
-                $q->where('technician_id', $user->id)
-                  ->orWhereHas('tasks', function ($tq) use ($user) {
-                      $tq->whereHas('assignees', function ($aq) use ($user) {
-                          $aq->where('users.id', $user->id);
-                      });
-                  });
-            });
-        }
-
         $orders = $query
             ->when($search, function (Builder $query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
-                      ->orWhere('service_number', 'like', "%{$search}%")
-                      ->orWhere('meter_number', 'like', "%{$search}%") // Búsqueda por medidor
-                      ->orWhere('installation_street', 'like', "%{$search}%")
-                      ->orWhere('installation_neighborhood', 'like', "%{$search}%")
-                      ->orWhere('installation_municipality', 'like', "%{$search}%") 
-                      ->orWhereHas('client', function ($cq) use ($search) {
-                          $cq->where('name', 'like', "%{$search}%");
-                      });
+                    ->orWhere('service_number', 'like', "%{$search}%")
+                    ->orWhere('meter_number', 'like', "%{$search}%")
+                    ->orWhere('installation_street', 'like', "%{$search}%")
+                    ->orWhere('installation_neighborhood', 'like', "%{$search}%")
+                    ->orWhere('installation_municipality', 'like', "%{$search}%") 
+                    ->orWhereHas('client', function ($cq) use ($search) {
+                        $cq->where('name', 'like', "%{$search}%");
+                    });
                 });
             })
             ->when($status, function ($query, $status) {
@@ -99,7 +89,7 @@ class ServiceOrderController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
-            ->through(function ($order) use ($hasFullAccess) {
+            ->through(function ($order) {
                 return [
                     'id' => $order->id,
                     'status' => $order->status,
@@ -110,7 +100,7 @@ class ServiceOrderController extends Controller
                     'service_number' => $order->service_number,
                     'meter_number' => $order->meter_number,
                     'rate_type' => $order->rate_type,
-                    'system_type' => $order->system_type, // Agregado a la respuesta
+                    'system_type' => $order->system_type,
                     'installation_address' => $order->full_installation_address, 
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
@@ -119,11 +109,7 @@ class ServiceOrderController extends Controller
                         'name' => $order->technician->name,
                         'photo' => $order->technician->profile_photo_url, 
                     ] : null,
-                    'sales_rep' => $order->salesRep ? [
-                        'name' => $order->salesRep->name,
-                        'photo' => $order->salesRep->profile_photo_url,
-                    ] : null,
-                    'total_amount' => $hasFullAccess ? $order->total_amount : null,
+                    'total_amount' => $order->total_amount, // Mandamos el dato, la vista decide si mostrarlo
                     'progress' => $order->progress ?? 0, 
                     'created_at_human' => $order->created_at->diffForHumans(),
                 ];
@@ -135,7 +121,7 @@ class ServiceOrderController extends Controller
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
             'municipalities' => $availableMunicipalities,
             'states' => $availableStates,
-            'can_view_financials' => $hasFullAccess
+            'can_view_financials' => $user->can('sales.view_sales_amount')
         ]);
     }
 
