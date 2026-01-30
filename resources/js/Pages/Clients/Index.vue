@@ -339,7 +339,7 @@ const rowProps = (row) => ({
                             </div>
                         </div>
                         
-                        <div v-if="client.has_debt" class="mt-2">
+                        <div v-if="client.has_debt && hasPermission('collection.create')" class="mt-2">
                              <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
                                 <template #icon><n-icon :component="CashOutline" /></template>
                                 Registrar Abono

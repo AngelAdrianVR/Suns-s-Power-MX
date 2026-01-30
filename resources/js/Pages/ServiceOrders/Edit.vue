@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue'; // Agregamos watch
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
@@ -9,7 +9,8 @@ import {
 import { 
     SaveOutline, ArrowBackOutline, PersonOutline, ConstructOutline, 
     LocationOutline, CalendarOutline, CashOutline, DocumentTextOutline,
-    BriefcaseOutline, PersonAddOutline, RefreshOutline, FlashOutline // Agregado icono Flash
+    BriefcaseOutline, PersonAddOutline, RefreshOutline, FlashOutline, 
+    SpeedometerOutline, HardwareChipOutline // Agregamos iconos faltantes
 } from '@vicons/ionicons5';
 import axios from 'axios';
 
@@ -45,7 +46,35 @@ const formatInitialDate = (dateString) => {
     return dateString;
 };
 
-// Inicializamos el formulario con los campos atomizados
+// --- LÓGICA TIPO DE SISTEMA (Igual que Create, pero con inicialización) ---
+const systemTypeOptions = [
+    { label: 'Interconectado', value: 'Interconectado' },
+    { label: 'Autónomo', value: 'Autónomo' },
+    { label: 'Multimodo', value: 'Multimodo' },
+    { label: 'Respaldo', value: 'Respaldo' },
+    { label: 'Bombeo', value: 'Bombeo' },
+    { label: 'Otro', value: 'Otro' },
+];
+
+const standardSystemTypes = systemTypeOptions.map(o => o.value).filter(v => v !== 'Otro');
+
+// Determinamos valores iniciales para la lógica de "Otro"
+let initialSelectedSystemOption = null;
+let initialCustomSystemText = '';
+
+if (props.order.system_type) {
+    if (standardSystemTypes.includes(props.order.system_type)) {
+        initialSelectedSystemOption = props.order.system_type;
+    } else {
+        initialSelectedSystemOption = 'Otro';
+        initialCustomSystemText = props.order.system_type;
+    }
+}
+
+const selectedSystemOption = ref(initialSelectedSystemOption);
+const customSystemTypeText = ref(initialCustomSystemText);
+
+// Inicializamos el formulario
 const form = useForm({
     client_id: props.order.client_id,
     technician_id: props.order.technician_id,
@@ -56,12 +85,13 @@ const form = useForm({
     // --- NUEVOS CAMPOS ---
     service_number: props.order.service_number,
     rate_type: props.order.rate_type,
+    system_type: props.order.system_type, // Campo agregado
     meter_number: props.order.meter_number,
     // ---------------------
 
     total_amount: Number(props.order.total_amount),
     
-    // Dirección Atomizada (Cargada desde la orden existente)
+    // Dirección Atomizada
     installation_street: props.order.installation_street,
     installation_exterior_number: props.order.installation_exterior_number,
     installation_interior_number: props.order.installation_interior_number,
@@ -74,6 +104,22 @@ const form = useForm({
     notes: props.order.notes,
 });
 
+// Watchers para sincronizar el select y el input "Otro" con el form
+watch(selectedSystemOption, (newVal) => {
+    if (newVal !== 'Otro') {
+        form.system_type = newVal;
+    } else {
+        form.system_type = customSystemTypeText.value;
+    }
+});
+
+watch(customSystemTypeText, (newVal) => {
+    if (selectedSystemOption.value === 'Otro') {
+        form.system_type = newVal;
+    }
+});
+// -----------------------------------------------------------------------
+
 const statusOptions = [
     { label: 'Cotización', value: 'Cotización' },
     { label: 'Aceptado', value: 'Aceptado' },
@@ -83,7 +129,7 @@ const statusOptions = [
     { label: 'Cancelado', value: 'Cancelado' }, 
 ];
 
-// Opciones de Tipo de Tarifa (Igual que en Create.vue)
+// Opciones de Tipo de Tarifa
 const rateTypeOptions = [
     { label: '01', value: '01' },
     { label: '1A', value: '1A' },
@@ -138,7 +184,6 @@ const rules = {
     client_id: { required: true, type: 'number', message: 'Selecciona un cliente', trigger: ['blur', 'change'] },
     sales_rep_id: { required: true, type: 'number', message: 'Selecciona un vendedor', trigger: ['blur', 'change'] },
     total_amount: { required: true, type: 'number', min: 0, message: 'Requerido', trigger: 'blur' },
-    // Reglas para dirección
     installation_street: { required: true, message: 'La calle es obligatoria', trigger: 'blur' },
     installation_neighborhood: { required: true, message: 'La colonia es obligatoria', trigger: 'blur' }
 };
@@ -147,13 +192,10 @@ const clientOptions = (props.clients || []).map(c => ({ label: c.name, value: c.
 const techOptions = (props.technicians || []).map(t => ({ label: t.name, value: t.id }));
 const salesOptions = (props.sales_reps || []).map(s => ({ label: s.name, value: s.id }));
 
-// Función para traer datos del cliente (útil si cambiaron de cliente o quieren resetear la dirección)
+// Función para traer datos del cliente
 const handleClientChange = async (clientId) => {
     if (!clientId) return;
     
-    // Si es solo refrescar (mismo ID), avisamos
-    const isRefresh = clientId === props.order.client_id;
-
     loadingClientData.value = true;
     try {
         const response = await axios.get(route('api.clients.details', clientId));
@@ -266,19 +308,16 @@ const submit = () => {
                                                     @update:value="handleClientChange"
                                                     class="flex-grow"
                                                 />
-                                                <!-- Botón Nuevo Cliente -->
                                                 <n-tooltip trigger="hover">
                                                     <template #trigger>
-                                                        <!-- Usamos <a> normal para abrir en nueva pestaña -->
                                                         <a :href="route('clients.create')" target="_blank">
                                                             <n-button secondary type="primary">
                                                                 <template #icon><n-icon><PersonAddOutline /></n-icon></template>
                                                             </n-button>
                                                         </a>
                                                     </template>
-                                                    Nuevo Cliente (Nueva Pestaña)
+                                                    Nuevo Cliente
                                                 </n-tooltip>
-                                                <!-- Botón Refrescar Dirección -->
                                                 <n-tooltip trigger="hover">
                                                     <template #trigger>
                                                         <n-button secondary @click="handleClientChange(form.client_id)" :loading="loadingClientData">
@@ -313,7 +352,6 @@ const submit = () => {
                                     </span>
                                 </template>
 
-                                <!-- Loader superpuesto -->
                                 <div v-if="loadingClientData" class="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-2xl">
                                     <n-spin size="medium" description="Actualizando dirección..." />
                                 </div>
@@ -365,15 +403,39 @@ const submit = () => {
                                                 filterable
                                             />
                                         </n-form-item>
-
                                     </n-grid-item>
-                                        <n-grid-item span="2">
-                                            <n-form-item label="Número de Medidor" path="meter_number">
-                                                <n-input v-model:value="form.meter_number" placeholder="Ingrese el número de serie del medidor">
-                                                    <template #prefix><n-icon :component="SpeedometerOutline"/></template>
-                                                </n-input>
-                                            </n-form-item>
-                                        </n-grid-item>
+
+                                    <!-- INICIO MODIFICACIÓN: TIPO DE SISTEMA -->
+                                    <n-grid-item span="2">
+                                        <n-form-item label="Tipo de Sistema" path="system_type">
+                                            <div class="flex gap-2 w-full">
+                                                <n-select 
+                                                    v-model:value="selectedSystemOption" 
+                                                    :options="systemTypeOptions" 
+                                                    placeholder="Selecciona tipo de sistema"
+                                                    class="w-full"
+                                                >
+                                                    <template #prefix><n-icon :component="HardwareChipOutline"/></template>
+                                                </n-select>
+                                                
+                                                <n-input 
+                                                    v-if="selectedSystemOption === 'Otro'"
+                                                    v-model:value="customSystemTypeText" 
+                                                    placeholder="Especifique tipo..."
+                                                    class="w-full"
+                                                />
+                                            </div>
+                                        </n-form-item>
+                                    </n-grid-item>
+                                    <!-- FIN MODIFICACIÓN -->
+
+                                    <n-grid-item span="2">
+                                        <n-form-item label="Número de Medidor" path="meter_number">
+                                            <n-input v-model:value="form.meter_number" placeholder="Ingrese el número de serie del medidor">
+                                                <template #prefix><n-icon :component="SpeedometerOutline"/></template>
+                                            </n-input>
+                                        </n-form-item>
+                                    </n-grid-item>
                                     <!-- FIN NUEVOS CAMPOS -->
 
                                 </n-grid>
@@ -383,7 +445,6 @@ const submit = () => {
                                         <n-icon :component="LocationOutline"/> Dirección del Sitio
                                     </label>
                                     
-                                    <!-- Campos de Dirección Atomizada -->
                                     <n-grid x-gap="12" y-gap="2" cols="1 s:2 m:4" responsive="screen">
                                         <!-- Calle -->
                                         <n-grid-item span="1 m:2">

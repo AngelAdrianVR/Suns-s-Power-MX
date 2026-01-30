@@ -100,4 +100,24 @@ class PaymentController extends Controller
             return redirect()->back()->with('success', 'Abono registrado y comprobante guardado correctamente.');
         });
     }
+
+     /**
+     * Elimina un abono existente.
+     */
+    public function destroy(Payment $payment)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        if ($payment->branch_id !== $branchId) {
+            abort(403, 'No tienes permiso para eliminar este pago.');
+        }
+
+        DB::transaction(function () use ($payment) {
+            // Al eliminar el modelo, Media Library se encarga de borrar los archivos adjuntos automáticamente
+            // si está configurado correctamente, de lo contrario se eliminan en cascada.
+            $payment->delete();
+        });
+
+        return redirect()->back()->with('success', 'Abono eliminado correctamente. El saldo de la orden ha sido actualizado.');
+    }
 }
