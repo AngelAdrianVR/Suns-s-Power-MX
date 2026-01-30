@@ -15,7 +15,7 @@ import {
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
     AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline,
-    ChevronDownOutline, FlashOutline, PricetagOutline // Nuevos iconos importados
+    ChevronDownOutline, FlashOutline, PricetagOutline, HardwareChipOutline // Nuevo icono agregado
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -467,7 +467,15 @@ const isImage = (file) => {
                                         </div>
                                         <span v-else class="text-gray-400 italic">N/A</span>
                                     </n-descriptions-item>
-                                    <!-- --------------------- -->
+                                    
+                                    <!-- NUEVO CAMPO AGREGADO -->
+                                    <n-descriptions-item label="Tipo de Sistema">
+                                         <div v-if="order.system_type" class="flex items-center gap-2">
+                                            <n-icon class="text-gray-500"><HardwareChipOutline /></n-icon> {{ order.system_type }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">N/A</span>
+                                    </n-descriptions-item>
+                                    <!-- -------------------- -->
 
                                     <n-descriptions-item label="Notas">
                                         {{ order.notes || 'Sin notas registradas.' }}

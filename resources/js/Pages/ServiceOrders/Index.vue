@@ -10,7 +10,8 @@ import {
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     ConstructOutline, CalendarOutline, PersonOutline, LocationOutline, 
-    CheckmarkCircleOutline, ChevronDownOutline, FlashOutline, PricetagOutline 
+    CheckmarkCircleOutline, ChevronDownOutline, FlashOutline, PricetagOutline,
+    HardwareChipOutline // Icono para el tipo de sistema
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -33,6 +34,7 @@ const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || null);
 const municipalityFilter = ref(props.filters.municipality || null); // Nuevo filtro Municipio
 const stateFilter = ref(props.filters.state || null); // Nuevo filtro Estado
+const systemTypeFilter = ref(props.filters.system_type || null); // Nuevo filtro Tipo de Sistema
 
 let searchTimeout;
 
@@ -40,8 +42,9 @@ const applyFilters = () => {
     router.get(route('service-orders.index'), { 
         search: search.value,
         status: statusFilter.value,
-        municipality: municipalityFilter.value, // Enviamos filtro
-        state: stateFilter.value // Enviamos filtro
+        municipality: municipalityFilter.value,
+        state: stateFilter.value,
+        system_type: systemTypeFilter.value // Enviamos nuevo filtro
     }, { preserveState: true, replace: true });
 };
 
@@ -51,7 +54,7 @@ watch(search, (value) => {
 });
 
 // Observamos todos los filtros
-watch([statusFilter, municipalityFilter, stateFilter], applyFilters);
+watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter], applyFilters);
 
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
@@ -116,6 +119,15 @@ const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
 const municipalityOptions = props.municipalities.map(m => ({ label: m, value: m }));
 const stateOptions = props.states.map(s => ({ label: s, value: s }));
 
+// Opciones para Tipo de Sistema (Mismas que en Create.vue)
+const systemTypeOptions = [
+    { label: 'Interconectado', value: 'Interconectado' },
+    { label: 'Autónomo', value: 'Autónomo' },
+    { label: 'Multimodo', value: 'Multimodo' },
+    { label: 'Respaldo', value: 'Respaldo' },
+    { label: 'Bombeo', value: 'Bombeo' },
+];
+
 // --- Configuración de Columnas Desktop ---
 const createColumns = () => {
     const columns = [
@@ -145,13 +157,21 @@ const createColumns = () => {
         {
             title: 'Info. Servicio',
             key: 'service_info',
-            width: 150,
+            width: 180,
             render(row) {
-                if (!row.service_number && !row.rate_type) {
+                if (!row.service_number && !row.rate_type && !row.system_type) {
                     return h('span', { class: 'text-gray-300 italic text-xs' }, '-');
                 }
 
                 return h('div', { class: 'flex flex-col gap-1 items-start' }, [
+                    // Tag Tipo de Sistema (Nuevo)
+                    row.system_type ? h(NTag, { size: 'small', type: 'info', bordered: false, class: 'mb-1' }, { 
+                        default: () => [
+                            h(NIcon, { class: 'mr-1' }, { default: () => h(HardwareChipOutline) }),
+                            row.system_type
+                        ]
+                    }) : null,
+
                     row.service_number ? h(NTag, { size: 'small', bordered: false, class: 'bg-indigo-50 text-indigo-700' }, { 
                         default: () => [
                             h(NIcon, { class: 'mr-1' }, { default: () => h(FlashOutline) }),
@@ -161,7 +181,7 @@ const createColumns = () => {
                     
                     row.rate_type ? h('div', { class: 'items-center gap-1 text-xs text-gray-500' }, [
                          h('p', `Tarifa: ${row.rate_type}`),
-                         h('p', `N° Medidor: ${row.meter_number}`),
+                         h('p', `N° Medidor: ${row.meter_number || 'N/A'}`),
                     ]) : null
                 ]);
             }
@@ -284,7 +304,8 @@ const handlePageChange = (page) => {
         search: search.value, 
         status: statusFilter.value,
         municipality: municipalityFilter.value,
-        state: stateFilter.value 
+        state: stateFilter.value,
+        system_type: systemTypeFilter.value // Incluir en paginación
     }, { preserveState: true });
 };
 
@@ -332,8 +353,9 @@ const rowProps = (row) => ({
                         <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
                     </n-input>
 
-                    <!-- Grupo de Selectores (Municipo, Estado, Estatus) -->
-                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+                    <!-- Grupo de Selectores (Municipo, Estado, Estatus, Sistema) -->
+                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto flex-wrap">
+                        
                          <!-- Filtro Municipio -->
                         <n-select 
                             v-model:value="municipalityFilter"
@@ -341,7 +363,7 @@ const rowProps = (row) => ({
                             placeholder="Municipio"
                             filterable
                             clearable
-                            class="w-full md:w-48"
+                            class="w-full md:w-40"
                         />
                         
                         <!-- Filtro Estado -->
@@ -351,7 +373,17 @@ const rowProps = (row) => ({
                             placeholder="Estado"
                             filterable
                             clearable
-                            class="w-full md:w-48"
+                            class="w-full md:w-40"
+                        />
+
+                        <!-- Filtro Tipo de Sistema (NUEVO) -->
+                        <n-select 
+                            v-model:value="systemTypeFilter"
+                            :options="systemTypeOptions"
+                            placeholder="Sistema"
+                            filterable
+                            clearable
+                            class="w-full md:w-40"
                         />
 
                         <!-- Filtro Estatus -->
@@ -360,7 +392,7 @@ const rowProps = (row) => ({
                             :options="statusOptions"
                             placeholder="Estatus"
                             clearable
-                            class="w-full md:w-48"
+                            class="w-full md:w-40"
                         />
                     </div>
                 </div>
@@ -438,8 +470,14 @@ const rowProps = (row) => ({
                                 <span class="line-clamp-2">{{ order.installation_address }}</span>
                             </div>
                             
-                            <!-- NUEVA INFO EN MOVIL: SERVICIO Y TARIFA -->
-                            <div class="flex flex-wrap gap-2 mt-2" v-if="order.service_number || order.rate_type">
+                            <!-- NUEVA INFO EN MOVIL: SERVICIO, SISTEMA Y TARIFA -->
+                            <div class="flex flex-wrap gap-2 mt-2" v-if="order.service_number || order.rate_type || order.system_type">
+                                
+                                <n-tag v-if="order.system_type" size="small" :bordered="false" type="info">
+                                    <template #icon><n-icon :component="HardwareChipOutline" /></template>
+                                    {{ order.system_type }}
+                                </n-tag>
+
                                 <n-tag v-if="order.service_number" size="small" :bordered="false" class="bg-indigo-50 text-indigo-700">
                                     <template #icon><n-icon :component="FlashOutline" /></template>
                                     {{ order.service_number }}

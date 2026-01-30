@@ -93,6 +93,27 @@ const googleMapsUrl = computed(() => {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
 });
 
+// --- ACCIONES DE PAGO (ELIMINAR) ---
+const handleDeletePayment = (payment) => {
+    dialog.warning({
+        title: 'Eliminar Abono',
+        content: `¿Estás seguro de que deseas eliminar el abono de ${formatCurrency(payment.amount)}? Esta acción ajustará el saldo pendiente de la orden de servicio.`,
+        positiveText: 'Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => {
+            router.delete(route('payments.destroy', payment.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    notification.success({ title: 'Éxito', content: 'Abono eliminado correctamente.', duration: 3000 });
+                },
+                onError: () => {
+                    notification.error({ title: 'Error', content: 'No se pudo eliminar el abono.', duration: 3000 });
+                }
+            });
+        }
+    });
+};
+
 // --- COLUMNAS CONTACTOS ---
 const contactColumns = [
     {
@@ -209,11 +230,10 @@ const paymentColumns = [
         width: 150,
         render: (row) => h('span', { class: 'font-bold text-emerald-600 text-xs' }, formatCurrency(row.amount)) 
     },
-    // NUEVA COLUMNA: COMPROBANTE
     {
         title: 'Comp.',
         key: 'receipt',
-        width: 120,
+        width: 100,
         align: 'center',
         render(row) {
             // Verifica primero la propiedad que inyectamos en el controller, sino busca en media
@@ -234,6 +254,29 @@ const paymentColumns = [
                 });
             }
             return null; // Si no hay archivo, celda vacía
+        }
+    },
+    // COLUMNA ACCIONES: ELIMINAR
+    {
+        title: '',
+        key: 'actions',
+        width: 60,
+        align: 'center',
+        render(row) {
+            // Solo muestra el botón si tiene permiso. Cambia 'collection.delete' por el permiso que uses.
+            // Si quieres que todos puedan borrar, quita el if.
+            if (!hasPermission('collection.delete')) return null;
+
+            return h(NTooltip, { trigger: 'hover' }, {
+                trigger: () => h(NButton, {
+                    circle: true,
+                    size: 'small',
+                    quaternary: true,
+                    type: 'error',
+                    onClick: () => handleDeletePayment(row)
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                default: () => 'Eliminar Abono'
+            });
         }
     }
 ];
@@ -295,10 +338,10 @@ const docColumns = [
                                     router.delete(route('media.delete-file', row.id), {
                                         preserveScroll: true,
                                         onSuccess: () => {
-                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.' });
+                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.', duration: 3000 });
                                         },
                                         onError: () => {
-                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.' });
+                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.', duration: 3000 });
                                         }
                                     });
                                 }
@@ -366,7 +409,7 @@ const handleFileChange = (event) => {
         onSuccess: () => {
             notification.success({ 
                 title: 'Éxito', 
-                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.` 
+                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.`, duration: 3000 
             });
             uploadForm.reset();
             if (fileInput.value) fileInput.value.value = '';
@@ -374,7 +417,7 @@ const handleFileChange = (event) => {
         onError: () => {
             notification.error({ 
                 title: 'Error', 
-                content: 'Hubo un problema al subir los documentos.' 
+                content: 'Hubo un problema al subir los documentos.', duration: 3000 
             });
         }
     });

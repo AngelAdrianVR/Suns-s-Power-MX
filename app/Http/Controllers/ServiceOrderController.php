@@ -28,11 +28,13 @@ class ServiceOrderController extends Controller
         
         $hasFullAccess = $user->hasAnyRole(['Admin', 'Ventas', 'Gestor']);
 
-        $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range']);
+        // Agregamos system_type a los filtros
+        $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range', 'system_type']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
         $municipality = $filters['municipality'] ?? null;
         $state = $filters['state'] ?? null;
+        $systemType = $filters['system_type'] ?? null;
 
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
@@ -91,6 +93,9 @@ class ServiceOrderController extends Controller
             ->when($state, function ($query, $state) {
                 $query->where('installation_state', $state);
             })
+            ->when($systemType, function ($query, $systemType) {
+                $query->where('system_type', $systemType);
+            })
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
@@ -103,8 +108,9 @@ class ServiceOrderController extends Controller
                         'name' => $order->client->name,
                     ] : null,
                     'service_number' => $order->service_number,
-                    'meter_number' => $order->meter_number, // Agregado a la respuesta
+                    'meter_number' => $order->meter_number,
                     'rate_type' => $order->rate_type,
+                    'system_type' => $order->system_type, // Agregado a la respuesta
                     'installation_address' => $order->full_installation_address, 
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
@@ -157,7 +163,8 @@ class ServiceOrderController extends Controller
             
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            'meter_number' => 'nullable|string|max:255', // NUEVO CAMPO
+            'system_type' => 'nullable|string|max:255', // Nuevo campo validado
+            'meter_number' => 'nullable|string|max:255',
 
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -306,7 +313,8 @@ class ServiceOrderController extends Controller
 
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            'meter_number' => 'nullable|string|max:255', // NUEVO CAMPO
+            'system_type' => 'nullable|string|max:255', // Nuevo campo validado
+            'meter_number' => 'nullable|string|max:255', 
             
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
