@@ -109,6 +109,7 @@ const createColumns = () => [
     {
         title: 'Producto / SKU',
         key: 'name',
+        width: 250,
         sorter: 'default',
         render(row) {
             return h('div', { class: 'flex flex-col' }, [
@@ -157,6 +158,7 @@ const createColumns = () => [
     {
         title: 'Categoría',
         key: 'category',
+        width: 150,
         render(row) {
             return h(NTag, { type: 'default', size: 'small', bordered: false, round: true, class: 'bg-gray-100 text-gray-600' }, () => row.category);
         }
@@ -164,6 +166,7 @@ const createColumns = () => [
     {
         title: hasPermission('products.view_costs') ? 'Costo' : '',
         key: 'purchase_price',
+        width: 90,
         render(row) {
             if ( hasPermission('products.view_costs') ) {
                 return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
@@ -173,6 +176,7 @@ const createColumns = () => [
     {
         title: 'Precio Venta',
         key: 'sale_price',
+        width: 90,
         render(row) {
             return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.sale_price));
         }
@@ -280,7 +284,7 @@ const rowProps = (row) => {
                 </div>
 
                 <!-- TABLA (Escritorio) -->
-                <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+                <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-flow">
                     <n-data-table
                         :columns="columns"
                         :data="products.data"

@@ -157,7 +157,7 @@ const createColumns = () => {
         {
             title: 'Info. Servicio',
             key: 'service_info',
-            width: 180,
+            width: 110,
             render(row) {
                 if (!row.service_number && !row.rate_type && !row.system_type) {
                     return h('span', { class: 'text-gray-300 italic text-xs' }, '-');
@@ -236,6 +236,7 @@ const createColumns = () => {
         },
         {
             title: 'Técnico / Fecha',
+            width: 150,
             key: 'technician',
             render(row) {
                 return h('div', { class: 'flex flex-col text-xs' }, [
@@ -257,6 +258,7 @@ const createColumns = () => {
         columns.push({
             title: 'Total',
             key: 'total_amount',
+            width: 120,
             align: 'right',
             render(row) {
                 return h('span', { class: 'font-mono text-gray-700 font-medium' }, formatCurrency(row.total_amount));
@@ -398,7 +400,8 @@ const rowProps = (row) => ({
                 </div>
 
                 <!-- TABLA (Escritorio) -->
-                <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+                <!-- Se cambió overflow-hidden por overflow-x-auto para permitir scroll horizontal -->
+                <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-x-auto">
                     <n-data-table
                         :columns="columns"
                         :data="orders.data"
