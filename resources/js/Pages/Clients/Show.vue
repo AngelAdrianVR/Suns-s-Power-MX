@@ -187,7 +187,7 @@ const serviceColumns = [
             return h(NTag, { type: types[row.status] || 'default', size: 'tiny', bordered: false, round: true }, { default: () => row.status });
         }
     },
-    { title: 'Inicio', key: 'start_date', width: 90, render: (row) => formatDate(row.start_date) },
+    { title: 'Inicio', key: 'start_date', width: 130, render: (row) => formatDate(row.start_date) },
     { title: 'Total', key: 'total_amount', align: 'right', render: (row) => formatCurrency(row.total_amount) },
     {
         title: '',
@@ -222,6 +222,7 @@ const paymentColumns = [
             return h('span', { class: 'text-gray-400 italic text-xs' }, 'Saldo General');
         }
     },
+    { title: 'Notas', key: 'notes', width: 200, render: (row) => h('span', { class: 'text-xs' }, row.notes) },
     { title: 'Método', key: 'method', width: 120, render: (row) => h('span', { class: 'text-xs' }, row.method) },
     { 
         title: 'Monto', 

@@ -141,6 +141,7 @@ const rateTypeOptions = [
     { label: 'PDBT', value: 'PDBT' },
     { label: 'GDBT', value: 'GDBT' },
     { label: 'GDMTO', value: 'GDMTO' },
+    { label: 'GDMTH', value: 'GDMTH' },
     { label: 'N/A', value: 'N/A' },
 ];
 
