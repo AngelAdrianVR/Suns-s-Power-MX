@@ -168,7 +168,7 @@ class ClientController extends Controller
             'payments' => function ($q) {
                 $q->with('serviceOrder:id,total_amount,created_at', 'media') 
                   ->orderBy('payment_date', 'desc')
-                  ->take(10);
+                  ->take(15);
             },
         ]);
 
