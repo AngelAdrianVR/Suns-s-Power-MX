@@ -519,7 +519,7 @@ const formatCurrency = (amount, currency) => {
                         </template>
 
                         <!-- CONTENIDO DEL MODAL -->
-                        <div class="flex flex-col h-full overflow-hidden">
+                        <div class="flex flex-col max-h-[75vh] overflow-hidden">
                             <div v-if="isLoadingProducts" class="flex flex-col items-center justify-center h-full space-y-4">
                                 <n-spin size="large" />
                                 <p class="text-gray-500 animate-pulse">Cargando inventario global...</p>
