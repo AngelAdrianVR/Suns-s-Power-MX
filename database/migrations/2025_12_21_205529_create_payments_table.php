@@ -20,7 +20,7 @@ return new class extends Migration
             
             $table->decimal('amount', 12, 2);
             $table->date('payment_date');
-            $table->enum('method', ['Transferencia', 'Efectivo', 'Cheque', 'Tarjeta']);
+            $table->enum('method', ['Transferencia', 'Efectivo', 'Cheque', 'Tarjeta', 'Depósito', 'Otro']);
             $table->string('reference')->nullable(); // Número de referencia o cheque
             $table->text('notes')->nullable();
             $table->timestamps();

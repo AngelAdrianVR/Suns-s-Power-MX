@@ -15,7 +15,7 @@ import {
     CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
     DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
     AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline,
-    ChevronDownOutline
+    ChevronDownOutline, FlashOutline, PricetagOutline, HardwareChipOutline // Nuevo icono agregado
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -260,7 +260,7 @@ const isImage = (file) => {
 
                     <!-- BOTÓN ELIMINAR -->
                     <n-button 
-                        v-if="hasPermission('service_orders.delete')" 
+                        v-if="hasPermission('service_orders.delete') && order.status !== 'Completado' && order.status !== 'Facturado'" 
                         quaternary 
                         type="error" 
                         @click="confirmDelete"
@@ -452,6 +452,31 @@ const isImage = (file) => {
                                         </div>
                                         <span v-else class="text-gray-400 italic">No asignado</span>
                                     </n-descriptions-item>
+                                    
+                                    <!-- --- NUEVOS CAMPOS --- -->
+                                    <n-descriptions-item label="Número de Servicio / N° Medidor">
+                                        <div v-if="order.service_number" class="flex items-center gap-2 font-mono text-indigo-700 bg-indigo-50 px-2 py-1 rounded w-fit">
+                                            <n-icon><FlashOutline /></n-icon> {{ order.service_number }} / {{ order.meter_number }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">No especificado</span>
+                                    </n-descriptions-item>
+
+                                    <n-descriptions-item label="Tipo de Tarifa">
+                                         <div v-if="order.rate_type" class="flex items-center gap-2">
+                                            <n-icon class="text-gray-500"><PricetagOutline /></n-icon> {{ order.rate_type }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">N/A</span>
+                                    </n-descriptions-item>
+                                    
+                                    <!-- NUEVO CAMPO AGREGADO -->
+                                    <n-descriptions-item label="Tipo de Sistema">
+                                         <div v-if="order.system_type" class="flex items-center gap-2">
+                                            <n-icon class="text-gray-500"><HardwareChipOutline /></n-icon> {{ order.system_type }}
+                                        </div>
+                                        <span v-else class="text-gray-400 italic">N/A</span>
+                                    </n-descriptions-item>
+                                    <!-- -------------------- -->
+
                                     <n-descriptions-item label="Notas">
                                         {{ order.notes || 'Sin notas registradas.' }}
                                     </n-descriptions-item>

@@ -13,7 +13,7 @@ import {
     WalletOutline, DocumentTextOutline, ConstructOutline, CashOutline, 
     AlertCircleOutline, CheckmarkCircleOutline, ReceiptOutline, CloudDownloadOutline,
     CreateOutline, AddOutline, EyeOutline, MapOutline, PhonePortraitOutline,
-    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline
+    PeopleOutline, Star, StarOutline, OpenOutline, TrashOutline, AttachOutline
 } from '@vicons/ionicons5';
 
 // Definición de Props explícita
@@ -93,6 +93,27 @@ const googleMapsUrl = computed(() => {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
 });
 
+// --- ACCIONES DE PAGO (ELIMINAR) ---
+const handleDeletePayment = (payment) => {
+    dialog.warning({
+        title: 'Eliminar Abono',
+        content: `¿Estás seguro de que deseas eliminar el abono de ${formatCurrency(payment.amount)}? Esta acción ajustará el saldo pendiente de la orden de servicio.`,
+        positiveText: 'Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => {
+            router.delete(route('payments.destroy', payment.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    notification.success({ title: 'Éxito', content: 'Abono eliminado correctamente.', duration: 3000 });
+                },
+                onError: () => {
+                    notification.error({ title: 'Error', content: 'No se pudo eliminar el abono.', duration: 3000 });
+                }
+            });
+        }
+    });
+};
+
 // --- COLUMNAS CONTACTOS ---
 const contactColumns = [
     {
@@ -166,7 +187,7 @@ const serviceColumns = [
             return h(NTag, { type: types[row.status] || 'default', size: 'tiny', bordered: false, round: true }, { default: () => row.status });
         }
     },
-    { title: 'Inicio', key: 'start_date', width: 90, render: (row) => formatDate(row.start_date) },
+    { title: 'Inicio', key: 'start_date', width: 130, render: (row) => formatDate(row.start_date) },
     { title: 'Total', key: 'total_amount', align: 'right', render: (row) => formatCurrency(row.total_amount) },
     {
         title: '',
@@ -181,13 +202,13 @@ const serviceColumns = [
     }
 ];
 
-// --- COLUMNAS PAGOS ---
+// --- COLUMNAS PAGOS (MODIFICADO) ---
 const paymentColumns = [
-    { title: 'Fecha', key: 'payment_date', width: 90, render: (row) => formatDate(row.payment_date) },
+    { title: 'Fecha', key: 'payment_date', width: 125, render: (row) => formatDate(row.payment_date) },
     { 
         title: 'Concepto', 
         key: 'service_order_id',
-        minWidth: 120,
+        minWidth: 100,
         render(row) {
             if (row.service_order) {
                 return h('div', { class: 'flex flex-col leading-tight' }, [
@@ -201,13 +222,63 @@ const paymentColumns = [
             return h('span', { class: 'text-gray-400 italic text-xs' }, 'Saldo General');
         }
     },
-    { title: 'Método', key: 'method', width: 80, render: (row) => h('span', { class: 'text-xs' }, row.method) },
+    { title: 'Notas', key: 'notes', width: 200, render: (row) => h('span', { class: 'text-xs' }, row.notes) },
+    { title: 'Método', key: 'method', width: 120, render: (row) => h('span', { class: 'text-xs' }, row.method) },
     { 
         title: 'Monto', 
         key: 'amount', 
         align: 'right', 
-        width: 100,
+        width: 150,
         render: (row) => h('span', { class: 'font-bold text-emerald-600 text-xs' }, formatCurrency(row.amount)) 
+    },
+    {
+        title: 'Comp.',
+        key: 'receipt',
+        width: 100,
+        align: 'center',
+        render(row) {
+            // Verifica primero la propiedad que inyectamos en el controller, sino busca en media
+            const url = row.receipt_url || (row.media && row.media[0]?.original_url);
+            
+            if (url) {
+                return h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, {
+                        tag: 'a',
+                        href: url,
+                        target: '_blank', // Abre en nueva pestaña
+                        circle: true,
+                        size: 'small',
+                        quaternary: true,
+                        type: 'info'
+                    }, { icon: () => h(NIcon, null, { default: () => h(AttachOutline) }) }), // Icono de clip/adjunto
+                    default: () => 'Ver Comprobante'
+                });
+            }
+            return null; // Si no hay archivo, celda vacía
+        }
+    },
+    // COLUMNA ACCIONES: ELIMINAR
+    {
+        title: '',
+        key: 'actions',
+        width: 60,
+        align: 'center',
+        render(row) {
+            // Solo muestra el botón si tiene permiso. Cambia 'collection.delete' por el permiso que uses.
+            // Si quieres que todos puedan borrar, quita el if.
+            if (!hasPermission('collection.delete')) return null;
+
+            return h(NTooltip, { trigger: 'hover' }, {
+                trigger: () => h(NButton, {
+                    circle: true,
+                    size: 'small',
+                    quaternary: true,
+                    type: 'error',
+                    onClick: () => handleDeletePayment(row)
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                default: () => 'Eliminar Abono'
+            });
+        }
     }
 ];
 
@@ -268,10 +339,10 @@ const docColumns = [
                                     router.delete(route('media.delete-file', row.id), {
                                         preserveScroll: true,
                                         onSuccess: () => {
-                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.' });
+                                            notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.', duration: 3000 });
                                         },
                                         onError: () => {
-                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.' });
+                                            notification.error({ title: 'Error', content: 'Error al eliminar el archivo.', duration: 3000 });
                                         }
                                     });
                                 }
@@ -339,7 +410,7 @@ const handleFileChange = (event) => {
         onSuccess: () => {
             notification.success({ 
                 title: 'Éxito', 
-                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.` 
+                content: `${files.length > 1 ? 'Documentos subidos' : 'Documento subido'} correctamente.`, duration: 3000 
             });
             uploadForm.reset();
             if (fileInput.value) fileInput.value.value = '';
@@ -347,7 +418,7 @@ const handleFileChange = (event) => {
         onError: () => {
             notification.error({ 
                 title: 'Error', 
-                content: 'Hubo un problema al subir los documentos.' 
+                content: 'Hubo un problema al subir los documentos.', duration: 3000 
             });
         }
     });
@@ -511,7 +582,7 @@ const handleFileChange = (event) => {
 
                             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                                 <div>
-                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Historial</h3>
+                                    <h3 class="text-base sm:text-lg font-bold text-gray-800">Pago</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Gestión operativa</p>
                                 </div>
                                 <n-button 
@@ -546,7 +617,7 @@ const handleFileChange = (event) => {
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
                                     <n-icon size="18"><WalletOutline /></n-icon> 
-                                    <span class="hidden sm:inline">Historial</span>
+                                    <span class="hidden sm:inline">Pagos</span>
                                     <span class="sm:hidden text-xs">Pagos</span>
                                 </div>
                             </template>
@@ -556,7 +627,7 @@ const handleFileChange = (event) => {
                                     <h3 class="text-base sm:text-lg font-bold text-gray-800">Cobranza</h3>
                                     <p class="text-xs sm:text-sm text-gray-500">Abonos y pagos</p>
                                 </div>
-                                <n-button type="success" secondary round size="small" class="w-full sm:w-auto" @click="openPaymentModal" :disabled="stats.balance <= 0">
+                                <n-button v-if="hasPermission('collection.create')" type="success" secondary round size="small" class="w-full sm:w-auto" @click="openPaymentModal" :disabled="stats.balance <= 0">
                                     <template #icon><n-icon><CashOutline /></n-icon></template>
                                     Registrar Abono
                                 </n-button>

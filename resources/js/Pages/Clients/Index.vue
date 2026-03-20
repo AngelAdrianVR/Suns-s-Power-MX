@@ -70,7 +70,7 @@ const confirmDelete = (client) => {
         onPositiveClick: () => {
             router.delete(route('clients.destroy', client.id), {
                 onSuccess: () => notification.success({ title: 'Éxito', content: 'Cliente eliminado', duration: 3000 }),
-                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar un cliente con historial activo.', duration: 4000 })
+                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar un cliente con ordenes de servicio ligadas.', duration: 4000 })
             });
         }
     });
@@ -97,6 +97,7 @@ const createColumns = () => [
     {
         title: 'Cliente / Razón Social',
         key: 'name',
+        width: 250,
         render(row) {
             return h('div', { class: 'flex flex-col' }, [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.name),
@@ -120,6 +121,7 @@ const createColumns = () => [
     {
         title: 'Contacto',
         key: 'contact_info',
+        width: 200,
         render(row) {
             const elements = [];
             if (row.contact_person) {
@@ -156,10 +158,10 @@ const createColumns = () => [
     {
         title: '',
         key: 'actions',
-        width: 140, // Ajusté un poco el ancho
+        width: 190, // Ajusté un poco el ancho
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                row.has_debt ? h(NTooltip, { trigger: 'hover' }, {
+                row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
                     trigger: () => h(NButton, {
                         circle: true, size: 'small', quaternary: true, type: 'success',
                         class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',
@@ -224,7 +226,7 @@ const rowProps = (row) => ({
         </template>
 
         <div class="py-8 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="max-w-[90rem] mx-auto sm:px-6 lg:px-8">
                 
                 <!-- Barra de Filtros -->
                 <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -337,7 +339,7 @@ const rowProps = (row) => ({
                             </div>
                         </div>
                         
-                        <div v-if="client.has_debt" class="mt-2">
+                        <div v-if="client.has_debt && hasPermission('collection.create')" class="mt-2">
                              <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
                                 <template #icon><n-icon :component="CashOutline" /></template>
                                 Registrar Abono
