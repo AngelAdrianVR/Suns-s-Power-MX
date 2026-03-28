@@ -43,12 +43,18 @@ class ServiceOrder extends Model implements HasMedia
         'installation_zip_code',
         'installation_country',
 
+        // Coordenadas
+        'installation_lat',
+        'installation_lng',
+
         'notes',
     ];
 
     protected $casts = [
         'start_date' => 'datetime',
         'completion_date' => 'datetime',
+        'installation_lat' => 'decimal:8',
+        'installation_lng' => 'decimal:8',
     ];
 
     // --- Accessors ---
@@ -101,9 +107,9 @@ class ServiceOrder extends Model implements HasMedia
         return $this->hasMany(Payment::class);
     }
 
-    public function tasks()
+    public function tasks(): MorphMany
     {
-        return $this->hasMany(Task::class);
+        return $this->morphMany(Task::class, 'taskable');
     }
 
     public function getProgressAttribute()

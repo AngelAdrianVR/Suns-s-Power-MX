@@ -74,6 +74,13 @@ const formattedAddress = computed(() => {
 
 const googleMapsUrl = computed(() => {
     const o = props.order;
+    
+    // 1. Prioridad: Si hay coordenadas, utilizamos esas
+    if (o.installation_lat && o.installation_lng) {
+        return `https://www.google.com/maps/dir/?api=1&destination=${o.installation_lat},${o.installation_lng}`;
+    }
+
+    // 2. Fallback: Dirección en texto
     const addressQuery = [
         o.installation_street,
         o.installation_exterior_number,
@@ -82,6 +89,7 @@ const googleMapsUrl = computed(() => {
         o.installation_state,
         o.installation_country || 'México'
     ].filter(Boolean).join(', ');
+
     const finalQuery = addressQuery || o.installation_address;
     if (!finalQuery) return null;
     return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(finalQuery)}`;
@@ -239,6 +247,10 @@ const confirmDelete = () => {
                                 <p class="text-sm text-gray-600 line-clamp-3 leading-snug">
                                     {{ formattedAddress }}
                                 </p>
+                                <!-- Mostrar las coordenadas visualmente si es que se registraron -->
+                                <div v-if="order.installation_lat && order.installation_lng" class="mt-2 text-xs text-gray-500 font-mono">
+                                    📍 {{ order.installation_lat }}, {{ order.installation_lng }}
+                                </div>
                             </div>
                             <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
                                 Cómo llegar <n-icon size="10" class="-rotate-45"><ArrowBackOutline/></n-icon>

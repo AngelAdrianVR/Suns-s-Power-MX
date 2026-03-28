@@ -41,6 +41,10 @@ return new class extends Migration
             $table->string('installation_zip_code')->nullable(); // Código Postal
             $table->string('installation_country')->default('México');  // País
 
+            // Coordenadas de la instalación
+            $table->decimal('installation_lat', 10, 8)->nullable();
+            $table->decimal('installation_lng', 11, 8)->nullable();
+
             $table->text('notes')->nullable(); 
             $table->timestamps();
         });
