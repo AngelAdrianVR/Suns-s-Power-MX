@@ -228,6 +228,12 @@ export default {
                             active: current('roles.*'),
                             show: true
                         },
+                        {
+                            label: 'Programación de tareas',
+                            route: 'task-templates.index',
+                            active: current('task-templates.*'),
+                            show: hasPermission('task-templates.index')
+                        },
                         // Futuras subopciones: 'Sucursales', 'Sistema', etc.
                     ]
                 },

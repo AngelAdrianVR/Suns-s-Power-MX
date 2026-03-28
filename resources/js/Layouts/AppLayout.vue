@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue'; // Se importó 'watch'
 import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import { 
     NConfigProvider, 
@@ -23,8 +23,24 @@ defineProps({
 });
 
 const showMobileMenu = ref(false);
-const isSidebarVisible = ref(true); // Control de visibilidad del Sidebar en Desktop
 const page = usePage();
+
+// --- CONTROL DEL SIDEBAR CON LOCALSTORAGE ---
+// Inicializa leyendo el localStorage para ver si ya había un estado guardado. 
+// Si no hay nada, por defecto será 'true' (visible).
+const isSidebarVisible = ref(
+    typeof window !== 'undefined' && localStorage.getItem('isSidebarVisible') !== null
+        ? localStorage.getItem('isSidebarVisible') === 'true'
+        : true
+);
+
+// Observa los cambios de la variable y los guarda en el localStorage
+watch(isSidebarVisible, (newValue) => {
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('isSidebarVisible', newValue);
+    }
+});
+
 
 // --- DATA INERTIA ---
 const user = computed(() => page.props.auth.user);
