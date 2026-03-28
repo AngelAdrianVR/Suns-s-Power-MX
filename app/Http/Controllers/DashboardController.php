@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Client;
 use App\Models\PurchaseOrder;
 use App\Models\ServiceOrder;
+use App\Models\Task;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB; // Importante para las consultas directas a pivote
@@ -100,6 +102,36 @@ class DashboardController extends Controller
             ->take(5)
             ->values();
 
+        // 5. TAREAS SEMANALES (KANBAN PARA DASHBOARD)
+        $weekStart = Carbon::now()->startOfWeek();
+        $weekEnd = $weekStart->copy()->addDays(5)->endOfDay(); 
+
+        $weekDays = [];
+        for ($i = 0; $i <= 5; $i++) {
+            $currentDay = $weekStart->copy()->addDays($i);
+            $weekDays[] = [
+                'date' => $currentDay->format('Y-m-d'),
+                'day_name' => ucfirst($currentDay->locale('es')->isoFormat('dddd')),
+                'day_number' => $currentDay->format('d'),
+            ];
+        }
+
+        $weeklyTasksQuery = Task::with(['assignees', 'taskable', 'comments.user'])
+            ->where('branch_id', $branchId)
+            ->has('assignees')
+            ->whereBetween('start_date', [$weekStart->startOfDay(), $weekEnd]);
+
+        // Restricción: Si NO tiene view_all, solo ve las tareas donde esté asignado
+        if (!Auth::user()->can('pms.view_all')) {
+            $weeklyTasksQuery->whereHas('assignees', function($q) {
+                $q->where('users.id', Auth::id());
+            });
+        }
+
+        $weeklyTasks = $weeklyTasksQuery->get()->groupBy(function($task) {
+            return Carbon::parse($task->start_date)->format('Y-m-d');
+        });
+
         // Resumen General (KPIs rápidos)
         $kpis = [
             'total_pending_services' => ServiceOrder::where('branch_id', $branchId)->where('status', 'En Proceso')->count(),
@@ -122,6 +154,8 @@ class DashboardController extends Controller
             'pendingPurchaseOrders' => $pendingPurchaseOrders,
             'clientsWithBalance' => $clientsWithBalance,
             'kpis' => $kpis,
+            'weeklyTasks' => $weeklyTasks,
+            'weekDays' => $weekDays,      
         ]);
     }
 }

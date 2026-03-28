@@ -1,30 +1,33 @@
 <script>
+import { ref, onMounted } from 'vue'; // Importar ref y onMounted
 import AppLayout from '@/Layouts/AppLayout.vue';
-import FileView from "@/Components/MyComponents/FileView.vue"; 
 import { Head, Link, router } from '@inertiajs/vue3';
 import { usePermissions } from '@/Composables/usePermissions'; 
+import { useSecureFile } from '@/Composables/useSecureFile'; // Importar useSecureFile
 import { 
     NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem, NButton, NIcon, 
     NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, NGrid, NGridItem,
-    createDiscreteApi 
+    createDiscreteApi, NImage, NImageGroup, NTooltip, NPopconfirm
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, 
     CalendarOutline, PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
     CloudUploadOutline, CallOutline, HomeOutline, WalletOutline, 
-    PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline
+    PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline,
+    DocumentOutline, CloudDownloadOutline
 } from '@vicons/ionicons5';
 
 export default {
     components: {
         AppLayout, Head, Link, NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem,
         NButton, NIcon, NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, 
-        NGrid, NGridItem, FileView,
+        NGrid, NGridItem, NImage, NImageGroup, NTooltip, NPopconfirm,
         // Iconos
         ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, CalendarOutline,
         PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
         CloudUploadOutline, CallOutline, HomeOutline, WalletOutline, 
-        PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline
+        PeopleOutline, IdCardOutline, LocationOutline, MedkitOutline, TrashOutline,
+        DocumentOutline, CloudDownloadOutline
     },
     props: {
         user: {
@@ -37,14 +40,37 @@ export default {
         }
     },
     setup() {
-        // Agregamos 'dialog' para la confirmación de eliminación
         const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
         const { hasPermission } = usePermissions(); 
+        const { isOpeningFile, openFileWithRetry } = useSecureFile(); // Inicializar SecureFile
+
+        const activeTab = ref('profile');
+
+        // Sincronizar pestaña con la URL al montar
+        onMounted(() => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tab = urlParams.get('tab');
+            if (tab) {
+                activeTab.value = tab;
+            }
+        });
+
+        const handleTabChange = (name) => {
+            activeTab.value = name;
+            // Actualizar URL sin recargar
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', name);
+            window.history.replaceState({}, '', url);
+        };
         
         return { 
             notification,
             dialog,
             hasPermission, 
+            isOpeningFile,
+            openFileWithRetry,
+            activeTab,
+            handleTabChange,
             CheckmarkCircleOutline,
             AlertCircleOutline,
             CloudUploadOutline
@@ -72,8 +98,7 @@ export default {
             router.patch(route('users.toggle-status', this.user.id), {}, {
                 preserveScroll: true,
                 onSuccess: () => {
-                    this.notification.create({
-                        type: 'success',
+                    this.notification.success({
                         title: 'Estado Actualizado',
                         content: `El estado del usuario ha sido actualizado correctamente.`,
                         duration: 3000
@@ -92,8 +117,13 @@ export default {
                 }
             });
         },
-        deleteFile(fileId) {
-            this.user.media = this.user.media.filter(m => m.id !== fileId);
+        confirmDeleteFile(fileId) {
+            router.delete(route('media.delete-file', fileId), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    this.notification.success({ title: 'Archivo eliminado', duration: 3000 });
+                }
+            });
         },
         getTaskStatusType(status) {
             switch (status) {
@@ -107,6 +137,10 @@ export default {
             if (!dateString) return '';
             const date = new Date(dateString);
             return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+        },
+        isImage(file) {
+            if (file.mime_type) return file.mime_type.startsWith('image/');
+            return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
         }
     }
 }
@@ -132,7 +166,6 @@ export default {
                 
                 <!-- 1. HEADER DEL PERFIL -->
                 <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 relative overflow-hidden">
-                    <!-- Fondo decorativo sutil -->
                     <div class="absolute top-0 right-0 w-64 h-64 bg-blue-50 rounded-full mix-blend-multiply filter blur-3xl opacity-30 -translate-y-1/2 translate-x-1/2"></div>
                     
                     <div class="flex flex-col md:flex-row items-center md:items-start gap-8 relative z-10">
@@ -184,36 +217,13 @@ export default {
                                 </div>
                                 
                                 <div class="flex gap-2">
-                                    <n-button 
-                                        v-if="hasPermission('users.edit')" 
-                                        type="primary" 
-                                        secondary 
-                                        circle 
-                                        @click="goToEdit"
-                                        title="Editar Expediente"
-                                    >
+                                    <n-button v-if="hasPermission('users.edit')" type="primary" secondary circle @click="goToEdit">
                                         <template #icon><n-icon><CreateOutline /></n-icon></template>
                                     </n-button>
-                                    <n-button 
-                                        v-if="hasPermission('users.toggle_status')"
-                                        :type="user.is_active ? 'warning' : 'success'" 
-                                        secondary 
-                                        circle 
-                                        @click="toggleStatus"
-                                        :title="user.is_active ? 'Desactivar Usuario' : 'Activar Usuario'"
-                                    >
+                                    <n-button v-if="hasPermission('users.toggle_status')" :type="user.is_active ? 'warning' : 'success'" secondary circle @click="toggleStatus">
                                         <template #icon><n-icon><PowerOutline /></n-icon></template>
                                     </n-button>
-                                    
-                                    <!-- Botón Eliminar Agregado -->
-                                    <n-button 
-                                        v-if="hasPermission('users.destroy')"
-                                        type="error" 
-                                        secondary 
-                                        circle 
-                                        @click="deleteUser"
-                                        title="Eliminar Usuario Permanentemente"
-                                    >
+                                    <n-button v-if="hasPermission('users.destroy')" type="error" secondary circle @click="deleteUser">
                                         <template #icon><n-icon><TrashOutline /></n-icon></template>
                                     </n-button>
                                 </div>
@@ -246,13 +256,18 @@ export default {
 
                 <!-- 2. CONTENIDO DETALLADO (TABS) -->
                 <div class="bg-white rounded-3xl shadow-sm border border-gray-100 min-h-[500px]">
-                    <n-tabs type="segment" size="large" animated pane-class="p-6 md:p-8">
+                    <n-tabs 
+                        type="segment" 
+                        size="large" 
+                        animated 
+                        pane-class="p-6 md:p-8" 
+                        :value="activeTab" 
+                        @update:value="handleTabChange"
+                    >
                         
                         <!-- TAB: DATOS PERSONALES -->
                         <n-tab-pane name="profile" tab="Información General">
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-2">
-                                
-                                <!-- Columna Izquierda: Identidad y Domicilio -->
                                 <div class="space-y-8">
                                     <section>
                                         <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
@@ -302,9 +317,7 @@ export default {
                                             <p class="text-gray-600 text-sm">
                                                 {{ user.municipality }}, {{ user.state }}
                                             </p>
-                                            
                                             <n-divider v-if="user.address_references" class="my-3" />
-                                            
                                             <div v-if="user.address_references">
                                                 <p class="text-xs text-gray-400 uppercase mb-1">Referencias</p>
                                                 <p class="text-sm text-gray-600 italic">"{{ user.address_references }}"</p>
@@ -317,14 +330,12 @@ export default {
                                     </section>
                                 </div>
 
-                                <!-- Columna Derecha: Emergencia -->
                                 <div>
                                     <section>
                                         <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                                             <n-icon class="text-red-600"><MedkitOutline /></n-icon>
                                             Contactos de Emergencia
                                         </h3>
-                                        
                                         <div v-if="user.contacts && user.contacts.length > 0" class="space-y-3">
                                             <div v-for="(contact, index) in user.contacts" :key="index" class="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
                                                 <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500 font-bold text-lg">
@@ -333,7 +344,7 @@ export default {
                                                 <div>
                                                     <p class="font-bold text-gray-800">{{ contact.name }}</p>
                                                     <div class="flex items-center gap-3 text-sm text-gray-600">
-                                                        <span class="bg-gray-100 px-2 py-0.5 rounded text-xs">{{ contact.job_title }}</span> <!-- Usamos job_title para parentesco -->
+                                                        <span class="bg-gray-100 px-2 py-0.5 rounded text-xs">{{ contact.job_title }}</span>
                                                         <span class="flex items-center gap-1"><n-icon><CallOutline /></n-icon> {{ contact.phone }}</span>
                                                     </div>
                                                 </div>
@@ -350,8 +361,6 @@ export default {
                         <!-- TAB: FINANCIERO -->
                         <n-tab-pane name="financial" tab="Financiero y Beneficiarios">
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-2">
-                                
-                                <!-- Datos Bancarios -->
                                 <section>
                                     <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                                         <n-icon class="text-green-600"><WalletOutline /></n-icon>
@@ -359,7 +368,6 @@ export default {
                                     </h3>
                                     <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
                                         <div class="absolute top-0 right-0 w-40 h-40 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                                        
                                         <p class="text-gray-400 text-sm uppercase tracking-widest mb-1">{{ user.bank_name || 'BANCO NO REGISTRADO' }}</p>
                                         <div class="flex items-center justify-between mt-6 mb-8">
                                             <div class="text-2xl font-mono tracking-widest">
@@ -379,31 +387,25 @@ export default {
                                     </div>
                                 </section>
 
-                                <!-- Beneficiarios -->
                                 <section>
                                     <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                                         <n-icon class="text-pink-600"><PeopleOutline /></n-icon>
                                         Beneficiarios Registrados
                                     </h3>
-                                    
                                     <n-list bordered class="rounded-xl overflow-hidden">
                                         <template v-if="user.beneficiaries && user.beneficiaries.length > 0">
                                             <n-list-item v-for="ben in user.beneficiaries" :key="ben.id">
                                                 <div class="flex justify-between items-center">
                                                     <div>
                                                         <p class="font-bold text-gray-800">{{ ben.first_name }} {{ ben.paternal_surname }} {{ ben.maternal_surname }}</p>
-                                                        <p class="text-xs text-gray-500">
-                                                            Nacimiento: {{ formatDateShort(ben.birth_date) }}
-                                                        </p>
+                                                        <p class="text-xs text-gray-500">Nacimiento: {{ formatDateShort(ben.birth_date) }}</p>
                                                     </div>
                                                     <n-tag type="info" size="small" round>{{ ben.relationship }}</n-tag>
                                                 </div>
                                             </n-list-item>
                                         </template>
                                         <template v-else>
-                                            <div class="p-8 text-center text-gray-400">
-                                                No hay beneficiarios asignados.
-                                            </div>
+                                            <div class="p-8 text-center text-gray-400">No hay beneficiarios asignados.</div>
                                         </template>
                                     </n-list>
                                 </section>
@@ -422,64 +424,97 @@ export default {
                                         </template>
                                         <n-thing :title="task.title" content-style="margin-top: 4px;">
                                             <template #description>
-                                                <span class="text-xs text-gray-400">
-                                                    Asignada el {{ formatDateShort(task.created_at) }}
-                                                </span>
+                                                <span class="text-xs text-gray-400">Asignada el {{ formatDateShort(task.created_at) }}</span>
                                             </template>
-                                            <div class="text-sm text-gray-600 line-clamp-1">
-                                                {{ task.description || 'Sin descripción' }}
-                                            </div>
+                                            <div class="text-sm text-gray-600 line-clamp-1">{{ task.description || 'Sin descripción' }}</div>
                                         </n-thing>
                                         <template #suffix>
-                                            <n-tag :type="getTaskStatusType(task.status)" size="small" round :bordered="false">
-                                                {{ task.status }}
-                                            </n-tag>
+                                            <n-tag :type="getTaskStatusType(task.status)" size="small" round :bordered="false">{{ task.status }}</n-tag>
                                         </template>
                                     </n-list-item>
                                 </n-list>
-                                <div class="mt-4 text-center">
-                                    <n-button text type="primary">Ver historial completo de tareas</n-button>
-                                </div>
                             </div>
                             <div v-else class="flex flex-col items-center justify-center py-10">
                                 <n-empty description="Este usuario no tiene tareas recientes." />
                             </div>
                         </n-tab-pane>
 
-                        <!-- TAB: DOCUMENTACIÓN -->
+                        <!-- TAB: DOCUMENTACIÓN (REDISEÑADO CON useSecureFile) -->
                         <n-tab-pane name="docs" tab="Documentos">
-                             <!-- Caso: Hay Documentos -->
-                            <div v-if="user.media && user.media.length > 0" class="p-2">
+                            <div class="p-2">
                                 <div class="flex justify-between items-center mb-6">
-                                    <h3 class="text-lg font-bold text-gray-700">Archivos Adjuntos ({{ user.media.length }})</h3>
+                                    <h3 class="text-lg font-bold text-gray-700">Archivos Adjuntos ({{ user.media?.length || 0 }})</h3>
                                     <n-button v-if="hasPermission('users.edit')" @click="goToEdit" size="small" type="primary" ghost>
-                                        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
-                                        Subir Nuevo
+                                        <template #icon><n-icon><CloudUploadOutline /></n-icon></template> Subir Nuevo
                                     </n-button>
                                 </div>
 
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <FileView 
-                                        v-for="file in user.media" 
-                                        :key="file.id" 
-                                        :file="file" 
-                                        :deletable="hasPermission('users.edit')" 
-                                        @delete-file="deleteFile($event)" 
-                                    />
-                                </div>
-                            </div>
+                                <div v-if="user.media && user.media.length > 0">
+                                    <n-grid x-gap="12" y-gap="12" cols="1 sm:2 md:3 lg:4">
+                                        <n-grid-item v-for="file in user.media" :key="file.id">
+                                            <div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden group hover:border-blue-300 transition-all relative">
+                                                
+                                                <!-- Vista Previa de Imagen -->
+                                                <div v-if="isImage(file)" class="aspect-video bg-gray-50 overflow-hidden relative">
+                                                    <n-image
+                                                        :src="file.original_url"
+                                                        object-fit="cover"
+                                                        class="w-full h-full"
+                                                    />
+                                                </div>
+                                                
+                                                <!-- Vista de Documento genérico -->
+                                                <div v-else 
+                                                    class="aspect-video bg-gray-100 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-gray-200 transition-colors"
+                                                    @click="openFileWithRetry(file.original_url)"
+                                                    :class="{'opacity-50 pointer-events-none': isOpeningFile}"
+                                                >
+                                                    <n-spin v-if="isOpeningFile" size="medium" />
+                                                    <n-icon v-else size="40" class="text-gray-400"><DocumentOutline /></n-icon>
+                                                    <span class="text-[10px] text-indigo-600 font-bold">ABRIR DOCUMENTO</span>
+                                                </div>
 
-                            <!-- Caso: No hay Documentos -->
-                            <div v-else class="flex flex-col items-center justify-center py-16 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                                <div class="bg-white p-4 rounded-full mb-4 shadow-sm">
-                                    <n-icon size="40" class="text-gray-300"><CloudUploadOutline /></n-icon>
+                                                <!-- Info y Acciones -->
+                                                <div class="p-3">
+                                                    <p class="text-xs font-bold text-gray-700 truncate" :title="file.file_name">
+                                                        {{ file.file_name }}
+                                                    </p>
+                                                    
+                                                    <div class="flex justify-between items-center mt-3">
+                                                        <n-button 
+                                                            size="tiny" 
+                                                            quaternary 
+                                                            type="info" 
+                                                            @click="openFileWithRetry(file.original_url)"
+                                                            :disabled="isOpeningFile"
+                                                        >
+                                                            <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+                                                            Abrir
+                                                        </n-button>
+
+                                                        <n-popconfirm v-if="hasPermission('users.edit')" @positive-click="confirmDeleteFile(file.id)">
+                                                            <template #trigger>
+                                                                <n-button size="tiny" quaternary type="error">
+                                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                                </n-button>
+                                                            </template>
+                                                            ¿Eliminar este archivo?
+                                                        </n-popconfirm>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </n-grid-item>
+                                    </n-grid>
                                 </div>
-                                <h3 class="text-lg font-medium text-gray-900">Sin Documentación</h3>
-                                <p class="text-gray-500 max-w-sm mt-2 mb-6 text-sm">El expediente digital no contiene archivos adjuntos actualmente.</p>
-                                
-                                <n-button v-if="hasPermission('users.edit')" type="primary" @click="goToEdit">
-                                    Subir Documentos
-                                </n-button>
+
+                                <div v-else class="flex flex-col items-center justify-center py-16 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                    <div class="bg-white p-4 rounded-full mb-4 shadow-sm">
+                                        <n-icon size="40" class="text-gray-300"><CloudUploadOutline /></n-icon>
+                                    </div>
+                                    <h3 class="text-lg font-medium text-gray-900">Sin Documentación</h3>
+                                    <p class="text-gray-500 max-w-sm mt-2 mb-6 text-sm">El expediente digital no contiene archivos adjuntos actualmente.</p>
+                                    <n-button v-if="hasPermission('users.edit')" type="primary" @click="goToEdit">Subir Documentos</n-button>
+                                </div>
                             </div>
                         </n-tab-pane>
 
@@ -490,3 +525,16 @@ export default {
         </div>
     </AppLayout>
 </template>
+
+<style scoped>
+:deep(.n-tabs .n-tabs-tab) {
+    font-weight: 600;
+}
+:deep(.n-tabs .n-tabs-bar) {
+    height: 3px;
+    background-color: #4f46e5;
+}
+:deep(.n-tabs .n-tabs-tab--active) {
+    color: #4f46e5 !important;
+}
+</style>

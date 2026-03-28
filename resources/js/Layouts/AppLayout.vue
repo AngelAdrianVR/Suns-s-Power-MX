@@ -13,7 +13,7 @@ import {
     NSelect,
     NIcon
 } from 'naive-ui';
-import { StorefrontOutline } from '@vicons/ionicons5';
+import { StorefrontOutline, MenuOutline } from '@vicons/ionicons5';
 import Banner from '@/Components/Banner.vue';
 import SideNav from '@/Components/MyComponents/SideNav.vue';
 import NotificationsDropdown from '@/Components/MyComponents/NotificationsDropdown.vue';
@@ -23,6 +23,7 @@ defineProps({
 });
 
 const showMobileMenu = ref(false);
+const isSidebarVisible = ref(true); // Control de visibilidad del Sidebar en Desktop
 const page = usePage();
 
 // --- DATA INERTIA ---
@@ -30,7 +31,6 @@ const user = computed(() => page.props.auth.user);
 const notifications = computed(() => page.props.notifications || []);
 
 // --- LOGICA SUCURSALES ---
-// MODIFICADO: Si no hay sucursal en sesión, usamos la del usuario por defecto para que el select no aparezca vacío
 const currentBranchId = computed(() => page.props.auth.current_branch || page.props.auth.user?.branch_id);
 
 const branchesOptions = computed(() => {
@@ -62,7 +62,6 @@ const userRole = computed(() => {
 // Validar si es Admin para mostrar el selector
 const isAdmin = computed(() => {
     const roles = page.props.auth.roles || [];
-    // Ajusta estos strings según tus roles exactos en base de datos (ej: 'Super Admin', 'Administrador')
     return roles.some(r => ['admin', 'super admin', 'administrador', 'gerente'].includes(r.toLowerCase()));
 });
 
@@ -92,18 +91,25 @@ const themeOverrides = {
                     <Head :title="title" />
                     <Banner />
 
-                    <!-- Desktop Sidebar -->
-                    <div class="hidden lg:block w-56 flex-shrink-0 h-full">
-                        <SideNav />
+                    <!-- Desktop Sidebar (Con animación de ocultamiento) -->
+                    <div class="hidden lg:block flex-shrink-0 h-full transition-all duration-300 ease-in-out overflow-hidden"
+                         :class="isSidebarVisible ? 'w-56' : 'w-0'">
+                        <!-- Contenedor interno con ancho fijo para evitar que el contenido colapse feo -->
+                        <div class="w-56 h-full">
+                            <SideNav />
+                        </div>
                     </div>
 
                     <!-- Area de Contenido Principal -->
                     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
                         
                         <!-- Header Desktop -->
-                        <header class="hidden lg:flex items-center justify-end px-8 py-3 bg-transparent z-10 gap-4">
+                        <header class="hidden lg:flex items-center justify-between px-8 py-3 bg-transparent z-10 gap-4">
                             
-                            <!-- (Eliminado el selector global grande de aquí) -->
+                            <!-- Botón para colapsar/mostrar SideNav -->
+                            <n-button quaternary circle @click="isSidebarVisible = !isSidebarVisible" class="text-gray-500 hover:bg-white hover:shadow-sm transition-all">
+                                <n-icon size="24" :component="MenuOutline" />
+                            </n-button>
 
                             <div class="flex items-center gap-4">
                                 <!-- Notificaciones -->
@@ -154,12 +160,10 @@ const themeOverrides = {
                                 <NotificationsDropdown :notifications="notifications" />
 
                                 <button @click="showMobileMenu = true" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
-                                    <!-- Si es admin, mostramos un indicador visual sutil en el botón de menú -->
                                     <div class="relative">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                                         </svg>
-                                        <!-- <span v-if="isAdmin" class="absolute -top-1 -right-1 block h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-white"></span> -->
                                     </div>
                                 </button>
                             </div>

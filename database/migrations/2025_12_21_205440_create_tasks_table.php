@@ -14,8 +14,9 @@ return new class extends Migration
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('branch_id')->default(1)->constrained();
-            // Relación con la Orden de Servicio (Puede ser null si es una tarea administrativa general)
-            $table->foreignId('service_order_id')->nullable()->constrained()->onDelete('cascade');
+            
+            // Relación polimórfica (Reemplaza a service_order_id)
+            $table->nullableMorphs('taskable');
 
             $table->string('title');
             $table->text('description')->nullable();

@@ -98,9 +98,12 @@ Route::resource('tickets', TicketController::class)->names('tickets')
     ->parameters(['tickets' => 'ticket'])->middleware('auth');
 
 
-// ---------------------------- Rutas de Tareas --------------------------------
-Route::resource('tareas', TaskController::class)->only(['store', 'update', 'destroy'])->parameters(['tareas' => 'task'])
-    ->names('tasks')->middleware('auth');
+// ---------------------------- Rutas de Tareas (PMS) --------------------------------
+Route::resource('tareas', TaskController::class)
+    ->only(['index', 'store', 'update', 'destroy']) // <-- Agregamos 'index' aquí
+    ->parameters(['tareas' => 'task'])
+    ->names('tasks')
+    ->middleware('auth');
 
 
 // Ruta para Comentarios Generales

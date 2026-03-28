@@ -104,6 +104,8 @@ class ServiceOrderController extends Controller
                     'installation_address' => $order->full_installation_address, 
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
+                    'installation_lat' => $order->installation_lat, // Agregado por si requieres el mapa en el Index
+                    'installation_lng' => $order->installation_lng, // Agregado por si requieres el mapa en el Index
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
                     'technician' => $order->technician ? [
                         'name' => $order->technician->name,
@@ -160,6 +162,10 @@ class ServiceOrderController extends Controller
             'installation_state' => 'nullable|string|max:255',
             'installation_zip_code' => 'nullable|string|max:10',
             'installation_country' => 'nullable|string|max:100',
+            
+            // Validando coordenadas
+            'installation_lat' => 'nullable|numeric',
+            'installation_lng' => 'nullable|numeric',
             
             'notes' => 'nullable|string'
         ]);
@@ -258,6 +264,8 @@ class ServiceOrderController extends Controller
         }
 
         return Inertia::render('ServiceOrders/Show', [
+            // Al mandar el objeto completo de la orden, Inertia automáticamente enviará 
+            // las nuevas propiedades de la base de datos (installation_lat e installation_lng)
             'order' => $serviceOrder, 
             'diagram_data' => $diagramData,
             'stats' => [
@@ -310,6 +318,10 @@ class ServiceOrderController extends Controller
             'installation_state' => 'nullable|string|max:255',
             'installation_zip_code' => 'nullable|string|max:10',
             'installation_country' => 'nullable|string|max:100',
+            
+            // Validando coordenadas
+            'installation_lat' => 'nullable|numeric',
+            'installation_lng' => 'nullable|numeric',
             
             'notes' => 'nullable|string',
         ]);

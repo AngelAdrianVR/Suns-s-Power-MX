@@ -37,11 +37,18 @@ class TaskAssignedNotification extends Notification
      */
     public function toArray(object $notifiable): array
     {
+        $contexto = '';
+        if ($this->task->taskable_type === 'App\\Models\\ServiceOrder') {
+            $contexto = " en la orden #" . $this->task->taskable_id;
+        } elseif ($this->task->taskable_type === 'App\\Models\\Ticket') {
+            $contexto = " en el ticket #" . $this->task->taskable_id;
+        }
+
         return [
             'title' => 'Nueva Tarea Asignada',
-            'message' => "<b>{$this->assignedBy->name}</b> te ha asignado la tarea <b>{$this->task->title}</b> en la orden #{$this->task->service_order_id}.",
+            'message' => "<b>{$this->assignedBy->name}</b> te ha asignado la tarea <b>{$this->task->title}</b>{$contexto}.",
             'icon' => 'fa-solid fa-briefcase',
-            'url' => route('service-orders.show', $this->task->service_order_id), // Redirige a la orden
+            'url' => route('tasks.index'), // Redirige al dashboard de tareas
             'type' => 'task_assignment',
             'task_id' => $this->task->id
         ];

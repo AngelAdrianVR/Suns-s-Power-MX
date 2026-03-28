@@ -28,7 +28,7 @@ const props = defineProps({
         type: Array,
         default: () => [] 
     },
-    secureUrl: { // NUEVA PROP: URL FIRMADA
+    secureUrl: { 
         type: String,
         default: ''
     }
@@ -53,7 +53,8 @@ watch(() => props.tasks, (newTasks) => {
 // Formulario de Tarea
 const form = useForm({
     id: null, 
-    service_order_id: props.orderId,
+    taskable_id: props.orderId,
+    taskable_type: 'App\\Models\\ServiceOrder',
     title: '',
     description: '',
     start_date: null, 
@@ -88,37 +89,61 @@ const userOptions = computed(() => {
 const openCreate = () => {
     isEditing.value = false;
     form.reset();
-    form.service_order_id = props.orderId;
+    form.taskable_id = props.orderId;
+    form.taskable_type = 'App\\Models\\ServiceOrder';
     form.user_ids = [];
     form.start_date = null; 
+    form.due_date = null;
+    form.finish_date = null;
     showCreateModal.value = true;
 };
 
 const openEdit = (task) => {
     isEditing.value = true;
     form.id = task.id;
-    form.title = task.name;
+    // Soporte hacia atrás por si viene como name o title
+    form.title = task.title || task.name; 
     form.description = task.description;
     form.priority = task.priority;
-    form.start_date = task.start;
-    form.due_date = task.end; 
-    form.finish_date = task.finish_date;
-    form.user_ids = task.assignees.map(u => u.id);
+    
+    // Parseo seguro de fechas a timestamp para los DatePickers
+    const startDateRaw = task.start_date || task.start;
+    const dueDateRaw = task.due_date || task.end;
+    
+    form.start_date = startDateRaw ? parseISO(startDateRaw).getTime() : null;
+    form.due_date = dueDateRaw ? parseISO(dueDateRaw).getTime() : null; 
+    form.finish_date = task.finish_date ? parseISO(task.finish_date).getTime() : null;
+    
+    form.user_ids = task.assignees ? task.assignees.map(u => u.id) : [];
+    form.taskable_id = props.orderId;
+    form.taskable_type = 'App\\Models\\ServiceOrder';
+    
     showCreateModal.value = true;
 };
 
 const submitTask = () => {
+    // Transformamos la información inyectando de manera estricta el módulo y el ID
+    // Esto garantiza que Inertia lo envíe correctamente al servidor.
+    const transformedForm = form.transform((data) => ({
+        ...data,
+        taskable_id: Number(props.orderId),
+        taskable_type: 'App\\Models\\ServiceOrder',
+        start_date: data.start_date ? format(new Date(data.start_date), 'yyyy-MM-dd HH:mm:ss') : null,
+        due_date: data.due_date ? format(new Date(data.due_date), 'yyyy-MM-dd HH:mm:ss') : null,
+        finish_date: data.finish_date ? format(new Date(data.finish_date), 'yyyy-MM-dd HH:mm:ss') : null,
+    }));
+
     if (isEditing.value) {
-        form.put(route('tasks.update', form.id), {
+        transformedForm.put(route('tasks.update', form.id), {
             onSuccess: () => {
                 notification.success({ title: 'Actualizado', content: 'Tarea modificada.', duration: 3000 });
                 showCreateModal.value = false;
             }
         });
     } else {
-        form.post(route('tasks.store'), {
+        transformedForm.post(route('tasks.store'), {
             onSuccess: () => {
-                notification.success({ title: 'Éxito', content: 'Tarea creada.', duration: 3000 });
+                notification.success({ title: 'Éxito', content: 'Tarea creada para esta Orden.', duration: 3000 });
                 showCreateModal.value = false;
                 form.reset();
             }
@@ -169,26 +194,26 @@ const whatsappOptions = [
 ];
 
 const handleWhatsappSelect = (key, task) => {
-    const user = task.assignees[0]; 
+    const user = task.assignees && task.assignees[0]; 
     if (!user || !user.phone) {
         notification.error({ title: 'Error', content: 'El usuario no tiene teléfono registrado.' });
         return;
     }
 
     const phone = user.phone.replace(/\D/g, ''); 
-    // Usamos la secureUrl si existe, si no, el route normal por seguridad (aunque ya no debería pasar)
     const orderUrl = props.secureUrl || route('service-orders.show', props.orderId); 
+    const taskName = task.title || task.name;
     let message = '';
 
     switch (key) {
         case 'new_task':
-            message = `Hola ${user.name}, se te ha asignado una *Nueva Tarea*: "${task.name}".\n\n📌 Orden #${props.orderId}\n🔗 Ver detalles (Enlace Seguro): ${orderUrl}`;
+            message = `Hola ${user.name}, se te ha asignado una *Nueva Tarea*: "${taskName}".\n\n📌 Orden #${props.orderId}\n🔗 Ver detalles: ${orderUrl}`;
             break;
         case 'reminder':
-            message = `Hola ${user.name}, paso a recordarte sobre la tarea pendiente: "${task.name}" de la Orden #${props.orderId}.\n\nPor favor actualiza el estatus cuando puedas.\n${orderUrl}`;
+            message = `Hola ${user.name}, paso a recordarte sobre la tarea pendiente: "${taskName}" de la Orden #${props.orderId}.\n\nPor favor actualiza el estatus cuando puedas.\n${orderUrl}`;
             break;
         case 'unread':
-            message = `Hola ${user.name}, tienes *comentarios no leídos* en la tarea "${task.name}" (Orden #${props.orderId}).\n\n🔗 Entra a revisarlos: ${orderUrl}`;
+            message = `Hola ${user.name}, tienes *comentarios no leídos* en la tarea "${taskName}" (Orden #${props.orderId}).\n\n🔗 Entra a revisarlos: ${orderUrl}`;
             break;
     }
 
@@ -205,8 +230,8 @@ const statusColors = {
 
 const timeRange = computed(() => {
     if (!props.tasks.length) return null;
-    const starts = props.tasks.map(t => t.start ? parseISO(t.start) : null).filter(Boolean);
-    const ends = props.tasks.map(t => t.end ? parseISO(t.end) : null).filter(Boolean);
+    const starts = props.tasks.map(t => (t.start_date || t.start) ? parseISO(t.start_date || t.start) : null).filter(Boolean);
+    const ends = props.tasks.map(t => (t.due_date || t.end) ? parseISO(t.due_date || t.end) : null).filter(Boolean);
     
     if (!starts.length) {
         const now = new Date();
@@ -234,12 +259,13 @@ const timelineDays = computed(() => {
 });
 
 const getTaskStyle = (task) => {
-    const endDateStr = task.finish_date || task.end; 
+    const endDateStr = task.finish_date || task.due_date || task.end; 
+    const startDateStr = task.start_date || task.start;
     
-    if (!task.start || !endDateStr || !timeRange.value) {
+    if (!startDateStr || !endDateStr || !timeRange.value) {
         return { display: 'none' };
     }
-    const start = parseISO(task.start);
+    const start = parseISO(startDateStr);
     const end = parseISO(endDateStr);
     const left = (differenceInHours(start, timeRange.value.minDate) / timeRange.value.totalHours) * 100;
     const width = (differenceInHours(end, start) / timeRange.value.totalHours) * 100 || 1; 
@@ -247,7 +273,7 @@ const getTaskStyle = (task) => {
 };
 
 const getDisplayEndDate = (task) => {
-    return task.finish_date; 
+    return task.finish_date || task.due_date || task.end; 
 };
 
 </script>
@@ -317,7 +343,7 @@ const getDisplayEndDate = (task) => {
                             <div class="flex-1 flex flex-col justify-center pr-2">
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="font-bold text-gray-700 text-sm truncate cursor-pointer hover:text-indigo-600 flex items-center gap-2" @click="openDetail(task)">
-                                        {{ task.name }}
+                                        {{ task.title || task.name }}
                                     </span>
                                     
                                     <n-popselect 
@@ -351,7 +377,7 @@ const getDisplayEndDate = (task) => {
                                         </n-button>
                                         <!-- BOTÓN WHATSAPP DESPLEGABLE -->
                                         <n-dropdown 
-                                            v-if="task.assignees.length" 
+                                            v-if="task.assignees?.length" 
                                             trigger="click" 
                                             :options="whatsappOptions" 
                                             @select="(key) => handleWhatsappSelect(key, task)"
@@ -378,7 +404,7 @@ const getDisplayEndDate = (task) => {
                             
                             <!-- Fechas Texto -->
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight">
-                                {{ task.start ? format(parseISO(task.start), 'dd MMM') : '-' }}
+                                {{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM') : '-' }}
                             </div>
                             <div class="w-24 text-center text-[10px] text-gray-500 leading-tight font-medium" :class="task.finish_date ? 'text-green-600' : ''">
                                 {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}
@@ -398,7 +424,7 @@ const getDisplayEndDate = (task) => {
                                     </div>
                                 </template>
                                 <div class="text-xs">
-                                    <div class="font-bold">{{ task.name }}</div>
+                                    <div class="font-bold">{{ task.title || task.name }}</div>
                                     <div>{{ task.status }}</div>
                                     <div>Prioridad: {{ task.priority }}</div>
                                 </div>
@@ -420,12 +446,12 @@ const getDisplayEndDate = (task) => {
                         <n-form-item label="Prioridad"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
                         <div class="col-span-2"><n-form-item label="Asignar a"><n-select v-model:value="form.user_ids" multiple :options="userOptions" filterable /></n-form-item></div>
                         
-                        <n-form-item label="Fecha Inicio" v-if="isEditing">
-                            <n-date-picker v-model:formatted-value="form.start_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" />
+                        <n-form-item label="Fecha Inicio">
+                            <n-date-picker v-model:value="form.start_date" type="datetime" clearable class="w-full" />
                         </n-form-item>
                         
                         <n-form-item label="Fecha Estimada Fin">
-                            <n-date-picker v-model:formatted-value="form.due_date" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" class="w-full" />
+                            <n-date-picker v-model:value="form.due_date" type="datetime" clearable class="w-full" />
                         </n-form-item>
 
                         <div class="col-span-2"><n-form-item label="Descripción"><n-input v-model:value="form.description" type="textarea" /></n-form-item></div>
@@ -442,7 +468,7 @@ const getDisplayEndDate = (task) => {
 
         <!-- MODAL DETALLE -->
         <n-modal v-model:show="showDetailModal">
-            <n-card style="width: 600px" :title="selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true" content-style="padding: 0;">
+            <n-card style="width: 600px" :title="selectedTask?.title || selectedTask?.name || 'Detalle'" :bordered="false" role="dialog" aria-modal="true" content-style="padding: 0;">
                 <template #header-extra><n-icon size="24" class="cursor-pointer" @click="showDetailModal=false"><CloseOutline /></n-icon></template>
                 
                 <div class="flex h-[500px]" v-if="selectedTask">
@@ -468,7 +494,7 @@ const getDisplayEndDate = (task) => {
                         <div class="grid grid-cols-1 gap-2 bg-gray-50 p-3 rounded-lg text-xs">
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Inicio:</span>
-                                <span class="font-medium">{{ selectedTask.start ? format(parseISO(selectedTask.start), 'dd MMM HH:mm') : 'N/A' }}</span>
+                                <span class="font-medium">{{ (selectedTask.start_date || selectedTask.start) ? format(parseISO(selectedTask.start_date || selectedTask.start), 'dd MMM HH:mm') : 'N/A' }}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Fin Real:</span>
@@ -478,7 +504,7 @@ const getDisplayEndDate = (task) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-400">Vencimiento:</span>
-                                <span class="font-medium">{{ selectedTask.end ? format(parseISO(selectedTask.end), 'dd MMM HH:mm') : '-' }}</span>
+                                <span class="font-medium">{{ (selectedTask.due_date || selectedTask.end) ? format(parseISO(selectedTask.due_date || selectedTask.end), 'dd MMM HH:mm') : '-' }}</span>
                             </div>
                         </div>
 
