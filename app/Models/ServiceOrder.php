@@ -30,7 +30,7 @@ class ServiceOrder extends Model implements HasMedia
         'total_amount',
         'service_number',
         'rate_type',
-        'system_type', // nterconectado, Autónomo, Multimodo, Respaldo, Bombeo u Otro.
+        'system_type', // Interconectado, Autónomo, Multimodo, Respaldo, Bombeo u Otro.
         'meter_number',
         
         // Installation Address Fields
@@ -57,11 +57,6 @@ class ServiceOrder extends Model implements HasMedia
         'installation_lng' => 'decimal:8',
     ];
 
-    // --- Accessors ---
-
-    /**
-     * Helper para mostrar dirección de instalación completa
-     */
     protected function fullInstallationAddress(): Attribute
     {
         return Attribute::make(
@@ -76,54 +71,25 @@ class ServiceOrder extends Model implements HasMedia
     }
 
     // --- Relaciones ---
-
-    public function client(): BelongsTo
-    {
-        return $this->belongsTo(Client::class);
-    }
-
-    public function technician(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'technician_id');
-    }
-
-    public function salesRep(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'sales_rep_id');
-    }
-
-    public function items(): HasMany
-    {
-        return $this->hasMany(ServiceOrderItem::class);
-    }
-
-    public function contract(): HasOne
-    {
-        return $this->hasOne(Contract::class);
-    }
-
-    public function payments(): HasMany
-    {
-        return $this->hasMany(Payment::class);
-    }
-
-    public function tasks(): MorphMany
-    {
-        return $this->morphMany(Task::class, 'taskable');
+    public function client(): BelongsTo { return $this->belongsTo(Client::class); }
+    public function technician(): BelongsTo { return $this->belongsTo(User::class, 'technician_id'); }
+    public function salesRep(): BelongsTo { return $this->belongsTo(User::class, 'sales_rep_id'); }
+    public function items(): HasMany { return $this->hasMany(ServiceOrderItem::class); }
+    public function contract(): HasOne { return $this->hasOne(Contract::class); }
+    public function payments(): HasMany { return $this->hasMany(Payment::class); }
+    public function tasks(): MorphMany { return $this->morphMany(Task::class, 'taskable'); }
+    public function documents(): MorphMany { return $this->morphMany(Document::class, 'documentable'); }
+    
+    // NUEVA RELACIÓN PARA LAS EVIDENCIAS REQUERIDAS
+    public function evidences(): HasMany {
+        return $this->hasMany(ServiceOrderEvidence::class);
     }
 
     public function getProgressAttribute()
     {
         $totalTasks = $this->tasks()->count();
         if ($totalTasks === 0) return 0;
-        
         $completedTasks = $this->tasks()->where('status', 'Completado')->count();
-        
         return round(($completedTasks / $totalTasks) * 100);
-    }
-
-    public function documents(): MorphMany
-    {
-        return $this->morphMany(Document::class, 'documentable');
     }
 }

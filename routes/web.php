@@ -4,6 +4,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EvidenceTemplateController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TicketController; // Importar el controlador
+use App\Http\Controllers\TaskTemplateController; // IMPORTANTE: Agregado
 use App\Http\Controllers\UserController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -64,6 +66,10 @@ Route::middleware([
     Route::post('/permissions', [RoleController::class, 'storePermission'])->name('permissions.store');
     Route::put('/permissions/{permission}', [RoleController::class, 'updatePermission'])->name('permissions.update');
     Route::delete('/permissions/{permission}', [RoleController::class, 'destroyPermission'])->name('permissions.destroy');
+
+    // ---------------------------- // RUTAS DE GESTIÓN DE PLANTILLAS DE TAREAS Y EVIDENCIAS ----------------------------
+    Route::resource('task-templates', TaskTemplateController::class)->except(['create', 'show', 'edit']);
+    Route::resource('evidence-templates', EvidenceTemplateController::class)->only(['store', 'update', 'destroy']);
 });
 
 
@@ -75,17 +81,17 @@ Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 
 
-// ---------------------------- Rutas de ordenes de servicio --------------------------------
-// Ruta específica para actualizar solo el estatus (método PATCH)
-Route::patch('ordenes-servicio/{serviceOrder}/status', [ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
-// Nueva ruta para subir evidencias (Media Library)
-Route::post('ordenes-servicio/{serviceOrder}/media', [ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
-// Recurso principal de órdenes de servicio CRUD
-Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
-    ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
-// RUTAS PARA PRODUCTOS / MATERIALES (Stock)
-Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
-Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
+// ---------------------------------- RUTAS DE ÓRDENES DE SERVICIO ----------------------------------
+Route::patch('ordenes-servicio/{serviceOrder}/status', [App\Http\Controllers\ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
+// Archivos Generales
+Route::post('ordenes-servicio/{serviceOrder}/media', [App\Http\Controllers\ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
+// Evidencias Específicas Requeridas (NUEVO)
+Route::post('/service-order-evidences/{evidence}/media', [App\Http\Controllers\ServiceOrderController::class, 'uploadEvidenceMedia'])->name('service-orders.evidences.upload');
+
+Route::resource('ordenes-servicio', App\Http\Controllers\ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
+Route::post('/service-orders/{serviceOrder}/items', [App\Http\Controllers\ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
+Route::delete('/service-orders/items/{item}', [App\Http\Controllers\ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
+
 
 
 // ---------------------------- Rutas de Tickets (Soporte) --------------------------------

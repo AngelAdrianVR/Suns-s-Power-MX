@@ -5,11 +5,11 @@ import { useSecureFile } from '@/Composables/useSecureFile';
 import { useForm, router } from '@inertiajs/vue3';
 import { 
     NButton, NIcon, NPopconfirm, NImage, 
-    NSpin, NEmpty, createDiscreteApi 
+    NSpin, NEmpty, createDiscreteApi, NDivider, NTag
 } from 'naive-ui';
 import { 
     CloudUploadOutline, DocumentOutline, 
-    CloudDownloadOutline, TrashOutline 
+    CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -20,6 +20,30 @@ const { hasPermission } = usePermissions();
 const { isOpeningFile, openFileWithRetry } = useSecureFile();
 const { notification } = createDiscreteApi(['notification']);
 
+// --- LÓGICA EVIDENCIAS ESPECÍFICAS (REQUERIDAS) ---
+const triggerEvidenceFileInput = (evidenceId) => {
+    document.getElementById(`file-evidence-${evidenceId}`).click();
+};
+
+const handleEvidenceFileChange = (event, evidenceId) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const form = useForm({ file: file });
+
+    form.post(route('service-orders.evidences.upload', evidenceId), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ title: 'Evidencia Completada', content: 'Archivo adjuntado correctamente.' });
+            window.location.reload();
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo subir la evidencia.' });
+        }
+    });
+};
+
+// --- LÓGICA ARCHIVOS GENERALES ADICIONALES ---
 const fileInput = ref(null);
 
 const triggerFileInput = () => {
@@ -34,91 +58,127 @@ const handleFileChange = (event) => {
 
     form.post(route('service-orders.upload-media', props.order.id), {
         onSuccess: () => {
-            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.', duration: 3000 });
-            // Recargar página completamente para garantizar visualización de nuevas imágenes
+            notification.success({ title: 'Archivo Extra', content: 'Evidencia extra guardada.' });
             window.location.reload();
         },
-        onError: () => {
-            notification.error({ title: 'Error', content: 'No se pudo subir el archivo.' });
-        }
+        onError: () => notification.error({ title: 'Error', content: 'No se pudo subir.' })
     });
 };
 
 const isImage = (file) => {
-    if (file.mime_type) {
-        return file.mime_type.startsWith('image/');
-    }
+    if (file.mime_type) return file.mime_type.startsWith('image/');
     return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
 };
 </script>
 
 <template>
-    <div class="p-4">
-        <!-- Subida de archivos -->
-        <div v-if="hasPermission('service_orders.edit')" class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
-            <input 
-                type="file" 
-                ref="fileInput" 
-                class="hidden" 
-                @change="handleFileChange" 
-                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
-            />
-            <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-20 w-full md:w-1/2">
-                <div class="flex flex-col items-center gap-2">
-                    <n-icon size="24"><CloudUploadOutline /></n-icon>
-                    <span>Seleccionar archivo para subir</span>
-                </div>
-            </n-button>
-            <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imágenes, PDF y Documentos (Max 10MB)</p>
-        </div>
-
-        <div v-if="order.media?.length">
-            <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div v-for="file in order.media" :key="file.id" class="relative group">
+    <div class="p-4 space-y-8">
+        
+        <!-- SECCIÓN 1: EVIDENCIAS REQUERIDAS (GENERADAS POR EL SISTEMA) -->
+        <div v-if="order.evidences?.length">
+            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                <n-icon class="text-emerald-500"><CheckmarkCircleOutline/></n-icon> Evidencias Requeridas (Checklist)
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div v-for="evidence in order.evidences" :key="evidence.id" 
+                     class="border rounded-2xl overflow-hidden shadow-sm hover:shadow transition-shadow flex flex-col"
+                     :class="evidence.media?.length ? 'bg-emerald-50/30 border-emerald-100' : 'bg-white border-gray-200'">
                     
-                    <!-- Caso 1: Imagen -->
-                    <n-image
-                        v-if="isImage(file)"
-                        :src="file.original_url"
-                        class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
-                        object-fit="cover"
-                    />
-
-                    <!-- Caso 2: Documento (PDF, etc) -->
-                    <div v-else 
-                         class="w-full h-40 rounded-lg shadow-sm border border-gray-200 bg-gray-100 flex flex-col items-center justify-center gap-2 p-2 cursor-pointer hover:bg-gray-200 transition-colors"
-                         @click="openFileWithRetry(file.original_url)"
-                         :class="{'opacity-50 pointer-events-none': isOpeningFile}"
-                    >
-                        <n-icon v-if="!isOpeningFile" size="40" class="text-gray-400"><DocumentOutline /></n-icon>
-                        <n-spin v-else size="medium" />
-                        
-                        <span class="text-xs text-indigo-600 flex items-center gap-1 font-bold text-center break-all">
-                            Abrir Archivo <n-icon v-if="!isOpeningFile"><CloudDownloadOutline/></n-icon>
-                        </span>
+                    <!-- Header Evidencia -->
+                    <div class="p-4 border-b border-gray-100 flex-1">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-gray-800">{{ evidence.title }}</h4>
+                            <n-tag v-if="evidence.media?.length" type="success" size="small" round>Completada</n-tag>
+                            <n-tag v-else type="warning" size="small" round>Pendiente</n-tag>
+                        </div>
+                        <p class="text-xs text-gray-500">{{ evidence.description }}</p>
                     </div>
 
-                    <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
-                    
-                    <!-- Eliminar archivo -->
-                    <n-popconfirm 
-                        v-if="hasPermission('service_orders.edit')"
-                        @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })"
-                    >
-                        <template #trigger>
-                            <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
-                                <n-icon><TrashOutline /></n-icon>
-                            </button>
-                        </template>
-                        ¿Eliminar evidencia?
-                    </n-popconfirm>
+                    <!-- Visualizador o Botón de Carga -->
+                    <div class="p-4 bg-gray-50/50">
+                        <!-- Si ya se subió archivo -->
+                        <div v-if="evidence.media?.length" class="relative group">
+                            <n-image
+                                v-if="isImage(evidence.media[0])"
+                                :src="evidence.media[0].original_url"
+                                class="rounded-lg shadow-sm border border-gray-200 w-full h-32 object-cover"
+                                object-fit="cover"
+                            />
+                            <div v-else 
+                                 class="w-full h-32 rounded-lg shadow-sm border border-gray-200 bg-white flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50"
+                                 @click="openFileWithRetry(evidence.media[0].original_url)"
+                            >
+                                <n-icon size="30" class="text-emerald-400 mb-2"><DocumentOutline /></n-icon>
+                                <span class="text-xs text-emerald-600 font-bold">Ver Documento</span>
+                            </div>
+                            
+                            <!-- Borrar Archivo Requerido -->
+                            <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', evidence.media[0].id), { preserveScroll: true, onSuccess: () => router.reload() })">
+                                <template #trigger>
+                                    <button class="absolute top-2 right-2 bg-white p-1.5 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
+                                        <n-icon><TrashOutline /></n-icon>
+                                    </button>
+                                </template>
+                                ¿Eliminar para subir uno nuevo?
+                            </n-popconfirm>
+                        </div>
+
+                        <!-- Si no se ha subido, mostrar input específico -->
+                        <div v-else>
+                            <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
+                            <n-button dashed type="primary" class="w-full h-16 bg-white" @click="triggerEvidenceFileInput(evidence.id)">
+                                <div class="flex flex-col items-center gap-1 text-emerald-600">
+                                    <n-icon size="20"><CameraOutline /></n-icon>
+                                    <span class="text-xs font-semibold">Subir Fotografía</span>
+                                </div>
+                            </n-button>
+                        </div>
+                    </div>
+
                 </div>
+            </div>
+            <n-divider />
+        </div>
+
+
+        <!-- SECCIÓN 2: ARCHIVOS Y FOTOS EXTRAS (GENERALES) -->
+        <div>
+            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                <n-icon class="text-indigo-500"><CloudUploadOutline/></n-icon> Archivos y Fotos Adicionales
+            </h3>
+
+            <div v-if="hasPermission('service_orders.edit')" class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
+                <input type="file" ref="fileInput" class="hidden" @change="handleFileChange" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"/>
+                <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-16 w-full md:w-1/3">
+                    Subir Archivo Extra
+                </n-button>
+            </div>
+
+            <div v-if="order.media?.length">
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <div v-for="file in order.media" :key="file.id" class="relative group">
+                        <n-image v-if="isImage(file)" :src="file.original_url" class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-32 object-cover" object-fit="cover"/>
+                        <div v-else class="w-full h-32 rounded-lg shadow-sm border border-gray-200 bg-gray-100 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors" @click="openFileWithRetry(file.original_url)" :class="{'opacity-50 pointer-events-none': isOpeningFile}">
+                            <n-icon v-if="!isOpeningFile" size="30" class="text-gray-400 mb-2"><DocumentOutline /></n-icon>
+                            <n-spin v-else size="small" />
+                            <span class="text-xs text-indigo-600 font-bold">Ver Documento</span>
+                        </div>
+                        <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload() })">
+                            <template #trigger>
+                                <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
+                                    <n-icon><TrashOutline /></n-icon>
+                                </button>
+                            </template>
+                            ¿Eliminar evidencia extra?
+                        </n-popconfirm>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="p-4 text-center">
+                <n-empty description="Sin archivos adicionales." />
             </div>
         </div>
 
-        <div class="p-8 text-center" v-else>
-            <n-empty description="No se han cargado evidencias fotográficas o documentos aún." />
-        </div>
     </div>
 </template>
