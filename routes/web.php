@@ -16,6 +16,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TicketController; // Importar el controlador
 use App\Http\Controllers\TaskTemplateController; // IMPORTANTE: Agregado
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WarehouseReconciliationController; // <-- NUEVO CONTROLADOR ALMACÉN
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -92,6 +93,15 @@ Route::resource('ordenes-servicio', App\Http\Controllers\ServiceOrderController:
 Route::post('/service-orders/{serviceOrder}/items', [App\Http\Controllers\ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
 Route::delete('/service-orders/items/{item}', [App\Http\Controllers\ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
 
+Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
+    ->name('service-orders.confirm-installation')
+    ->middleware('auth');
+
+// ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
+Route::middleware('auth')->group(function () {
+    Route::get('/almacen/conciliaciones', [WarehouseReconciliationController::class, 'index'])->name('warehouse.reconciliations.index');
+    Route::post('/almacen/conciliaciones/{serviceOrder}/approve', [WarehouseReconciliationController::class, 'approve'])->name('warehouse.reconciliations.approve');
+});
 
 
 // ---------------------------- Rutas de Tickets (Soporte) --------------------------------

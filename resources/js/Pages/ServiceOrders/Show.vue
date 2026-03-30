@@ -1,20 +1,20 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
-// Importar componentes factorizados (Ajusta la ruta según donde los ubiques)
 import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
 import OrderFilesTab from './Components/OrderFilesTab.vue';
 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
-    NIcon, NAvatar, NProgress, NStatistic, createDiscreteApi, NPopselect 
+    NIcon, NAvatar, NProgress, NStatistic, createDiscreteApi, NPopselect,
+    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
 } from 'naive-ui';
 import { 
-    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline 
+    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -42,7 +42,6 @@ onMounted(() => {
 
 const handleTabChange = (name) => {
     activeTab.value = name;
-    // Modificar URL sin recargar la página
     const url = new URL(window.location.href);
     url.searchParams.set('tab', name);
     window.history.replaceState({}, '', url);
@@ -56,7 +55,6 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// --- Propiedades Computadas ---
 const formattedAddress = computed(() => {
     const o = props.order;
     const parts = [
@@ -74,20 +72,12 @@ const formattedAddress = computed(() => {
 
 const googleMapsUrl = computed(() => {
     const o = props.order;
-    
-    // 1. Prioridad: Si hay coordenadas, utilizamos esas
     if (o.installation_lat && o.installation_lng) {
         return `https://www.google.com/maps/dir/?api=1&destination=${o.installation_lat},${o.installation_lng}`;
     }
-
-    // 2. Fallback: Dirección en texto
     const addressQuery = [
-        o.installation_street,
-        o.installation_exterior_number,
-        o.installation_neighborhood,
-        o.installation_municipality,
-        o.installation_state,
-        o.installation_country || 'México'
+        o.installation_street, o.installation_exterior_number, o.installation_neighborhood,
+        o.installation_municipality, o.installation_state, o.installation_country || 'México'
     ].filter(Boolean).join(', ');
 
     const finalQuery = addressQuery || o.installation_address;
@@ -104,6 +94,44 @@ const formattedTotal = computed(() =>
   new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(props.order.total_amount ?? 0)
 );
 
+// --- CONCILIACIÓN DE MATERIAL ---
+const hasNoMaterials = computed(() => {
+    return !props.order.items || props.order.items.length === 0;
+});
+
+const materialsReported = computed(() => {
+    if (hasNoMaterials.value) return true; // Sin productos a conciliar
+    return props.order.items.every(item => item.used_quantity !== null);
+});
+
+const showCompletionModal = ref(false);
+const completionForm = useForm({
+    items: [],
+    installation_notes: ''
+});
+
+const openMaterialReportModal = () => {
+    completionForm.items = props.order.items.map(item => ({
+        id: item.id,
+        name: item.product.name,
+        sku: item.product.sku,
+        assigned_qty: item.quantity,
+        used_quantity: item.used_quantity !== null ? item.used_quantity : item.quantity
+    }));
+    completionForm.installation_notes = '';
+    showCompletionModal.value = true;
+};
+
+const submitInstallationReport = () => {
+    completionForm.post(route('service-orders.confirm-installation', props.order.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showCompletionModal.value = false;
+            notification.success({ title: 'Material Conciliado', content: 'Las cantidades se han guardado correctamente.', duration: 5000 });
+        }
+    });
+};
+
 // --- ESTATUS DE ORDEN ---
 const orderStatusOptions = [
     { label: 'Cotización', value: 'Cotización' }, { label: 'Aceptado', value: 'Aceptado' },
@@ -118,13 +146,19 @@ const getStatusType = (status) => {
 
 const handleStatusUpdate = (newStatus) => {
     if (!hasPermission('service_orders.change_status')) return;
+
+    // Validación estricta para forzar conciliación de material antes de completar manualmente
+    if (newStatus === 'Completado' && !materialsReported.value) {
+        notification.warning({ title: 'Acción Requerida', content: 'Debes conciliar el material utilizado antes de marcar la orden como Completada.', duration: 5000 });
+        return;
+    }
+
     router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
         preserveScroll: true,
         onSuccess: () => notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}`, duration: 3000 })
     });
 };
 
-// --- ACCIONES GENERALES ---
 const confirmDelete = () => {
     dialog.warning({
         title: 'Eliminar Orden',
@@ -173,6 +207,23 @@ const confirmDelete = () => {
                 </div>
 
                 <div class="flex gap-2">
+                    
+                    <!-- BOTÓN INDEPENDIENTE DE CONCILIAR MATERIAL -->
+                    <n-button 
+                        :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
+                        quaternary 
+                        @click="openMaterialReportModal"
+                    >
+                        <template #icon>
+                            <n-icon>
+                                <InformationCircleOutline v-if="hasNoMaterials" />
+                                <CheckmarkCircleOutline v-else-if="materialsReported" />
+                                <ClipboardOutline v-else />
+                            </n-icon>
+                        </template>
+                        {{ hasNoMaterials ? 'Sin materiales para conciliar' : (materialsReported ? 'Material Conciliado' : 'Conciliar Material') }}
+                    </n-button>
+
                     <n-button 
                         v-if="hasPermission('service_orders.edit')" 
                         quaternary type="warning" 
@@ -247,7 +298,6 @@ const confirmDelete = () => {
                                 <p class="text-sm text-gray-600 line-clamp-3 leading-snug">
                                     {{ formattedAddress }}
                                 </p>
-                                <!-- Mostrar las coordenadas visualmente si es que se registraron -->
                                 <div v-if="order.installation_lat && order.installation_lng" class="mt-2 text-xs text-gray-500 font-mono">
                                     📍 {{ order.installation_lat }}, {{ order.installation_lng }}
                                 </div>
@@ -263,7 +313,6 @@ const confirmDelete = () => {
                 </div>
 
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
-                    <!-- Implementación de sincronización de tabs con :value y @update:value -->
                     <n-tabs type="line" size="large" animated class="px-6 pt-4" :value="activeTab" @update:value="handleTabChange">
                         
                         <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt" tab="Cronograma y Tareas">
@@ -292,5 +341,64 @@ const confirmDelete = () => {
                 </div>
             </div>
         </div>
+
+        <!-- === MODAL AUDITABLE: CONCILIAR MATERIAL === -->
+        <n-modal v-model:show="showCompletionModal" :mask-closable="false">
+            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">
+                <p class="text-gray-600 mb-4 text-sm">
+                    Ingresa la cantidad exacta de material que utilizaste en el sitio. Puedes usar hasta 2 puntos decimales (ej. 2.5 metros).
+                </p>
+
+                <div class="max-h-96 overflow-y-auto border border-gray-200 rounded-lg mb-4">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Asignado</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-indigo-600 font-bold">Usado Realmente</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-100">
+                            <tr v-for="(item, index) in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-2 text-sm text-gray-800">
+                                    {{ item.name }} <br><span class="text-[10px] text-gray-400">{{ item.sku }}</span>
+                                </td>
+                                <td class="px-4 py-2 text-sm text-center font-semibold text-gray-600">
+                                    {{ item.assigned_qty }}
+                                </td>
+                                <td class="px-4 py-2 text-center">
+                                    <!-- Aceptamos hasta 2 decimales para medidas fraccionadas como metros, litros, etc. -->
+                                    <n-input-number v-model:value="item.used_quantity" :min="0" :step="0.1" :precision="2" size="small" class="w-24 mx-auto" />
+                                </td>
+                            </tr>
+                            <tr v-if="!completionForm.items.length">
+                                <td colspan="3" class="px-4 py-8">
+                                    <n-empty description="No se asignaron materiales a esta orden." />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <n-form-item label="Notas / Observaciones de Material (Opcional)">
+                    <n-input 
+                        v-model:value="completionForm.installation_notes" 
+                        type="textarea" 
+                        placeholder="Ej. Sobraron 2.5 metros de cable y los regresaré a almacén..." 
+                    />
+                </n-form-item>
+
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="showCompletionModal = false">Cancelar</n-button>
+                        <n-button type="success" @click="submitInstallationReport" :loading="completionForm.processing">
+                            <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
+                            Confirmar y Guardar Cantidades
+                        </n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
     </AppLayout>
 </template>

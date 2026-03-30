@@ -28,6 +28,8 @@ return new class extends Migration
             $table->string('system_type')->nullable();    // Tipo de Sistema (Interconectado, Autónomo, etc.)
             $table->string('meter_number')->nullable();   // Número de medidor
             $table->dateTime('completion_date')->nullable();
+            // Bandera para que almacén sepa si ya ajustaron el inventario de esta orden
+            $table->boolean('inventory_reconciled')->default(false);
             $table->decimal('total_amount', 12, 2)->default(0); 
             
             // Dirección de Instalación (Específica de la orden)

@@ -9,7 +9,7 @@ use App\Models\Client;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
 use App\Models\User;
-use App\Models\TaskTemplate; // IMPORTANTE: Agregado
+use App\Models\TaskTemplate; 
 use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -215,7 +215,6 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $canViewFinancials = $user->hasAnyRole(['Admin']);
 
-        // AÑADIDO: 'evidences.media'
         $serviceOrder->load([
             'client',
             'technician',
@@ -231,15 +230,24 @@ class ServiceOrderController extends Controller
 
         if (!$canViewFinancials) {
             $serviceOrder->total_amount = 0;
-            $serviceOrder->items->transform(function ($item) {
+        }
+
+        // Convertir las cantidades de String a Float para evitar el warning de <n-input-number>
+        $serviceOrder->items->transform(function ($item) use ($canViewFinancials) {
+            $item->quantity = (float) $item->quantity;
+            if ($item->used_quantity !== null) {
+                $item->used_quantity = (float) $item->used_quantity;
+            }
+
+            if (!$canViewFinancials) {
                 $item->price = 0;
                 if ($item->product) {
                     $item->product->sale_price = 0;
                     $item->product->purchase_price = 0;
                 }
-                return $item;
-            });
-        }
+            }
+            return $item;
+        });
 
         $currentUserId = $user->id;
 
@@ -332,12 +340,10 @@ class ServiceOrderController extends Controller
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
-
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
             'meter_number' => 'nullable|string|max:255', 
-            
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
             'installation_interior_number' => 'nullable|string|max:50',
@@ -346,15 +352,12 @@ class ServiceOrderController extends Controller
             'installation_state' => 'nullable|string|max:255',
             'installation_zip_code' => 'nullable|string|max:10',
             'installation_country' => 'nullable|string|max:100',
-            
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
-            
             'notes' => 'nullable|string',
         ]);
 
         $serviceOrder->update($validated);
-
         return redirect()->route('service-orders.show', $serviceOrder->id)->with('success', 'Orden actualizada.');
     }
 
@@ -380,16 +383,50 @@ class ServiceOrderController extends Controller
         return back()->with('success', "Estatus actualizado a {$newStatus}.");
     }
 
-    // public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
-    // {
-    //     $request->validate([
-    //         'file' => 'required|file|max:10240', 
-    //     ]);
+    // === MODIFICADO: CONCILIAR MATERIAL ===
+    public function confirmInstallation(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
-    //     $serviceOrder->addMediaFromRequest('file')->toMediaCollection('evidences');
+        $validated = $request->validate([
+            'items' => 'nullable|array',
+            'items.*.id' => 'required|exists:service_order_items,id',
+            'items.*.used_quantity' => 'required|numeric|min:0',
+            'installation_notes' => 'nullable|string',
+        ]);
 
-    //     return back()->with('success', 'Archivo subido correctamente.');
-    // }
+        DB::transaction(function () use ($serviceOrder, $validated) {
+            // 1. Guardar la cantidad realmente utilizada
+            if (!empty($validated['items'])) {
+                foreach ($validated['items'] as $itemData) {
+                    $serviceOrder->items()->where('id', $itemData['id'])->update([
+                        'used_quantity' => $itemData['used_quantity']
+                    ]);
+                }
+            }
+
+            // 2. Concatenar notas si es que el técnico dejó observaciones sobre el material
+            $newNotes = $serviceOrder->notes;
+            if (!empty($validated['installation_notes'])) {
+                $newNotes .= "\n\n--- Reporte de Materiales (Instalación) ---\n" . $validated['installation_notes'];
+                $serviceOrder->update(['notes' => $newNotes]);
+            }
+
+            // 3. Revisar si ya están todas las tareas terminadas para auto-completar
+            $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
+            if ($incompleteTasks === 0 && !in_array($serviceOrder->status, ['Completado', 'Facturado', 'Cancelado'])) {
+                $serviceOrder->update([
+                    'status' => 'Completado',
+                    'completion_date' => now(),
+                    'inventory_reconciled' => false // Queda pendiente para que almacén haga el cuadre
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Cantidades de material conciliadas y guardadas correctamente.');
+    }
+    // =========================================================================
 
     public function addItems(Request $request, ServiceOrder $serviceOrder)
     {
@@ -443,9 +480,7 @@ class ServiceOrderController extends Controller
     public function destroy(ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) {
-            return inertia('Forbidden403');
-        }
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
         if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
             throw ValidationException::withMessages([
@@ -467,23 +502,16 @@ class ServiceOrderController extends Controller
                         );
                     }
                 }
-
                 $serviceOrder->payments()->delete(); 
                 $serviceOrder->items()->delete();    
                 $serviceOrder->delete(); 
             });
-
-            return redirect()->route('service-orders.index')
-                ->with('success', 'Orden eliminada y stock restaurado correctamente.');
-
+            return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
         } catch (\Exception $e) {
-            throw ValidationException::withMessages([
-                'delete' => 'Ocurrió un error inesperado al intentar eliminar la orden.'
-            ]);
+            throw ValidationException::withMessages(['delete' => 'Ocurrió un error al intentar eliminar la orden.']);
         }
     }
 
-    // MÉTODO PARA SUBIDA DE ARCHIVOS GENERALES
     public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
     {
         $request->validate(['file' => 'required|file|max:10240']);
@@ -491,14 +519,10 @@ class ServiceOrderController extends Controller
         return back()->with('success', 'Archivo subido correctamente.');
     }
 
-    // NUEVO MÉTODO PARA SUBIR LA EVIDENCIA REQUERIDA ESPECÍFICA
     public function uploadEvidenceMedia(Request $request, ServiceOrderEvidence $evidence)
     {
         $request->validate(['file' => 'required|file|max:10240']);
-        
-        // Se adjunta el archivo al modelo ServiceOrderEvidence
         $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
-        
         return back()->with('success', 'Evidencia requerida subida correctamente.');
     }
 }

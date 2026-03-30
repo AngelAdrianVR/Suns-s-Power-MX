@@ -147,8 +147,13 @@ class TaskController extends Controller
             if (isset($validated['taskable_type'])) {
                 if ($validated['taskable_type'] === 'App\\Models\\ServiceOrder') {
                     $order = ServiceOrder::find($validated['taskable_id']);
-                    if ($order && !in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
-                        $order->update(['status' => 'En Proceso']);
+                    // FIX 1: Quitamos 'Completado' del array para que si se agrega una tarea, 
+                    // regrese obligatoriamente a 'En Proceso' y limpie la fecha de finalización.
+                    if ($order && !in_array($order->status, ['Facturado', 'Cancelado'])) {
+                        $order->update([
+                            'status' => 'En Proceso',
+                            'completion_date' => null
+                        ]);
                         
                         if (is_null($order->start_date)) {
                             $order->update(['start_date' => now()]);
@@ -178,10 +183,9 @@ class TaskController extends Controller
         if ($isFullEdit) {
             abort_if(!Auth::user()->can('pms.edit'), 403, 'No tienes permiso para editar tareas.');
         } elseif ($isSchedule) {
-            // Si solo se mueve de día o se asigna en calendario
+            // Si solo se mueve de día, se asigna o DESASIGNA en calendario
             abort_if(!Auth::user()->can('pms.schedule') && !Auth::user()->can('pms.edit'), 403, 'No tienes permiso para reprogramar tareas.');
         }
-        // Si la petición SOLO actualiza el estatus, se omiten los abort_if y se permite continuar sin permisos extra.
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -220,9 +224,9 @@ class TaskController extends Controller
 
         $task->update($validated);
 
-        // Actualizar asignados si se enviaron en la petición
+        // Actualizar asignados si se enviaron en la petición (incluso si es un arreglo vacío para desasignar)
         if ($request->has('user_ids')) {
-            $task->assignees()->sync($validated['user_ids']);
+            $task->assignees()->sync($validated['user_ids'] ?? []);
         }
 
         // LÓGICA DE ACTUALIZACIÓN DE MÓDULO BASADA EN TAREAS
@@ -237,11 +241,22 @@ class TaskController extends Controller
                 $incompleteTasks = $order->tasks()->where('status', '!=', 'Completado')->count();
 
                 if ($incompleteTasks === 0) {
-                    if ($order->status !== 'Completado' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
-                        $order->update([
-                            'status' => 'Completado',
-                            'completion_date' => now()
-                        ]);
+                    // Verificar si el formulario de material ya fue contestado
+                    $unreportedCount = $order->items()->whereNull('used_quantity')->count();
+                    
+                    if ($unreportedCount === 0) {
+                        // Tareas terminadas y material conciliado -> Se auto-completa
+                        if (!in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
+                            $order->update([
+                                'status' => 'Completado',
+                                'completion_date' => now()
+                            ]);
+                        }
+                    } else {
+                        // Tareas terminadas pero falta conciliar material -> Se queda en proceso
+                        if (in_array($order->status, ['Cotización', 'Aceptado', 'Pendiente'])) {
+                            $order->update(['status' => 'En Proceso']);
+                        }
                     }
                 } else {
                     if ($order->status === 'Completado') {
