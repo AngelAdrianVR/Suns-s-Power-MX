@@ -156,6 +156,29 @@ const cancelAssignment = () => {
     router.reload({ preserveScroll: true }); 
 };
 
+// --- NUEVO LÓGICA: Arrastrar tarea de vuelta a "Por Asignar" (Backlog) ---
+const onBacklogChange = (evt) => {
+    if (evt.added) {
+        const task = evt.added.element;
+
+        // Limpiar los usuarios, la fecha de inicio y regresar estado a Pendiente
+        router.put(route('tasks.update', task.id), {
+            user_ids: [],         // Envía array vacío para desasignar personas
+            start_date: null,     // Quitar fecha del calendario
+            status: task.status === 'Pendiente' ? undefined : 'Pendiente' // Reiniciar estado
+        }, {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                notification.success({ title: 'Desasignada', content: 'La tarea ha regresado a la lista por asignar.', duration: 3000 });
+            },
+            onError: () => {
+                router.reload({ preserveScroll: true }); // Si falla la petición, revertimos la tarjeta visualmente
+            }
+        });
+    }
+};
+
 // --- ABRIR DETALLE ---
 const openDetail = (task) => {
     selectedTask.value = task;
@@ -231,6 +254,7 @@ const openDetail = (task) => {
                                 class="min-h-full space-y-3"
                                 ghost-class="ghost-card"
                                 :disabled="!hasPermission('pms.schedule')"
+                                @change="onBacklogChange" 
                             >
                                 <template #item="{ element }">
                                     <TaskCard :task="element" :is-backlog="true" @click="openDetail(element)" />
