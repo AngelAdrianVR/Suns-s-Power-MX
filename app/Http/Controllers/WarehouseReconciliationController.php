@@ -18,20 +18,24 @@ class WarehouseReconciliationController extends Controller
         // Filtro para ver pendientes o historial (por defecto: pendientes)
         $filterStatus = $request->input('status', 'pending');
 
+        // Quitamos la restricción estricta del estatus de la orden para mostrar TODAS.
         $query = ServiceOrder::with(['client:id,name', 'technician:id,name', 'items.product:id,name,sku'])
-            ->where('branch_id', $branchId)
-            ->whereIn('status', ['Completado', 'Facturado']); // Solo órdenes que ya se terminaron
+            ->where('branch_id', $branchId);
 
         if ($filterStatus === 'pending') {
+            // Buscamos las que NO están conciliadas, que SÍ tengan productos y que 
+            // NINGÚN producto esté pendiente de ser reportado (used_quantity = null)
             $query->where('inventory_reconciled', false)
-                  ->whereHas('items', function ($q) {
-                      $q->whereNotNull('used_quantity'); // Asegurar que el técnico ya reportó
+                  ->whereHas('items') 
+                  ->whereDoesntHave('items', function ($q) {
+                      $q->whereNull('used_quantity'); 
                   });
         } else {
+            // Historial de conciliados
             $query->where('inventory_reconciled', true);
         }
 
-        $orders = $query->orderBy('completion_date', 'desc')->paginate(15)->withQueryString();
+        $orders = $query->orderBy('updated_at', 'desc')->paginate(15)->withQueryString();
 
         // Calcular visualmente los sobrantes/faltantes antes de enviarlos a Vue
         $orders->getCollection()->transform(function ($order) {
@@ -54,9 +58,10 @@ class WarehouseReconciliationController extends Controller
 
             return [
                 'id' => $order->id,
+                'status' => $order->status, // <-- Agregamos el estatus
                 'client_name' => $order->client->name,
                 'technician_name' => $order->technician->name ?? 'Sin Asignar',
-                'completion_date' => $order->completion_date ? $order->completion_date->format('d/m/Y H:i') : 'N/A',
+                'completion_date' => $order->completion_date ? $order->completion_date->format('d/m/Y H:i') : 'En curso',
                 'inventory_reconciled' => $order->inventory_reconciled,
                 'notes' => $order->notes,
                 'items_reconciliation' => $itemsStatus,
@@ -96,7 +101,8 @@ class WarehouseReconciliationController extends Controller
                 $difference = $quantityAssigned - $quantityUsed;
 
                 // 1. Corregimos el historial de la orden con lo que el almacenista validó
-                $item->update(['used_quantity' => $quantityUsed]);
+                $item->used_quantity = $quantityUsed;
+                $item->save();
 
                 // 2. Ajustamos el almacén (Sobrantes o Faltantes)
                 if ($difference > 0) {
@@ -121,8 +127,9 @@ class WarehouseReconciliationController extends Controller
                 }
             }
 
-            // Marcar como conciliado
-            $serviceOrder->update(['inventory_reconciled' => true]);
+            // Marcar como conciliado mediante asignación directa para evadir la restricción de $fillable
+            $serviceOrder->inventory_reconciled = true;
+            $serviceOrder->save();
         });
 
         return back()->with('success', 'Conciliación aprobada. Inventario ajustado correctamente.');

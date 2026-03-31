@@ -371,6 +371,25 @@ class ServiceOrderController extends Controller
         ]);
 
         $newStatus = $validated['status'];
+
+        // --- VALIDACIÓN ESTRICTA EN BACKEND ---
+        if ($newStatus === 'Completado') {
+            // 1. Validar Tareas
+            $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
+            if ($incompleteTasks > 0) {
+                // Puedes usar abort(403) o enviar un withErrors dependiendo de cómo gestiones errores en Inertia.
+                // Aquí devuelvo un mensaje flash de error de sesión genérico compatible.
+                return back()->with('error', 'No se puede completar la orden: Tareas pendientes de finalizar.');
+            }
+
+            // 2. Validar Materiales
+            $unreportedCount = $serviceOrder->items()->whereNull('used_quantity')->count();
+            if ($unreportedCount > 0) {
+                return back()->with('error', 'No se puede completar la orden: Faltan materiales por conciliar.');
+            }
+        }
+        // --------------------------------------
+
         $updateData = ['status' => $newStatus];
 
         if ($newStatus === 'Completado') {

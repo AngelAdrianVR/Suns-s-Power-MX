@@ -30,6 +30,7 @@ class ServiceOrder extends Model implements HasMedia
         'total_amount',
         'service_number',
         'rate_type',
+        'inventory_reconciled',
         'system_type', // Interconectado, Autónomo, Multimodo, Respaldo, Bombeo u Otro.
         'meter_number',
         

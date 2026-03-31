@@ -7,7 +7,7 @@ import {
     NRadioGroup, NRadioButton, NInputNumber, createDiscreteApi 
 } from 'naive-ui';
 import { 
-    CheckmarkCircleOutline, ArrowForwardOutline, AlertCircleOutline, CheckboxOutline
+    CheckmarkCircleOutline, ArrowForwardOutline, AlertCircleOutline, CheckboxOutline, OpenOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -21,6 +21,12 @@ const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 const currentFilter = ref(props.filterStatus);
 const handleFilterChange = (value) => {
     router.get(route('warehouse.reconciliations.index'), { status: value }, { preserveState: true });
+};
+
+// Obtener color del status
+const getStatusType = (status) => {
+    const map = { 'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning', 'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error' };
+    return map[status] || 'default';
 };
 
 // Modal de Conciliación
@@ -110,6 +116,7 @@ const confirmReconciliation = () => {
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Orden</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estatus</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Técnico</th>
                                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado Material</th>
@@ -118,9 +125,19 @@ const confirmReconciliation = () => {
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-100">
                                 <tr v-for="order in orders.data" :key="order.id" class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-                                        #{{ order.id }}
-                                        <div class="text-xs text-gray-400 font-normal">Terminada: {{ order.completion_date }}</div>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold">
+                                        <!-- Enlace clicable para ver la orden -->
+                                        <Link :href="route('service-orders.show', order.id)" class="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline">
+                                            #{{ order.id }}
+                                            <n-icon size="12"><OpenOutline /></n-icon>
+                                        </Link>
+                                        <div class="text-xs text-gray-400 font-normal mt-1">Act.: {{ order.completion_date }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
+                                        <!-- Badge de Estatus -->
+                                        <n-tag :type="getStatusType(order.status)" round size="small">
+                                            {{ order.status }}
+                                        </n-tag>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">
                                         {{ order.client_name }}
@@ -151,7 +168,7 @@ const confirmReconciliation = () => {
                                     </td>
                                 </tr>
                                 <tr v-if="!orders.data.length">
-                                    <td colspan="5" class="px-6 py-12">
+                                    <td colspan="6" class="px-6 py-12">
                                         <n-empty description="No hay órdenes en esta sección." />
                                     </td>
                                 </tr>
