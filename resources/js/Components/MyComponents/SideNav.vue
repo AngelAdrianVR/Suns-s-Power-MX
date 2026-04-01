@@ -165,7 +165,15 @@ export default {
                     icon: icons.warehouse,
                     route: 'warehouse.reconciliations.index',
                     active: current('warehouse.*'),
-                    show: hasPermission('warehouse.reconciliation') // Mostrar a quienes tienen acceso al inventario/productos
+                    show: hasPermission('warehouse.reconciliation'),
+                    children: [
+                        {
+                            label: 'Conciliaciones',
+                            route: 'warehouse.reconciliations.index',
+                            active: current('warehouse.reconciliations.*'),
+                            show: hasPermission('warehouse.reconciliation')
+                        },
+                    ]
                 },
                 {
                     label: 'Órdenes Servicio',

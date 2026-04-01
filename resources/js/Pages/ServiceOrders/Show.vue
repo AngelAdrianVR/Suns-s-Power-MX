@@ -90,6 +90,12 @@ const generalProgress = computed(() => {
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
 });
 
+// Neva propiedad computada para validar si las tareas están completas
+const allTasksCompleted = computed(() => {
+    if (!props.stats || props.stats.total_tasks === 0) return true;
+    return props.stats.completed_tasks === props.stats.total_tasks;
+});
+
 const formattedTotal = computed(() =>
   new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(props.order.total_amount ?? 0)
 );
@@ -100,7 +106,7 @@ const hasNoMaterials = computed(() => {
 });
 
 const materialsReported = computed(() => {
-    if (hasNoMaterials.value) return true; // Sin productos a conciliar
+    if (hasNoMaterials.value) return true; 
     return props.order.items.every(item => item.used_quantity !== null);
 });
 
@@ -109,6 +115,17 @@ const completionForm = useForm({
     items: [],
     installation_notes: ''
 });
+
+// Control de la animación de pulso
+const isPulseActive = ref(false);
+
+const triggerPulse = () => {
+    isPulseActive.value = true;
+    // Detiene la animación después de 4 segundos
+    setTimeout(() => {
+        isPulseActive.value = false;
+    }, 4000);
+};
 
 const openMaterialReportModal = () => {
     completionForm.items = props.order.items.map(item => ({
@@ -120,6 +137,7 @@ const openMaterialReportModal = () => {
     }));
     completionForm.installation_notes = '';
     showCompletionModal.value = true;
+    isPulseActive.value = false; // Detener animación si abre el modal manualmente
 };
 
 const submitInstallationReport = () => {
@@ -147,10 +165,28 @@ const getStatusType = (status) => {
 const handleStatusUpdate = (newStatus) => {
     if (!hasPermission('service_orders.change_status')) return;
 
-    // Validación estricta para forzar conciliación de material antes de completar manualmente
-    if (newStatus === 'Completado' && !materialsReported.value) {
-        notification.warning({ title: 'Acción Requerida', content: 'Debes conciliar el material utilizado antes de marcar la orden como Completada.', duration: 5000 });
-        return;
+    // --- NUEVAS REGLAS DE VALIDACIÓN ---
+    if (newStatus === 'Completado') {
+        // 1. Validar Tareas
+        if (!allTasksCompleted.value) {
+            notification.error({ 
+                title: 'Tareas Pendientes', 
+                content: 'Debes marcar todas las tareas como "Completado" en el cronograma antes de finalizar la orden.', 
+                duration: 6000 
+            });
+            return;
+        }
+
+        // 2. Validar Materiales
+        if (!materialsReported.value) {
+            notification.warning({ 
+                title: 'Acción Requerida', 
+                content: 'Debes conciliar el material utilizado antes de marcar la orden como Completada.', 
+                duration: 5000 
+            });
+            triggerPulse(); // Dispara la animación en el botón
+            return;
+        }
     }
 
     router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
@@ -213,6 +249,7 @@ const confirmDelete = () => {
                         :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
                         quaternary 
                         @click="openMaterialReportModal"
+                        :class="{'animate-attention': isPulseActive}"
                     >
                         <template #icon>
                             <n-icon>
@@ -355,7 +392,7 @@ const confirmDelete = () => {
                             <tr>
                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
                                 <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Asignado</th>
-                                <th class="px-4 py-2 text-center text-xs font-medium text-indigo-600 font-bold">Usado Realmente</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-indigo-600">Usado Realmente</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-100">
@@ -402,3 +439,27 @@ const confirmDelete = () => {
 
     </AppLayout>
 </template>
+
+<style scoped>
+@keyframes pulse-warning {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+        background-color: rgba(254, 240, 138, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 15px 8px rgba(245, 158, 11, 0);
+        background-color: rgba(253, 224, 71, 0.9);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+        background-color: rgba(254, 240, 138, 0.4);
+    }
+}
+
+.animate-attention {
+    animation: pulse-warning 0.8s ease-in-out infinite;
+    color: #92400e !important; /* Tailwind text-yellow-800 */
+    border-color: #f59e0b !important;
+    transition: all 0.3s ease;
+}
+</style>
