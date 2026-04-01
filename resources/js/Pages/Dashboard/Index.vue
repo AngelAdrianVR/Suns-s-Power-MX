@@ -101,7 +101,7 @@ const formatCurrency = (value) => {
                 <div class="mb-10 flex flex-col">
                     <div class="lg:flex justify-between items-center mb-4 px-2">
                         <h3 class="text-lg font-bold text-gray-800 mb-2 lg:mb-0">Mi Plan de Tareas Semanal</h3>
-                        <n-button type="primary" secondary size="small" @click="redirectToPms">
+                        <n-button v-if="hasPermission('pms.index')" type="primary" secondary size="small" @click="redirectToPms">
                             Gestionar plan de tareas
                             <template #icon><n-icon><ArrowForwardOutline/></n-icon></template>
                         </n-button>

@@ -180,7 +180,8 @@ const getPriorityColor = (priority) => {
                                                     
                                                     <div class="mt-2 flex flex-wrap gap-1">
                                                         <template v-if="item.users?.length">
-                                                            <n-avatar v-for="u in item.users" :key="u.id" round size="small" :src="u.profile_photo_path" :fallback-src="'https://ui-avatars.com/api/?name='+u.name"/>
+                                                            <!-- AQUÍ ESTÁ LA CORRECCIÓN: usamos profile_photo_url -->
+                                                            <n-avatar v-for="u in item.users" :key="u.id" round size="small" :src="u.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+u.name"/>
                                                         </template>
                                                         <span v-else class="text-[10px] italic text-gray-400">Sin asignar</span>
                                                     </div>
