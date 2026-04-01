@@ -5,67 +5,170 @@ namespace App\Http\Controllers;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\ServiceOrder;
+use App\Models\Ticket;
 use App\Notifications\TaskAssignedNotification;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Inertia\Inertia;
 
 class TaskController extends Controller
 {
-    public function store(Request $request)
+    /**
+     * Muestra el Dashboard PMS (Kanban Semanal)
+     */
+    public function index(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
+        // Determinar inicio de semana (Lunes)
+        $dateParam = $request->input('week_start');
+        $weekStart = $dateParam ? Carbon::parse($dateParam)->startOfWeek() : Carbon::now()->startOfWeek();
+        
+        // Termina el Sábado (5 días después del lunes) para mostrar la semana completa
+        $weekEnd = $weekStart->copy()->addDays(5)->endOfDay(); 
+
+        // Generar estructura de días (Lunes a Sábado) para el frontend
+        $days = [];
+        for ($i = 0; $i <= 5; $i++) {
+            $currentDay = $weekStart->copy()->addDays($i);
+            $days[] = [
+                'date' => $currentDay->format('Y-m-d'),
+                'day_name' => ucfirst($currentDay->locale('es')->isoFormat('dddd')),
+                'day_number' => $currentDay->format('d'),
+            ];
+        }
+
+        // QUERY BASE: Tareas ASIGNADAS en esa semana
+        $assignedTasksQuery = Task::with(['assignees', 'taskable', 'comments.user'])
+            ->where('branch_id', $branchId)
+            ->has('assignees')
+            ->whereBetween('start_date', [$weekStart->startOfDay(), $weekEnd]);
+
+        // RESTRICCIÓN DE PERMISO: Si NO tiene view_all, solo ve tareas donde esté asignado
+        if (!Auth::user()->can('pms.view_all')) {
+            $assignedTasksQuery->whereHas('assignees', function($q) {
+                $q->where('users.id', Auth::id());
+            });
+        }
+
+        $assignedTasks = $assignedTasksQuery->get()->groupBy(function($task) {
+            return Carbon::parse($task->start_date)->format('Y-m-d');
+        });
+
+        // RESTRICCIÓN DE PERMISO: Tareas SIN ASIGNAR (Backlog) solo visibles para view_all
+        $unassignedTasks = [];
+        if (Auth::user()->can('pms.view_all')) {
+            $unassignedTasks = Task::with(['taskable'])
+                ->where('branch_id', $branchId)
+                ->doesntHave('assignees')
+                ->whereNotIn('status', ['Completado', 'Cancelado'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
+        // Usuarios disponibles para asignar al arrastrar tarjetas
+        $assignableUsers = User::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->where('id', '!=', 1) // Excluir usuario admin
+            ->get(['id', 'name', 'phone', 'profile_photo_path']);
+
+        // Data de Módulos para selects
+        $serviceOrders = ServiceOrder::whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
+            ->where('branch_id', $branchId)
+            ->get(['id', 'service_number']);
+            
+        $tickets = Ticket::whereNotIn('status', ['Resuelto', 'Cerrado'])
+            ->where('branch_id', $branchId)
+            ->get(['id', 'title']);
+
+        return Inertia::render('PMS/Index', [
+            'week_start' => $weekStart->format('Y-m-d'),
+            'prev_week' => $weekStart->copy()->subWeek()->format('Y-m-d'),
+            'next_week' => $weekStart->copy()->addWeek()->format('Y-m-d'),
+            'days' => $days,
+            'assigned_tasks' => $assignedTasks,
+            'unassigned_tasks' => $unassignedTasks,
+            'assignable_users' => $assignableUsers,
+            'service_orders' => $serviceOrders,
+            'tickets' => $tickets,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        abort_if(!Auth::user()->can('pms.create'), 403, 'No tienes permiso para crear tareas.');
+
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
         $validated = $request->validate([
-            'service_order_id' => 'required|exists:service_orders,id',
+            'taskable_id' => 'nullable|integer',
+            'taskable_type' => 'nullable|string',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'due_date' => 'nullable|date', // Fecha Estimada Fin
-            'start_date' => 'nullable|date', // Fecha Inicio
-            'finish_date' => 'nullable|date', // Fecha Real Fin
+            'due_date' => 'nullable|date', 
+            'start_date' => 'nullable|date', 
+            'finish_date' => 'nullable|date', 
             'priority' => 'required|in:Baja,Media,Alta',
-            'user_ids' => 'required|array|min:1', 
+            'user_ids' => 'nullable|array', 
             'user_ids.*' => 'exists:users,id'
         ]);
 
         DB::transaction(function () use ($validated, $branchId) {
             // 1. Crear Tarea
-            // CAMBIO: start_date ya no se asigna automáticamente a now(), se respeta el null si no viene.
             $task = Task::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
-                'service_order_id' => $validated['service_order_id'],
+                'taskable_id' => $validated['taskable_id'] ?? null,
+                'taskable_type' => $validated['taskable_type'] ?? null,
                 'branch_id' => $branchId,
                 'created_by' => Auth::id(),
                 'status' => 'Pendiente',
                 'priority' => $validated['priority'],
-                'start_date' => $validated['start_date'] ?? null, // CAMBIO: Default null
+                'start_date' => $validated['start_date'] ?? null,
                 'due_date' => $validated['due_date'] ?? null,
                 'finish_date' => $validated['finish_date'] ?? null,
             ]);
 
-            $task->assignees()->sync($validated['user_ids']);
+            if (!empty($validated['user_ids'])) {
+                $task->assignees()->sync($validated['user_ids']);
 
-            // 2. Notificaciones
-            $assignees = User::whereIn('id', $validated['user_ids'])->get();
-            $usersToNotify = $assignees->filter(fn($u) => $u->id !== Auth::id());
-            if ($usersToNotify->isNotEmpty()) {
-                Notification::send($usersToNotify, new TaskAssignedNotification($task, Auth::user()));
+                // 2. Notificaciones
+                $assignees = User::whereIn('id', $validated['user_ids'])->get();
+                $usersToNotify = $assignees->filter(fn($u) => $u->id !== Auth::id());
+                if ($usersToNotify->isNotEmpty()) {
+                    Notification::send($usersToNotify, new TaskAssignedNotification($task, Auth::user()));
+                }
             }
 
-            // 3. ACTUALIZACIÓN AUTOMÁTICA DE LA ORDEN
-            $order = ServiceOrder::find($validated['service_order_id']);
-            if ($order && !in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
-                $order->update(['status' => 'En Proceso']);
-                
-                if (is_null($order->start_date)) {
-                    $order->update(['start_date' => now()]);
+            // 3. ACTUALIZACIÓN AUTOMÁTICA DEL MÓDULO ASOCIADO
+            if (isset($validated['taskable_type'])) {
+                if ($validated['taskable_type'] === 'App\\Models\\ServiceOrder') {
+                    $order = ServiceOrder::find($validated['taskable_id']);
+                    // FIX 1: Quitamos 'Completado' del array para que si se agrega una tarea, 
+                    // regrese obligatoriamente a 'En Proceso' y limpie la fecha de finalización.
+                    if ($order && !in_array($order->status, ['Facturado', 'Cancelado'])) {
+                        $order->update([
+                            'status' => 'En Proceso',
+                            'completion_date' => null
+                        ]);
+                        
+                        if (is_null($order->start_date)) {
+                            $order->update(['start_date' => now()]);
+                        }
+                    }
+                } elseif ($validated['taskable_type'] === 'App\\Models\\Ticket') {
+                    $ticket = Ticket::find($validated['taskable_id']);
+                    if ($ticket && $ticket->status === 'Abierto') {
+                        $ticket->update(['status' => 'En Análisis']);
+                    }
                 }
             }
         });
 
-        return back()->with('success', 'Tarea creada y asignada correctamente.');
+        return back()->with('success', 'Tarea creada correctamente.');
     }
 
     /**
@@ -73,6 +176,29 @@ class TaskController extends Controller
      */
     public function update(Request $request, Task $task)
     {
+        $user = Auth::user();
+        
+        // Determinar el tipo de actualización para verificar permisos
+        $isFullEdit = $request->hasAny(['title', 'description', 'priority', 'due_date']);
+        $isSchedule = $request->hasAny(['start_date', 'user_ids']);
+        $isStatusChange = $request->has('status');
+        
+        if ($isFullEdit) {
+            abort_if(!$user->can('pms.edit'), 403, 'No tienes permiso para editar tareas.');
+        } elseif ($isSchedule) {
+            abort_if(!$user->can('pms.schedule') && !$user->can('pms.edit'), 403, 'No tienes permiso para reprogramar tareas.');
+        }
+
+        // --- VALIDACIÓN DE ESTRICTA DE ESTATUS ---
+        if ($isStatusChange) {
+            if (!$user->can('pms.schedule')) {
+                // Si no tiene pms.schedule, se requiere que él sea uno de los asignados
+                $isAssigned = $task->assignees()->where('users.id', $user->id)->exists();
+                abort_if(!$isAssigned, 403, 'Sólo puedes cambiar el estatus de las tareas que te han sido asignadas.');
+            }
+        }
+        // -----------------------------------------
+
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
@@ -80,7 +206,11 @@ class TaskController extends Controller
             'priority' => 'sometimes|in:Baja,Media,Alta',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
-            'finish_date' => 'nullable|date'
+            'finish_date' => 'nullable|date',
+            'user_ids' => 'nullable|array',
+            'user_ids.*' => 'exists:users,id',
+            'taskable_type' => 'nullable|string',
+            'taskable_id' => 'nullable|integer'
         ]);
 
         // --- LÓGICA DE FECHAS AUTOMÁTICAS ---
@@ -92,7 +222,6 @@ class TaskController extends Controller
                 if (is_null($task->start_date)) {
                     $validated['start_date'] = now();
                 }
-                // Si ya tiene fecha, NO se actualiza (se mantiene la original).
             }
 
             // 2. Al cambiar a "Completado": Agregar fecha fin.
@@ -107,12 +236,16 @@ class TaskController extends Controller
 
         $task->update($validated);
 
-        // LÓGICA DE ACTUALIZACIÓN DE ORDEN BASADA EN TAREAS
-        if ($task->service_order_id) {
-            $order = $task->serviceOrder;
+        // Actualizar asignados si se enviaron en la petición
+        if ($request->has('user_ids')) {
+            $task->assignees()->sync($validated['user_ids'] ?? []);
+        }
+
+        // LÓGICA DE ACTUALIZACIÓN DE MÓDULO BASADA EN TAREAS
+        if ($task->taskable_type === 'App\\Models\\ServiceOrder') {
+            $order = clone $task->taskable; 
 
             if ($order) {
-                // Asignar Fecha de Inicio de ORDEN si la tarea pasa a "En Proceso"
                 if ($task->status === 'En Proceso' && is_null($order->start_date)) {
                     $order->update(['start_date' => now()]);
                 }
@@ -120,11 +253,19 @@ class TaskController extends Controller
                 $incompleteTasks = $order->tasks()->where('status', '!=', 'Completado')->count();
 
                 if ($incompleteTasks === 0) {
-                    if ($order->status !== 'Completado' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
-                        $order->update([
-                            'status' => 'Completado',
-                            'completion_date' => now()
-                        ]);
+                    $unreportedCount = $order->items()->whereNull('used_quantity')->count();
+                    
+                    if ($unreportedCount === 0) {
+                        if (!in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
+                            $order->update([
+                                'status' => 'Completado',
+                                'completion_date' => now()
+                            ]);
+                        }
+                    } else {
+                        if (in_array($order->status, ['Cotización', 'Aceptado', 'Pendiente'])) {
+                            $order->update(['status' => 'En Proceso']);
+                        }
                     }
                 } else {
                     if ($order->status === 'Completado') {
@@ -141,14 +282,21 @@ class TaskController extends Controller
                     }
                 }
             }
+        } elseif ($task->taskable_type === 'App\\Models\\Ticket') {
+            $ticket = clone $task->taskable;
+            if ($ticket && $task->status === 'En Proceso' && $ticket->status === 'Abierto') {
+                $ticket->update(['status' => 'En Análisis']);
+            }
         }
 
-        return back()->with('success', 'Tarea actualizada.');
+        return back()->with('success', 'Tarea actualizada exitosamente.');
     }
 
     public function destroy(Task $task)
     {
+        abort_if(!Auth::user()->can('pms.delete'), 403, 'No tienes permiso para eliminar tareas.');
+        
         $task->delete();
-        return back()->with('success', 'Tarea eliminada.');
+        return back()->with('success', 'Tarea eliminada exitosamente.');
     }
 }

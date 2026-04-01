@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useSecureFile } from '@/Composables/useSecureFile';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -38,7 +39,10 @@ const props = defineProps({
 const { notification } = createDiscreteApi(['notification']);
 const { hasPermission } = usePermissions();
 
-// --- Data Refs (convertido de data()) ---
+// Extraer las variables del Composable en una sola línea
+const { isOpeningFile, openFileWithRetry } = useSecureFile();
+
+// --- Data Refs ---
 const searchQuery = ref(null);
 const searchOptions = ref([]);
 const loadingSearch = ref(false);
@@ -141,7 +145,7 @@ const stockStatus = computed(() => {
     return { type: 'success', text: 'Disponible', color: 'bg-green-100 text-green-600' };
 });
 
-// --- Methods (convertidos a funciones constantes) ---
+// --- Methods ---
 const goBack = () => {
     router.visit(route('products.index'));
 };
@@ -196,6 +200,7 @@ const renderProductOption = (option) => {
 const getTimelineType = (type) => {
     if (type === 'Entrada') return 'success';
     if (type === 'Salida') return 'error';
+    if (type === 'Ajuste') return 'warning';
     return 'info';
 };
 
@@ -205,7 +210,6 @@ const getFileIcon = (mimeType) => {
     return AttachOutline;
 };
 
-// --- Nueva Función para Eliminar Archivo ---
 const deleteFile = (fileId) => {
     router.delete(route('media.delete-file', fileId), {
         preserveScroll: true,
@@ -226,13 +230,19 @@ const deleteFile = (fileId) => {
     });
 };
 
-// === SOLUCIÓN FIX 403 PARA ARCHIVOS ===
-// Abre el archivo forzando una URL "nueva" con un timestamp
-const openFileWithRetry = (url) => {
-    if (!url) return;
-    const separator = url.includes('?') ? '&' : '?';
-    const safeUrl = `${url}${separator}retry=${new Date().getTime()}`;
-    window.open(safeUrl, '_blank');
+// === FIX IMAGEN: RETRASO Y MAYOR NÚMERO DE INTENTOS ===
+const imageLoadFailed = ref(false);
+const handleImageError = (e) => {
+    if (!e.target.dataset.retries || e.target.dataset.retries < 4) {
+        const retries = parseInt(e.target.dataset.retries || 0) + 1;
+        e.target.dataset.retries = retries;
+        
+        setTimeout(() => {
+            e.target.src = props.product.image_url + '?t=' + new Date().getTime();
+        }, 2000);
+    } else {
+        imageLoadFailed.value = true;
+    }
 };
 </script>
 
@@ -276,17 +286,18 @@ const openFileWithRetry = (url) => {
                     
                     <!-- Columna Izquierda: Imagen y Stock -->
                     <div class="md:col-span-1 space-y-6">
-                        <!-- Imagen (Ya incluye tu fix de @error) -->
+                        <!-- Imagen (Con Fix de Retry Seguro) -->
                         <div class="bg-white rounded-3xl p-2 shadow-lg border border-gray-100 overflow-hidden relative group">
                             <div class="aspect-square rounded-2xl overflow-hidden bg-gray-50 relative">
                                 <img 
-                                    @error="$event.target.src = product.image_url + '?retry=' + new Date().getTime()"
-                                    v-if="product.image_url" 
+                                    v-if="product.image_url && !imageLoadFailed" 
                                     :src="product.image_url" 
+                                    @error="handleImageError"
                                     class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     alt="Producto"
                                 />
-                                <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                <!-- Se muestra si no hay URL inicial, o si fallaron los reintentos -->
+                                <div v-if="!product.image_url || imageLoadFailed" class="w-full h-full flex flex-col items-center justify-center text-gray-300">
                                     <n-icon size="64"><CubeOutline /></n-icon>
                                     <span class="text-sm mt-2 font-medium">Sin imagen</span>
                                 </div>
@@ -304,7 +315,6 @@ const openFileWithRetry = (url) => {
                                     <n-icon class="text-indigo-500"><LocationOutline /></n-icon>
                                     Inventario
                                 </h3>
-                                <!-- Botón Ajuste Rápido -->
                                 <n-button v-if="hasPermission('products.adjust_stock')" size="small" secondary circle type="info" @click="openAdjustmentModal">
                                     <template #icon><n-icon><ClipboardOutline /></n-icon></template>
                                 </n-button>
@@ -386,7 +396,7 @@ const openFileWithRetry = (url) => {
                             </div>
                         </div>
 
-                        <!-- SECCIÓN: Documentos Adjuntos (MODIFICADA) -->
+                        <!-- SECCIÓN: Documentos Adjuntos (MODIFICADA CON DELAY Y COMPOSABLE) -->
                         <div v-if="product.attachments && product.attachments.length > 0" class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                             <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2 mb-4">
                                 <n-icon class="text-blue-500"><AttachOutline /></n-icon>
@@ -395,16 +405,21 @@ const openFileWithRetry = (url) => {
                             
                             <n-grid x-gap="12" y-gap="12" cols="1 md:2">
                                 <n-grid-item v-for="file in product.attachments" :key="file.id">
-                                    <div class="group relative flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all">
+                                    <div 
+                                        class="group relative flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all cursor-pointer"
+                                        @click="openFileWithRetry(file.url)"
+                                        :class="{'opacity-70 pointer-events-none': isOpeningFile}"
+                                    >
                                         <!-- Icono según tipo -->
                                         <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500 shadow-sm group-hover:scale-110 transition-transform">
-                                            <n-icon size="20">
+                                            <n-icon size="20" v-if="!isOpeningFile">
                                                 <component :is="getFileIcon(file.mime_type)" />
                                             </n-icon>
+                                            <n-spin size="small" v-else />
                                         </div>
                                         
-                                        <!-- Info del archivo (Click con Retry) -->
-                                        <div class="flex-1 min-w-0 cursor-pointer" @click="openFileWithRetry(file.url)">
+                                        <!-- Info del archivo -->
+                                        <div class="flex-1 min-w-0">
                                             <p class="text-sm font-semibold text-gray-700 truncate group-hover:text-blue-700">
                                                 {{ file.name }}
                                             </p>
@@ -415,7 +430,6 @@ const openFileWithRetry = (url) => {
                                         
                                         <!-- Botones de Acción -->
                                         <div class="flex items-center gap-1">
-                                            <!-- Botón Descargar (Click con Retry) -->
                                             <n-button 
                                                 size="tiny" 
                                                 circle 
@@ -423,18 +437,18 @@ const openFileWithRetry = (url) => {
                                                 type="info" 
                                                 @click.stop="openFileWithRetry(file.url)"
                                                 title="Descargar"
+                                                :disabled="isOpeningFile"
                                             >
                                                 <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
                                             </n-button>
                                             
-                                            <!-- Botón de Eliminar -->
                                             <n-popconfirm
                                                 @positive-click="deleteFile(file.id)"
                                                 positive-text="Sí, eliminar"
                                                 negative-text="Cancelar"
                                             >
                                                 <template #trigger>
-                                                    <n-button size="tiny" circle secondary type="error">
+                                                    <n-button size="tiny" circle secondary type="error" @click.stop>
                                                         <template #icon><n-icon><TrashOutline /></n-icon></template>
                                                     </n-button>
                                                 </template>
@@ -457,7 +471,6 @@ const openFileWithRetry = (url) => {
                                 </h3>
                                 
                                 <div class="w-full sm:w-48">
-                                    <!-- DatePicker envuelto en ConfigProvider para asegurar español CORRECTO -->
                                     <n-config-provider :locale="locale" :date-locale="dateLocale">
                                         <n-date-picker 
                                             v-model:value="selectedMonth" 
@@ -472,7 +485,6 @@ const openFileWithRetry = (url) => {
                                 </div>
                             </div>
 
-                            <!-- Estado de Carga -->
                             <div v-if="loadingHistory" class="py-8 px-4">
                                 <n-space vertical>
                                     <n-skeleton text :repeat="3" />
@@ -480,7 +492,6 @@ const openFileWithRetry = (url) => {
                                 </n-space>
                             </div>
 
-                            <!-- Lista de Movimientos -->
                             <div v-else class="max-h-96 overflow-y-auto">
                                 <div v-if="movements.length === 0" class="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                                     <n-icon size="48" class="mb-3 opacity-30"><CalendarOutline /></n-icon>
@@ -501,7 +512,7 @@ const openFileWithRetry = (url) => {
                                                 <span :class="{
                                                     'text-green-600': movement.type === 'Entrada',
                                                     'text-red-600': movement.type === 'Salida',
-                                                    'text-blue-600': movement.type === 'Ajuste'
+                                                    'text-orange-600': movement.type === 'Ajuste'
                                                 }">
                                                     {{ movement.type === 'Entrada' ? '+' : (movement.type === 'Salida' ? '-' : '') }}{{ movement.quantity }} uni.
                                                 </span>
@@ -587,10 +598,9 @@ const openFileWithRetry = (url) => {
 </template>
 
 <style scoped>
-/* Estilo para poner mayúsculas en el datepicker (ej. ENE 2024) */
 :deep(.uppercase-input .n-input__input-el) {
     text-transform: uppercase;
     font-weight: bold;
-    color: #4f46e5; /* Un tono índigo para destacar */
+    color: #4f46e5;
 }
 </style>

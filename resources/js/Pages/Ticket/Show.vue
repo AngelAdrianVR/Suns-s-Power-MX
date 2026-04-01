@@ -1,6 +1,7 @@
 <script>
 import { defineComponent, h, ref, computed } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import { useSecureFile } from '@/Composables/useSecureFile';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -28,6 +29,7 @@ export default defineComponent({
         CreateOutline, SearchOutline, ChatboxEllipsesOutline, AttachOutline, CheckmarkCircleOutline,
         CloseCircleOutline, HardwareChipOutline, DocumentTextOutline, SendOutline
     },
+    // --- AQUÍ ESTABA EL ERROR: FALTABA DECLARAR LOS PROPS ---
     props: {
         ticket: {
             type: Object,
@@ -36,12 +38,17 @@ export default defineComponent({
         conversation_history: {
             type: Array,
             default: () => []
+        },
+        filters: {
+            type: Object,
+            default: () => ({})
         }
     },
     // El método setup sirve de puente para usar Composables en Options API
     setup(props) {
         // 1. Extraemos la función del composable
         const { hasPermission } = usePermissions();
+        const { isOpeningFile, openFileWithRetry } = useSecureFile();
         
         const { notification } = createDiscreteApi(['notification']);
 
@@ -95,7 +102,9 @@ export default defineComponent({
             replyFormRef,
             openReplyModal,
             submitReply,
-            hasPermission
+            hasPermission,
+            isOpeningFile,
+            openFileWithRetry
         };
     },
     data() {
@@ -325,10 +334,14 @@ export default defineComponent({
                                                 :alt="ev.name"
                                             />
                                             <!-- Si es otro archivo -->
-                                            <div v-else class="w-full h-full flex flex-col items-center justify-center text-gray-400 p-2">
-                                                <n-icon size="30"><DocumentTextOutline /></n-icon>
+                                            <div v-else 
+                                                 class="w-full h-full flex flex-col items-center justify-center text-gray-400 p-2 cursor-pointer hover:bg-gray-100 transition-colors"
+                                                 @click="openFileWithRetry(ev.url)"
+                                                 :class="{'opacity-50 pointer-events-none': isOpeningFile}"
+                                            >
+                                                <n-spin v-if="isOpeningFile" size="medium" />
+                                                <n-icon v-else size="30"><DocumentTextOutline /></n-icon>
                                                 <span class="text-xs truncate w-full text-center mt-1">{{ ev.name }}</span>
-                                                <a :href="ev.url" target="_blank" class="absolute inset-0 z-10"></a>
                                             </div>
                                         </div>
                                     </div>
@@ -366,9 +379,16 @@ export default defineComponent({
                                             
                                             <!-- Adjuntos en comentarios -->
                                             <div v-if="item.attachments && item.attachments.length > 0" class="mt-2 flex flex-wrap gap-2">
-                                                 <a v-for="att in item.attachments" :key="att.id" :href="att.url" target="_blank" class="text-xs text-blue-500 underline flex items-center gap-1">
+                                                 <button 
+                                                    v-for="att in item.attachments" 
+                                                    :key="att.id" 
+                                                    @click="openFileWithRetry(att.url)"
+                                                    class="text-xs text-blue-500 hover:underline flex items-center gap-1 bg-transparent border-none cursor-pointer p-0"
+                                                    :disabled="isOpeningFile"
+                                                    :class="{'opacity-50 cursor-not-allowed': isOpeningFile}"
+                                                 >
                                                     <n-icon><AttachOutline /></n-icon> {{ att.name }}
-                                                 </a>
+                                                 </button>
                                             </div>
                                         </div>
                                     </n-timeline-item>

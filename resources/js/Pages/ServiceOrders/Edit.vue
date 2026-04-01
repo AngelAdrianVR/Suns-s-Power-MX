@@ -85,7 +85,7 @@ const form = useForm({
     // --- NUEVOS CAMPOS ---
     service_number: props.order.service_number,
     rate_type: props.order.rate_type,
-    system_type: props.order.system_type, // Campo agregado
+    system_type: props.order.system_type, 
     meter_number: props.order.meter_number,
     // ---------------------
 
@@ -101,6 +101,10 @@ const form = useForm({
     installation_zip_code: props.order.installation_zip_code,
     installation_country: props.order.installation_country || 'México',
     
+    // Coordenadas inicializadas
+    installation_lat: props.order.installation_lat ? parseFloat(props.order.installation_lat) : null,
+    installation_lng: props.order.installation_lng ? parseFloat(props.order.installation_lng) : null,
+
     notes: props.order.notes,
 });
 
@@ -210,6 +214,10 @@ const handleClientChange = async (clientId) => {
         form.installation_state = data.state || '';
         form.installation_zip_code = data.zip_code || '';
         form.installation_country = data.country || 'México';
+        
+        // Asignar coordenadas en caso de que el cliente las tenga en su registro
+        form.installation_lat = data.lat ? parseFloat(data.lat) : null;
+        form.installation_lng = data.lng ? parseFloat(data.lng) : null;
 
         notification.success({
             title: 'Dirección Actualizada',
@@ -516,6 +524,29 @@ const submit = () => {
                                                     v-model:value="form.installation_municipality" 
                                                     placeholder="Municipio" 
                                                     :input-props="{ autocomplete: 'off' }"
+                                                />
+                                            </n-form-item>
+                                        </n-grid-item>
+
+                                        <!-- Campos de Coordenadas añadidos -->
+                                        <n-grid-item span="1 m:2">
+                                            <n-form-item label="Latitud (Opcional)" path="installation_lat">
+                                                <n-input-number 
+                                                    v-model:value="form.installation_lat" 
+                                                    placeholder="Ej. 20.659698" 
+                                                    :show-button="false"
+                                                    class="w-full"
+                                                />
+                                            </n-form-item>
+                                        </n-grid-item>
+
+                                        <n-grid-item span="1 m:2">
+                                            <n-form-item label="Longitud (Opcional)" path="installation_lng">
+                                                <n-input-number 
+                                                    v-model:value="form.installation_lng" 
+                                                    placeholder="Ej. -103.349609" 
+                                                    :show-button="false"
+                                                    class="w-full"
                                                 />
                                             </n-form-item>
                                         </n-grid-item>

@@ -28,6 +28,8 @@ return new class extends Migration
             $table->string('system_type')->nullable();    // Tipo de Sistema (Interconectado, Autónomo, etc.)
             $table->string('meter_number')->nullable();   // Número de medidor
             $table->dateTime('completion_date')->nullable();
+            // Bandera para que almacén sepa si ya ajustaron el inventario de esta orden
+            $table->boolean('inventory_reconciled')->default(false);
             $table->decimal('total_amount', 12, 2)->default(0); 
             
             // Dirección de Instalación (Específica de la orden)
@@ -40,6 +42,10 @@ return new class extends Migration
             $table->string('installation_state')->nullable();   // Estado
             $table->string('installation_zip_code')->nullable(); // Código Postal
             $table->string('installation_country')->default('México');  // País
+
+            // Coordenadas de la instalación
+            $table->decimal('installation_lat', 10, 8)->nullable();
+            $table->decimal('installation_lng', 11, 8)->nullable();
 
             $table->text('notes')->nullable(); 
             $table->timestamps();

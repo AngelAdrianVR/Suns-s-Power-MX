@@ -1,21 +1,20 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { usePermissions } from '@/Composables/usePermissions'; // Importar hook de permisos
+import { ref, computed, onMounted } from 'vue';
+import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
+import OrderItemsTab from './Components/OrderItemsTab.vue';
+import OrderDetailsTab from './Components/OrderDetailsTab.vue';
+import OrderFilesTab from './Components/OrderFilesTab.vue';
+
 import { 
-    NButton, NTag, NCard, NGrid, NGridItem, NDescriptions, NDescriptionsItem, 
-    NTabs, NTabPane, NIcon, NThing, NAvatar, NProgress, NStatistic, NNumberAnimation,
-    createDiscreteApi, NEmpty, NPopselect, NModal, NForm, NFormItem, NInput, NSelect, NInputNumber,
-    NPopconfirm, NUpload, NImageGroup, NImage, NTooltip
+    NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
+    NIcon, NAvatar, NProgress, NStatistic, createDiscreteApi, NPopselect,
+    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
 } from 'naive-ui';
 import { 
-    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, 
-    CalendarOutline, PersonOutline, CashOutline, ReceiptOutline, 
-    DocumentTextOutline, CheckmarkCircleOutline, TimeOutline, ImagesOutline,
-    AddOutline, RemoveCircleOutline, CloudUploadOutline, DocumentOutline, CloudDownloadOutline,
-    ChevronDownOutline, FlashOutline, PricetagOutline, HardwareChipOutline // Nuevo icono agregado
+    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -27,14 +26,28 @@ const props = defineProps({
     can_view_financials: Boolean 
 });
 
-// Inicializar permisos
 const { hasPermission } = usePermissions();
-
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
 
-// --- ESTADO Y UTILIDADES ---
-const showProductModal = ref(false);
+// --- LÓGICA DE PESTAÑAS Y URL ---
+const activeTab = ref('gantt');
 
+onMounted(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab) {
+        activeTab.value = tab;
+    }
+});
+
+const handleTabChange = (name) => {
+    activeTab.value = name;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', name);
+    window.history.replaceState({}, '', url);
+};
+
+// --- ESTADO Y UTILIDADES ---
 const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 const formatDate = (dateString) => {
     if(!dateString) return 'Sin definir';
@@ -42,11 +55,8 @@ const formatDate = (dateString) => {
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// --- NUEVO: Propiedades Computadas para Dirección ---
 const formattedAddress = computed(() => {
     const o = props.order;
-    
-    // Intentar construir dirección atomizada
     const parts = [
         o.installation_street ? (o.installation_street + (o.installation_exterior_number ? ` #${o.installation_exterior_number}` : '')) : null,
         o.installation_interior_number ? `Int. ${o.installation_interior_number}` : null,
@@ -55,51 +65,96 @@ const formattedAddress = computed(() => {
         o.installation_municipality,
         o.installation_state
     ];
-    
     const atomized = parts.filter(Boolean).join(', ');
-    
-    // Si no hay datos atomizados (legacy), intentar mostrar el campo antiguo si existe
     if (!atomized && o.installation_address) return o.installation_address;
-    
     return atomized || 'Sin dirección registrada';
 });
 
 const googleMapsUrl = computed(() => {
     const o = props.order;
-    
-    // Construir query de búsqueda
+    if (o.installation_lat && o.installation_lng) {
+        return `https://www.google.com/maps/dir/?api=1&destination=${o.installation_lat},${o.installation_lng}`;
+    }
     const addressQuery = [
-        o.installation_street,
-        o.installation_exterior_number,
-        o.installation_neighborhood,
-        o.installation_municipality,
-        o.installation_state,
-        o.installation_country || 'México'
+        o.installation_street, o.installation_exterior_number, o.installation_neighborhood,
+        o.installation_municipality, o.installation_state, o.installation_country || 'México'
     ].filter(Boolean).join(', ');
 
-    // Fallback a campo antiguo si es necesario
     const finalQuery = addressQuery || o.installation_address;
-
     if (!finalQuery) return null;
-    
-    // Usamos 'dir' (direcciones) para que trace la ruta desde la ubicación del usuario
     return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(finalQuery)}`;
 });
-// ----------------------------------------------------
 
 const generalProgress = computed(() => {
     if (!props.stats || props.stats.total_tasks === 0) return 0;
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
 });
 
+// Neva propiedad computada para validar si las tareas están completas
+const allTasksCompleted = computed(() => {
+    if (!props.stats || props.stats.total_tasks === 0) return true;
+    return props.stats.completed_tasks === props.stats.total_tasks;
+});
+
+const formattedTotal = computed(() =>
+  new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(props.order.total_amount ?? 0)
+);
+
+// --- CONCILIACIÓN DE MATERIAL ---
+const hasNoMaterials = computed(() => {
+    return !props.order.items || props.order.items.length === 0;
+});
+
+const materialsReported = computed(() => {
+    if (hasNoMaterials.value) return true; 
+    return props.order.items.every(item => item.used_quantity !== null);
+});
+
+const showCompletionModal = ref(false);
+const completionForm = useForm({
+    items: [],
+    installation_notes: ''
+});
+
+// Control de la animación de pulso
+const isPulseActive = ref(false);
+
+const triggerPulse = () => {
+    isPulseActive.value = true;
+    // Detiene la animación después de 4 segundos
+    setTimeout(() => {
+        isPulseActive.value = false;
+    }, 4000);
+};
+
+const openMaterialReportModal = () => {
+    completionForm.items = props.order.items.map(item => ({
+        id: item.id,
+        name: item.product.name,
+        sku: item.product.sku,
+        assigned_qty: item.quantity,
+        used_quantity: item.used_quantity !== null ? item.used_quantity : item.quantity
+    }));
+    completionForm.installation_notes = '';
+    showCompletionModal.value = true;
+    isPulseActive.value = false; // Detener animación si abre el modal manualmente
+};
+
+const submitInstallationReport = () => {
+    completionForm.post(route('service-orders.confirm-installation', props.order.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showCompletionModal.value = false;
+            notification.success({ title: 'Material Conciliado', content: 'Las cantidades se han guardado correctamente.', duration: 5000 });
+        }
+    });
+};
+
 // --- ESTATUS DE ORDEN ---
 const orderStatusOptions = [
-    { label: 'Cotización', value: 'Cotización' },
-    { label: 'Aceptado', value: 'Aceptado' },
-    { label: 'En Proceso', value: 'En Proceso' },
-    { label: 'Completado', value: 'Completado' }, 
-    { label: 'Facturado', value: 'Facturado' },
-    { label: 'Cancelado', value: 'Cancelado' }
+    { label: 'Cotización', value: 'Cotización' }, { label: 'Aceptado', value: 'Aceptado' },
+    { label: 'En Proceso', value: 'En Proceso' }, { label: 'Completado', value: 'Completado' }, 
+    { label: 'Facturado', value: 'Facturado' }, { label: 'Cancelado', value: 'Cancelado' }
 ];
 
 const getStatusType = (status) => {
@@ -108,8 +163,31 @@ const getStatusType = (status) => {
 };
 
 const handleStatusUpdate = (newStatus) => {
-    // Validación extra en cliente
     if (!hasPermission('service_orders.change_status')) return;
+
+    // --- NUEVAS REGLAS DE VALIDACIÓN ---
+    if (newStatus === 'Completado') {
+        // 1. Validar Tareas
+        if (!allTasksCompleted.value) {
+            notification.error({ 
+                title: 'Tareas Pendientes', 
+                content: 'Debes marcar todas las tareas como "Completado" en el cronograma antes de finalizar la orden.', 
+                duration: 6000 
+            });
+            return;
+        }
+
+        // 2. Validar Materiales
+        if (!materialsReported.value) {
+            notification.warning({ 
+                title: 'Acción Requerida', 
+                content: 'Debes conciliar el material utilizado antes de marcar la orden como Completada.', 
+                duration: 5000 
+            });
+            triggerPulse(); // Dispara la animación en el botón
+            return;
+        }
+    }
 
     router.patch(route('service-orders.update-status', props.order.id), { status: newStatus }, {
         preserveScroll: true,
@@ -117,74 +195,6 @@ const handleStatusUpdate = (newStatus) => {
     });
 };
 
-// --- GESTIÓN DE PRODUCTOS ---
-const productForm = useForm({
-    product_id: null,
-    quantity: 1
-});
-
-const productOptions = computed(() => {
-    return props.available_products.map(p => ({
-        // Condicional en la etiqueta si no tiene permisos financieros
-        label: props.can_view_financials 
-            ? `${p.name} (${p.sku}) - ${formatCurrency(p.sale_price)}` 
-            : `${p.name} (${p.sku})`,
-        value: p.id
-    }));
-});
-
-const addProduct = () => {
-    productForm.post(route('service-orders.add-items', props.order.id), {
-        onSuccess: () => { 
-            showProductModal.value = false; 
-            productForm.reset();
-            notification.success({ title: 'Producto Agregado', duration: 3000 }); 
-        },
-        preserveScroll: true
-    });
-};
-
-const formattedTotal = computed(() =>
-  new Intl.NumberFormat('es-MX', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(props.order.total_amount ?? 0)
-)
-
-const removeProduct = (itemId) => {
-    router.delete(route('service-orders.remove-item', itemId), {
-        preserveScroll: true,
-        onSuccess: () => notification.success({title: 'Producto removido', duration: 3000})
-    });
-};
-
-// --- GESTIÓN DE EVIDENCIAS (ARCHIVOS) ---
-const fileInput = ref(null);
-const triggerFileInput = () => {
-    fileInput.value.click();
-};
-
-const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const form = useForm({
-        file: file
-    });
-
-    form.post(route('service-orders.upload-media', props.order.id), {
-        onSuccess: () => {
-            notification.success({ title: 'Archivo subido', content: 'Evidencia guardada.', duration: 3000 });
-            router.reload({ only: ['order'] });
-            event.target.value = null; // Resetear input
-        },
-        onError: () => {
-            notification.error({ title: 'Error', content: 'No se pudo subir el archivo.' });
-        }
-    });
-};
-
-// --- ACCIONES GENERALES ---
 const confirmDelete = () => {
     dialog.warning({
         title: 'Eliminar Orden',
@@ -194,15 +204,6 @@ const confirmDelete = () => {
         onPositiveClick: () => router.delete(route('service-orders.destroy', props.order.id))
     });
 };
-
-// Función auxiliar para saber si es imagen
-const isImage = (file) => {
-    if (file.mime_type) {
-        return file.mime_type.startsWith('image/');
-    }
-    return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
-};
-
 </script>
 
 <template>
@@ -220,8 +221,6 @@ const isImage = (file) => {
                             Orden de Servicio <span class="text-indigo-600 font-mono">#{{ order.id }}</span>
                         </h2>
                         <div class="flex items-center gap-2 mt-1">
-                            
-                            <!-- ESTATUS: Editable solo con permiso 'service_orders.change_status' -->
                             <n-popselect 
                                 v-if="hasPermission('service_orders.change_status')"
                                 :options="orderStatusOptions" 
@@ -233,12 +232,9 @@ const isImage = (file) => {
                                     {{ order.status }} <n-icon class="ml-1"><ChevronDownOutline /></n-icon>
                                 </n-tag>
                             </n-popselect>
-
-                            <!-- ESTATUS: Solo lectura -->
                             <n-tag v-else :type="getStatusType(order.status)" round size="small" :bordered="false">
                                 {{ order.status }}
                             </n-tag>
-                            
                             <span class="text-xs text-gray-400 border-l pl-2 ml-2 border-gray-300">
                                 Creado {{ formatDate(order.created_at) }}
                             </span>
@@ -247,26 +243,37 @@ const isImage = (file) => {
                 </div>
 
                 <div class="flex gap-2">
-                    <!-- BOTÓN EDITAR -->
+                    
+                    <!-- BOTÓN INDEPENDIENTE DE CONCILIAR MATERIAL -->
                     <n-button 
-                        v-if="hasPermission('service_orders.edit')" 
+                        :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
                         quaternary 
-                        type="warning" 
-                        @click="() => router.visit(route('service-orders.edit', order.id))"
+                        @click="openMaterialReportModal"
+                        :class="{'animate-attention': isPulseActive}"
                     >
-                        <template #icon><n-icon><CreateOutline /></n-icon></template>
-                        Editar
+                        <template #icon>
+                            <n-icon>
+                                <InformationCircleOutline v-if="hasNoMaterials" />
+                                <CheckmarkCircleOutline v-else-if="materialsReported" />
+                                <ClipboardOutline v-else />
+                            </n-icon>
+                        </template>
+                        {{ hasNoMaterials ? 'Sin materiales para conciliar' : (materialsReported ? 'Material Conciliado' : 'Conciliar Material') }}
                     </n-button>
 
-                    <!-- BOTÓN ELIMINAR -->
                     <n-button 
-                        v-if="hasPermission('service_orders.delete') && order.status !== 'Completado' && order.status !== 'Facturado'" 
-                        quaternary 
-                        type="error" 
+                        v-if="hasPermission('service_orders.edit')" 
+                        quaternary type="warning" 
+                        @click="() => router.visit(route('service-orders.edit', order.id))"
+                    >
+                        <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
+                    </n-button>
+                    <n-button 
+                        v-if="hasPermission('service_orders.delete') && !['Completado', 'Facturado'].includes(order.status)" 
+                        quaternary type="error" 
                         @click="confirmDelete"
                     >
-                        <template #icon><n-icon><TrashOutline /></n-icon></template>
-                        Eliminar
+                        <template #icon><n-icon><TrashOutline /></n-icon></template> Eliminar
                     </n-button>
                 </div>
             </div>
@@ -298,7 +305,6 @@ const isImage = (file) => {
                                     </div>
                                 </div>
                             </n-grid-item>
-                            <!-- VISIBILIDAD CONDICIONAL: Total Proyecto (Solo si puede ver finanzas) -->
                             <n-grid-item v-if="can_view_financials">
                                 <div class="p-2 border-l border-gray-100">
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
@@ -320,25 +326,20 @@ const isImage = (file) => {
                         </n-grid>
                     </n-card>
                     
-                    <!-- Tarjeta de Ubicación Actualizada -->
                     <n-card size="small" class="rounded-2xl shadow-sm bg-blue-50/30 border-blue-100">
                         <div class="flex flex-col h-full justify-between">
                             <div>
                                 <div class="flex items-center gap-2 text-blue-800 font-semibold mb-2">
                                     <n-icon><LocationOutline /></n-icon> Ubicación
                                 </div>
-                                <!-- Usamos la propiedad computada para la dirección formateada -->
                                 <p class="text-sm text-gray-600 line-clamp-3 leading-snug">
                                     {{ formattedAddress }}
                                 </p>
+                                <div v-if="order.installation_lat && order.installation_lng" class="mt-2 text-xs text-gray-500 font-mono">
+                                    📍 {{ order.installation_lat }}, {{ order.installation_lng }}
+                                </div>
                             </div>
-                            <!-- Usamos la propiedad computada para el enlace -->
-                            <a 
-                                v-if="googleMapsUrl"
-                                :href="googleMapsUrl" 
-                                target="_blank"
-                                class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
-                            >
+                            <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
                                 Cómo llegar <n-icon size="10" class="-rotate-45"><ArrowBackOutline/></n-icon>
                             </a>
                             <div v-else class="mt-3 text-xs text-gray-400 italic">
@@ -349,233 +350,116 @@ const isImage = (file) => {
                 </div>
 
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
-                    <n-tabs type="line" size="large" animated class="px-6 pt-4">
+                    <n-tabs type="line" size="large" animated class="px-6 pt-4" :value="activeTab" @update:value="handleTabChange">
                         
-                        <!-- TAB GANTT: Protegido por 'tasks.view_board' -->
                         <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt" tab="Cronograma y Tareas">
                             <div class="py-4 space-y-6">
-                                <TaskGanttChart 
-                                    :tasks="diagram_data" 
-                                    :order-id="order.id"
-                                    :assignable-users="assignable_users"
-                                />
+                                <TaskGanttChart :tasks="diagram_data" :order-id="order.id" :assignable-users="assignable_users" />
                             </div>
                         </n-tab-pane>
 
                         <n-tab-pane name="items" tab="Materiales y Productos">
-                             <div class="p-4">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h3 class="font-bold text-gray-700">Productos Asignados</h3>
-                                    <!-- Botón agregar producto: Requiere 'service_orders.edit' -->
-                                    <n-button 
-                                        v-if="hasPermission('service_orders.edit')"
-                                        type="primary" 
-                                        size="small" 
-                                        @click="showProductModal = true"
-                                    >
-                                        <template #icon><n-icon><AddOutline /></n-icon></template>
-                                        Agregar Producto
-                                    </n-button>
-                                </div>
-
-                                <div class="border rounded-lg overflow-x-auto">
-                                    <table class="min-w-full divide-y divide-gray-200">
-                                        <thead class="bg-gray-50">
-                                            <tr>
-                                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cant.</th>
-                                                <!-- VISIBILIDAD CONDICIONAL: Columnas de Precio -->
-                                                <th v-if="can_view_financials" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P. Unit (Ref)</th>
-                                                <th v-if="can_view_financials" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Costo Total</th>
-                                                <th class="px-6 py-3"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="bg-white divide-y divide-gray-200">
-                                            <tr v-for="item in order.items" :key="item.id">
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {{ item.product.name }} <span class="text-gray-400 text-xs">({{ item.product.sku }})</span>
-                                                </td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ item.quantity }}</td>
-                                                <!-- VISIBILIDAD CONDICIONAL: Celdas de Precio -->
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{{ formatCurrency(item.product.purchase_price) }}</td>
-                                                <td v-if="can_view_financials" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">{{ formatCurrency(item.product.purchase_price * item.quantity) }}</td>
-                                                <td class="px-6 py-4 whitespace-nowrap text-right">
-                                                    <!-- Botón quitar: Requiere 'service_orders.edit' -->
-                                                    <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="removeProduct(item.id)">
-                                                        <template #trigger>
-                                                            <n-button circle size="tiny" type="error" tertiary>
-                                                                <template #icon><n-icon><RemoveCircleOutline /></n-icon></template>
-                                                            </n-button>
-                                                        </template>
-                                                        ¿Quitar producto y devolver stock?
-                                                    </n-popconfirm>
-                                                </td>
-                                            </tr>
-                                            <tr v-if="!order.items?.length">
-                                                <td colspan="5" class="px-6 py-8 text-center text-gray-400 text-sm">No hay materiales asignados.</td>
-                                            </tr>
-                                        </tbody>
-                                        <!-- VISIBILIDAD CONDICIONAL: Footer -->
-                                        <tfoot v-if="can_view_financials" class="bg-gray-50 font-bold">
-                                            <tr>
-                                                <td colspan="3" class="px-6 py-3 text-right">Total Materiales (Costo Interno):</td>
-                                                <td class="px-6 py-3 text-right text-indigo-600">
-                                                    {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.product.purchase_price * i.quantity), 0) || 0) }}
-                                                </td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                             </div>
+                             <OrderItemsTab 
+                                :order="order" 
+                                :available_products="available_products" 
+                                :can_view_financials="can_view_financials" 
+                             />
                         </n-tab-pane>
 
                         <n-tab-pane name="details" tab="Detalles Operativos">
-                            <div class="p-4">
-                                <n-descriptions label-placement="top" bordered column="3">
-                                    <n-descriptions-item label="Fecha de Inicio Real">
-                                        <div class="flex items-center gap-2">
-                                            <n-icon class="text-gray-400"><CalendarOutline /></n-icon>
-                                            {{ formatDate(order.start_date) }}
-                                        </div>
-                                    </n-descriptions-item>
-                                    <n-descriptions-item label="Fecha de Finalización">
-                                        <div class="flex items-center gap-2" :class="order.completion_date ? 'text-green-600 font-medium' : 'text-gray-400'">
-                                            <n-icon><CheckmarkCircleOutline /></n-icon>
-                                            {{ order.completion_date ? formatDate(order.completion_date) : 'En progreso' }}
-                                        </div>
-                                    </n-descriptions-item>
-                                    <n-descriptions-item label="Representante de Ventas">
-                                        <div v-if="order.sales_rep" class="flex items-center gap-3">
-                                            <n-avatar size="small" round :src="order.sales_rep.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+order.sales_rep.name" />
-                                            <span>{{ order.sales_rep.name }}</span>
-                                        </div>
-                                        <span v-else class="text-gray-400 italic">No asignado</span>
-                                    </n-descriptions-item>
-                                    
-                                    <!-- --- NUEVOS CAMPOS --- -->
-                                    <n-descriptions-item label="Número de Servicio / N° Medidor">
-                                        <div v-if="order.service_number" class="flex items-center gap-2 font-mono text-indigo-700 bg-indigo-50 px-2 py-1 rounded w-fit">
-                                            <n-icon><FlashOutline /></n-icon> {{ order.service_number }} / {{ order.meter_number }}
-                                        </div>
-                                        <span v-else class="text-gray-400 italic">No especificado</span>
-                                    </n-descriptions-item>
-
-                                    <n-descriptions-item label="Tipo de Tarifa">
-                                         <div v-if="order.rate_type" class="flex items-center gap-2">
-                                            <n-icon class="text-gray-500"><PricetagOutline /></n-icon> {{ order.rate_type }}
-                                        </div>
-                                        <span v-else class="text-gray-400 italic">N/A</span>
-                                    </n-descriptions-item>
-                                    
-                                    <!-- NUEVO CAMPO AGREGADO -->
-                                    <n-descriptions-item label="Tipo de Sistema">
-                                         <div v-if="order.system_type" class="flex items-center gap-2">
-                                            <n-icon class="text-gray-500"><HardwareChipOutline /></n-icon> {{ order.system_type }}
-                                        </div>
-                                        <span v-else class="text-gray-400 italic">N/A</span>
-                                    </n-descriptions-item>
-                                    <!-- -------------------- -->
-
-                                    <n-descriptions-item label="Notas">
-                                        {{ order.notes || 'Sin notas registradas.' }}
-                                    </n-descriptions-item>
-                                </n-descriptions>
-                            </div>
+                            <OrderDetailsTab :order="order" />
                         </n-tab-pane>
 
                         <n-tab-pane name="files" tab="Evidencias">
-                            <div class="p-4">
-                                <!-- Subida de archivos: Requiere 'service_orders.edit' -->
-                                <div v-if="hasPermission('service_orders.edit')" class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
-                                    <input 
-                                        type="file" 
-                                        ref="fileInput" 
-                                        class="hidden" 
-                                        @change="handleFileChange" 
-                                        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
-                                    />
-                                    <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-20 w-full md:w-1/2">
-                                        <div class="flex flex-col items-center gap-2">
-                                            <n-icon size="24"><CloudUploadOutline /></n-icon>
-                                            <span>Seleccionar archivo para subir</span>
-                                        </div>
-                                    </n-button>
-                                    <p class="text-xs text-gray-400 mt-2">Formatos aceptados: Imágenes, PDF y Documentos (Max 10MB)</p>
-                                </div>
-
-                                <div v-if="order.media?.length">
-                                    <h4 class="font-bold text-gray-700 mb-3">Archivos Adjuntos</h4>
-                                    <!-- Si es imagen, usamos n-image-group. Si no, lo mostramos aparte para no romper el layout -->
-                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                        <div v-for="file in order.media" :key="file.id" class="relative group">
-                                            
-                                            <!-- Caso 1: Imagen -->
-                                            <n-image
-                                                v-if="isImage(file)"
-                                                :src="file.original_url"
-                                                class="rounded-lg shadow-sm border border-gray-200 overflow-hidden w-full h-40 object-cover"
-                                                object-fit="cover"
-                                            />
-
-                                            <!-- Caso 2: Documento (PDF, etc) -->
-                                            <div v-else class="w-full h-40 rounded-lg shadow-sm border border-gray-200 bg-gray-100 flex flex-col items-center justify-center gap-2 p-2">
-                                                <n-icon size="40" class="text-gray-400"><DocumentOutline /></n-icon>
-                                                <a :href="file.original_url" target="_blank" class="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-bold text-center break-all">
-                                                    Abrir Archivo <n-icon><CloudDownloadOutline/></n-icon>
-                                                </a>
-                                            </div>
-
-                                            <div class="mt-1 text-xs text-gray-500 truncate">{{ file.file_name }}</div>
-                                            
-                                            <!-- Eliminar archivo: Requiere 'service_orders.edit' (o delete si quisieras separar) -->
-                                            <n-popconfirm 
-                                                v-if="hasPermission('service_orders.edit')"
-                                                @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true, onSuccess: () => router.reload({only: ['order']}) })"
-                                            >
-                                                <template #trigger>
-                                                    <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
-                                                        <n-icon><TrashOutline /></n-icon>
-                                                    </button>
-                                                </template>
-                                                ¿Eliminar evidencia?
-                                            </n-popconfirm>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="p-8 text-center" v-else>
-                                    <n-empty description="No se han cargado evidencias fotográficas o documentos aún." />
-                                </div>
-                            </div>
+                            <OrderFilesTab :order="order" />
                         </n-tab-pane>
 
                     </n-tabs>
                 </div>
             </div>
+        </div>
 
-            <!-- MODAL: Agregar Producto -->
-            <n-modal v-model:show="showProductModal" preset="card" title="Asignar Material/Producto" style="width: 500px;">
-                <n-form>
-                    <n-form-item label="Producto">
-                        <n-select 
-                            v-model:value="productForm.product_id" 
-                            :options="productOptions" 
-                            filterable 
-                            placeholder="Buscar producto..."
-                        />
-                    </n-form-item>
-                    <n-form-item label="Cantidad">
-                        <n-input-number v-model:value="productForm.quantity" :min="1" />
-                    </n-form-item>
-                    <div class="flex justify-end mt-4">
-                        <n-button type="primary" @click="addProduct" :loading="productForm.processing" :disabled="!productForm.product_id">
-                            Asignar y Descontar
+        <!-- === MODAL AUDITABLE: CONCILIAR MATERIAL === -->
+        <n-modal v-model:show="showCompletionModal" :mask-closable="false">
+            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">
+                <p class="text-gray-600 mb-4 text-sm">
+                    Ingresa la cantidad exacta de material que utilizaste en el sitio. Puedes usar hasta 2 puntos decimales (ej. 2.5 metros).
+                </p>
+
+                <div class="max-h-96 overflow-y-auto border border-gray-200 rounded-lg mb-4">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50 sticky top-0 z-10">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Asignado</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-indigo-600">Usado Realmente</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-100">
+                            <tr v-for="(item, index) in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
+                                <td class="px-4 py-2 text-sm text-gray-800">
+                                    {{ item.name }} <br><span class="text-[10px] text-gray-400">{{ item.sku }}</span>
+                                </td>
+                                <td class="px-4 py-2 text-sm text-center font-semibold text-gray-600">
+                                    {{ item.assigned_qty }}
+                                </td>
+                                <td class="px-4 py-2 text-center">
+                                    <!-- Aceptamos hasta 2 decimales para medidas fraccionadas como metros, litros, etc. -->
+                                    <n-input-number v-model:value="item.used_quantity" :min="0" :step="0.1" :precision="2" size="small" class="w-24 mx-auto" />
+                                </td>
+                            </tr>
+                            <tr v-if="!completionForm.items.length">
+                                <td colspan="3" class="px-4 py-8">
+                                    <n-empty description="No se asignaron materiales a esta orden." />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <n-form-item label="Notas / Observaciones de Material (Opcional)">
+                    <n-input 
+                        v-model:value="completionForm.installation_notes" 
+                        type="textarea" 
+                        placeholder="Ej. Sobraron 2.5 metros de cable y los regresaré a almacén..." 
+                    />
+                </n-form-item>
+
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="showCompletionModal = false">Cancelar</n-button>
+                        <n-button type="success" @click="submitInstallationReport" :loading="completionForm.processing">
+                            <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
+                            Confirmar y Guardar Cantidades
                         </n-button>
                     </div>
-                </n-form>
-            </n-modal>
+                </template>
+            </n-card>
+        </n-modal>
 
-        </div>
     </AppLayout>
 </template>
+
+<style scoped>
+@keyframes pulse-warning {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+        background-color: rgba(254, 240, 138, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 15px 8px rgba(245, 158, 11, 0);
+        background-color: rgba(253, 224, 71, 0.9);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+        background-color: rgba(254, 240, 138, 0.4);
+    }
+}
+
+.animate-attention {
+    animation: pulse-warning 0.8s ease-in-out infinite;
+    color: #92400e !important; /* Tailwind text-yellow-800 */
+    border-color: #f59e0b !important;
+    transition: all 0.3s ease;
+}
+</style>
