@@ -3,16 +3,17 @@ import { ref, watch } from 'vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi, NTag, NList, NListItem, NThing
+    NForm, NFormItem, NInput, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi, NTag, NList, NListItem, NThing, NInputNumber
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline, DocumentTextOutline, TrashOutline
+    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline, DocumentTextOutline, TrashOutline, TimeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     ticket: Object,
     clients: Array,
-    serviceOrders: Array // Ahora recibimos todas las órdenes disponibles
+    serviceOrders: Array, // Ahora recibimos todas las órdenes disponibles
+    assignableUsers: Array // Usuarios para la tarea
 });
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
@@ -27,6 +28,11 @@ const clientOptions = props.clients.map(client => ({
 const serviceOrderOptions = props.serviceOrders.map(order => ({
     label: order.label,
     value: order.id
+}));
+
+const assignableUserOptions = props.assignableUsers.map(user => ({
+    label: user.name,
+    value: user.id
 }));
 
 const priorityOptions = [
@@ -54,6 +60,8 @@ const form = useForm({
     status: props.ticket.status,
     resolution_notes: props.ticket.resolution_notes || '',
     evidence: [], // Nuevos archivos
+    task_duration_days: props.ticket.task_duration_days || null, // Precarga duración
+    task_user_id: props.ticket.task_user_id || null, // Precarga asignado
 });
 
 // Lógica de control de cliente (Bloqueo si hay orden seleccionada)
@@ -272,6 +280,37 @@ const submit = () => {
 
                                     <n-form-item label="Estatus Actual" path="status">
                                         <n-select v-model:value="form.status" :options="statusOptions" />
+                                    </n-form-item>
+                                </div>
+                            </n-card>
+
+                            <!-- Programación de Tarea -->
+                            <n-card :bordered="false" class="shadow-sm rounded-2xl bg-blue-50/50">
+                                <template #header>
+                                    <span class="text-blue-800 font-semibold flex items-center gap-2">
+                                        <n-icon :component="TimeOutline"/> Tarea en PMS
+                                    </span>
+                                </template>
+                                
+                                <div class="grid gap-4">
+                                    <n-form-item label="Duración Estimada (Días)" path="task_duration_days">
+                                        <n-input-number 
+                                            v-model:value="form.task_duration_days" 
+                                            :min="1" 
+                                            placeholder="Ej. 3" 
+                                            clearable 
+                                            class="w-full"
+                                        />
+                                    </n-form-item>
+
+                                    <n-form-item label="Asignar a (Opcional)" path="task_user_id">
+                                        <n-select 
+                                            v-model:value="form.task_user_id" 
+                                            :options="assignableUserOptions" 
+                                            placeholder="Seleccionar técnico..." 
+                                            clearable 
+                                            filterable 
+                                        />
                                     </n-form-item>
                                 </div>
                             </n-card>

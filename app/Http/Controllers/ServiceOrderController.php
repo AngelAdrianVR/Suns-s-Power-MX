@@ -206,6 +206,7 @@ class ServiceOrderController extends Controller
                 // 2. Programar Evidencias Requeridas
                 $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
+                    ->orderBy('order', 'asc') // <-- NUEVO: Respetar el orden definido en las plantillas
                     ->get();
 
                 foreach ($evidenceTemplates as $evTemplate) {
@@ -237,11 +238,13 @@ class ServiceOrderController extends Controller
             'tasks.assignees', 
             'tasks.comments.user', 
             'media',
-            'evidences.media'
+            'evidences' => function ($query) {
+                // <-- NUEVO: Ordenar por ID ascendente para mantener el orden de inserción y cargar sus archivos
+                $query->orderBy('id', 'asc')->with('media'); 
+            }
         ]);
 
         $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
-
         if (!$canViewFinancials) {
             $serviceOrder->total_amount = 0;
         }

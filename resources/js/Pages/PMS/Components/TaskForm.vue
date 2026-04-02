@@ -46,15 +46,15 @@ const typeOptions = [
     { label: 'Ticket de Soporte', value: 'App\\Models\\Ticket' }
 ];
 
-const getTaskableOptions = computed(() => {
-    if (form.taskable_type === 'App\\Models\\ServiceOrder') {
-        return props.serviceOrders.map(o => ({ label: `OS #${o.id} - ${o.service_number || 'Sin Nro'}`, value: o.id }));
-    }
-    if (form.taskable_type === 'App\\Models\\Ticket') {
-        return props.tickets.map(t => ({ label: `Ticket #${t.id} - ${t.title}`, value: t.id }));
-    }
-    return [];
-});
+    const getTaskableOptions = computed(() => {
+        if (form.taskable_type === 'App\\Models\\ServiceOrder') {
+            return props.serviceOrders.map(o => ({ label: o.label || `OS #${o.id}`, value: o.id }));
+        }
+        if (form.taskable_type === 'App\\Models\\Ticket') {
+            return props.tickets.map(t => ({ label: t.label || `Ticket #${t.id} - ${t.title}`, value: t.id }));
+        }
+        return [];
+    });
 
 const onTypeChange = () => {
     form.taskable_id = null;

@@ -12,12 +12,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Inertia\Inertia;
 
 class TaskController extends Controller
 {
     /**
-     * Muestra el Dashboard PMS (Kanban Semanal)
+     * Muestra el Dashboard PMS (Kanban Semanal y Vista Lista)
      */
     public function index(Request $request)
     {
@@ -41,22 +42,28 @@ class TaskController extends Controller
             ];
         }
 
-        // QUERY BASE: Tareas ASIGNADAS que se solapan con la semana actual
-        // Necesitamos tareas cuyo inicio sea <= al fin de semana y su fin (o inicio si no tiene fin) sea >= al inicio de semana
-        $assignedTasksQuery = Task::with(['assignees', 'taskable', 'comments.user'])
+        // --- QUERY 1: TAREAS ASIGNADAS (KANBAN) ---
+        $assignedTasksQuery = Task::with([
+            'assignees', 
+            'comments.user',
+            'taskable' => function (MorphTo $morphTo) {
+                $morphTo->morphWith([
+                    ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
+                    Ticket::class => ['client', 'serviceOrder']
+                ]);
+            }
+        ])
             ->where('branch_id', $branchId)
             ->has('assignees')
-            ->whereNotNull('start_date') // <-- IMPORTANTE: Solo mostrar aquí si tienen fecha
+            ->whereNotNull('start_date') 
             ->where(function ($query) use ($weekStart, $weekEnd) {
-                // Tareas que inician antes del fin de semana Y terminan (o su límite es) después del inicio de semana
                 $query->where('start_date', '<=', $weekEnd)
                       ->where(function($q) use ($weekStart) {
                           $q->where('due_date', '>=', $weekStart->startOfDay())
-                            ->orWhereNull('due_date'); // Si no tiene due_date, usamos solo start_date
+                            ->orWhereNull('due_date');
                       });
             });
 
-        // RESTRICCIÓN DE PERMISO: Si NO tiene view_all, solo ve tareas donde esté asignado
         if (!Auth::user()->can('pms.view_all')) {
             $assignedTasksQuery->whereHas('assignees', function($q) {
                 $q->where('users.id', Auth::id());
@@ -65,21 +72,14 @@ class TaskController extends Controller
 
         $fetchedTasks = $assignedTasksQuery->get();
 
-        // Agrupar las tareas por día. Si una tarea dura varios días, aparecerá en cada día correspondiente.
         $assignedTasks = [];
-        
         foreach ($fetchedTasks as $task) {
             $taskStart = Carbon::parse($task->start_date)->startOfDay();
-            // Si tiene due_date lo usamos, si no, asume que solo dura el día de inicio
             $taskEnd = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : $taskStart->copy();
 
-            // Iterar desde el inicio de la tarea hasta el fin de la tarea
             $currentDate = $taskStart->copy();
             while ($currentDate->lte($taskEnd)) {
                 $dateString = $currentDate->format('Y-m-d');
-                
-                // Solo agregar la tarea al arreglo si el día cae dentro de la semana que estamos viendo
-                // (Para evitar llenar el arreglo con días fuera de la vista)
                 if ($currentDate->between($weekStart->startOfDay(), $weekEnd)) {
                     if (!isset($assignedTasks[$dateString])) {
                         $assignedTasks[$dateString] = [];
@@ -90,43 +90,93 @@ class TaskController extends Controller
             }
         }
 
-        // RESTRICCIÓN DE PERMISO: Tareas SIN ASIGNAR (Backlog) solo visibles para view_all
+        // --- QUERY 2: TAREAS SIN ASIGNAR (BACKLOG) ---
         $unassignedTasks = [];
         if (Auth::user()->can('pms.view_all')) {
-            // <-- CORRECCIÓN: Agregadas relaciones de comentarios y asignados, y modificado el where
-            $unassignedTasks = Task::with(['taskable', 'assignees', 'comments.user'])
+            $unassignedTasks = Task::with([
+                'assignees', 
+                'comments.user',
+                'taskable' => function (MorphTo $morphTo) {
+                    $morphTo->morphWith([
+                        ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
+                        Ticket::class => ['client', 'serviceOrder']
+                    ]);
+                }
+            ])
                 ->where('branch_id', $branchId)
                 ->where(function ($query) {
                     $query->doesntHave('assignees')
-                          ->orWhereNull('start_date'); // También mostrar aquí si no tienen fecha
+                          ->orWhereNull('start_date'); 
                 })
                 ->whereNotIn('status', ['Completado', 'Cancelado'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         }
 
-        // Usuarios disponibles para asignar al arrastrar tarjetas
+        // --- QUERY 3: TODAS LAS TAREAS (VISTA LISTA Y MÉTRICAS) ---
+        $allTasksQuery = Task::with([
+            'assignees', 
+            'comments.user',
+            'taskable' => function (MorphTo $morphTo) {
+                $morphTo->morphWith([
+                    ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
+                    Ticket::class => ['client', 'serviceOrder']
+                ]);
+            }
+        ])->where('branch_id', $branchId);
+
+        if (!Auth::user()->can('pms.view_all')) {
+            $allTasksQuery->whereHas('assignees', function($q) {
+                $q->where('users.id', Auth::id());
+            });
+        }
+        $allTasks = $allTasksQuery->orderBy('created_at', 'desc')->get();
+
+        // Usuarios disponibles
         $assignableUsers = User::where('branch_id', $branchId)
             ->where('is_active', true)
-            ->where('id', '!=', 1) // Excluir usuario admin
+            ->where('id', '!=', 1) 
             ->get(['id', 'name', 'phone', 'profile_photo_path']);
 
-        // Data de Módulos para selects
-        $serviceOrders = ServiceOrder::whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
+        // Data de Módulos para los SELECTS del formulario
+        $serviceOrders = ServiceOrder::with('client:id,name')
+            ->whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
             ->where('branch_id', $branchId)
-            ->get(['id', 'service_number']);
+            ->select('id', 'client_id', 'created_at', 'status')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($order) {
+                $clientName = $order->client ? $order->client->name : 'Sin Cliente';
+                return [
+                    'id' => $order->id,
+                    'label' => "Orden #{$order->id} - {$clientName} ({$order->created_at->format('d/m/Y')})",
+                    'client' => $order->client 
+                ];
+            });
             
-        $tickets = Ticket::whereNotIn('status', ['Resuelto', 'Cerrado'])
+        $tickets = Ticket::with('client:id,name')
+            ->whereNotIn('status', ['Resuelto', 'Cerrado'])
             ->where('branch_id', $branchId)
-            ->get(['id', 'title']);
+            ->select('id', 'client_id', 'title', 'created_at')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($ticket) {
+                $clientName = $ticket->client ? $ticket->client->name : 'Sin Cliente';
+                return [
+                    'id' => $ticket->id,
+                    'label' => "Ticket #{$ticket->id} - {$clientName} ({$ticket->title})",
+                    'client' => $ticket->client
+                ];
+            });
 
         return Inertia::render('PMS/Index', [
             'week_start' => $weekStart->format('Y-m-d'),
             'prev_week' => $weekStart->copy()->subWeek()->format('Y-m-d'),
             'next_week' => $weekStart->copy()->addWeek()->format('Y-m-d'),
             'days' => $days,
-            'assigned_tasks' => $assignedTasks, // Ahora pasa el arreglo con tareas repetidas por día
+            'assigned_tasks' => $assignedTasks,
             'unassigned_tasks' => $unassignedTasks,
+            'all_tasks' => $allTasks, // <- Nueva variable enviada
             'assignable_users' => $assignableUsers,
             'service_orders' => $serviceOrders,
             'tickets' => $tickets,
@@ -153,7 +203,6 @@ class TaskController extends Controller
         ]);
 
         DB::transaction(function () use ($validated, $branchId) {
-            // 1. Crear Tarea
             $task = Task::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
@@ -170,8 +219,6 @@ class TaskController extends Controller
 
             if (!empty($validated['user_ids'])) {
                 $task->assignees()->sync($validated['user_ids']);
-
-                // 2. Notificaciones
                 $assignees = User::whereIn('id', $validated['user_ids'])->get();
                 $usersToNotify = $assignees->filter(fn($u) => $u->id !== Auth::id());
                 if ($usersToNotify->isNotEmpty()) {
@@ -179,18 +226,11 @@ class TaskController extends Controller
                 }
             }
 
-            // 3. ACTUALIZACIÓN AUTOMÁTICA DEL MÓDULO ASOCIADO
             if (isset($validated['taskable_type'])) {
                 if ($validated['taskable_type'] === 'App\\Models\\ServiceOrder') {
                     $order = ServiceOrder::find($validated['taskable_id']);
-                    // FIX 1: Quitamos 'Completado' del array para que si se agrega una tarea, 
-                    // regrese obligatoriamente a 'En Proceso' y limpie la fecha de finalización.
                     if ($order && !in_array($order->status, ['Facturado', 'Cancelado'])) {
-                        $order->update([
-                            'status' => 'En Proceso',
-                            'completion_date' => null
-                        ]);
-                        
+                        $order->update(['status' => 'En Proceso', 'completion_date' => null]);
                         if (is_null($order->start_date)) {
                             $order->update(['start_date' => now()]);
                         }
@@ -207,14 +247,10 @@ class TaskController extends Controller
         return back()->with('success', 'Tarea creada correctamente.');
     }
 
-    /**
-     * Actualizar Tarea (Estatus y datos)
-     */
     public function update(Request $request, Task $task)
     {
         $user = Auth::user();
         
-        // Determinar el tipo de actualización para verificar permisos
         $isFullEdit = $request->hasAny(['title', 'description', 'priority', 'due_date']);
         $isSchedule = $request->hasAny(['start_date', 'user_ids']);
         $isStatusChange = $request->has('status');
@@ -225,15 +261,12 @@ class TaskController extends Controller
             abort_if(!$user->can('pms.schedule') && !$user->can('pms.edit'), 403, 'No tienes permiso para reprogramar tareas.');
         }
 
-        // --- VALIDACIÓN DE ESTRICTA DE ESTATUS ---
         if ($isStatusChange) {
             if (!$user->can('pms.schedule')) {
-                // Si no tiene pms.schedule, se requiere que él sea uno de los asignados
                 $isAssigned = $task->assignees()->where('users.id', $user->id)->exists();
-                abort_if(!$isAssigned, 403, 'Sólo puedes cambiar el estatus de las tareas que te han sido asignadas.');
+                abort_if(!$isAssigned, 403, 'Sólo puedes cambiar el estatus de las tareas asignadas a ti.');
             }
         }
-        // -----------------------------------------
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
@@ -249,54 +282,36 @@ class TaskController extends Controller
             'taskable_id' => 'nullable|integer'
         ]);
 
-        // --- LÓGICA DE FECHAS AUTOMÁTICAS ---
         if (isset($validated['status'])) {
             $newStatus = $validated['status'];
-            
-            // 1. Al iniciar "En Proceso": Guardar fecha inicio solo si no existe.
-            if ($newStatus === 'En Proceso') {
-                if (is_null($task->start_date)) {
-                    $validated['start_date'] = now();
-                }
+            if ($newStatus === 'En Proceso' && is_null($task->start_date)) {
+                $validated['start_date'] = now();
             }
-
-            // 2. Al cambiar a "Completado": Agregar fecha fin.
             if ($newStatus === 'Completado') {
                 $validated['finish_date'] = now();
             } else {
-                // 3. Si cambia a cualquier otro estatus (y deja de ser completado), borrar fecha fin.
                 $validated['finish_date'] = null;
             }
         }
-        // ------------------------------------
 
         $task->update($validated);
 
-        // Actualizar asignados si se enviaron en la petición
         if ($request->has('user_ids')) {
             $task->assignees()->sync($validated['user_ids'] ?? []);
         }
 
-        // LÓGICA DE ACTUALIZACIÓN DE MÓDULO BASADA EN TAREAS
         if ($task->taskable_type === 'App\\Models\\ServiceOrder') {
             $order = clone $task->taskable; 
-
             if ($order) {
                 if ($task->status === 'En Proceso' && is_null($order->start_date)) {
                     $order->update(['start_date' => now()]);
                 }
-
                 $incompleteTasks = $order->tasks()->where('status', '!=', 'Completado')->count();
-
                 if ($incompleteTasks === 0) {
                     $unreportedCount = $order->items()->whereNull('used_quantity')->count();
-                    
                     if ($unreportedCount === 0) {
                         if (!in_array($order->status, ['Completado', 'Facturado', 'Cancelado'])) {
-                            $order->update([
-                                'status' => 'Completado',
-                                'completion_date' => now()
-                            ]);
+                            $order->update(['status' => 'Completado', 'completion_date' => now()]);
                         }
                     } else {
                         if (in_array($order->status, ['Cotización', 'Aceptado', 'Pendiente'])) {
@@ -305,10 +320,7 @@ class TaskController extends Controller
                     }
                 } else {
                     if ($order->status === 'Completado') {
-                        $order->update([
-                            'status' => 'En Proceso',
-                            'completion_date' => null
-                        ]);
+                        $order->update(['status' => 'En Proceso', 'completion_date' => null]);
                     } 
                     elseif ($task->status === 'En Proceso' && $order->status !== 'En Proceso' && !in_array($order->status, ['Facturado', 'Cancelado'])) {
                         $order->update(['status' => 'En Proceso']);
@@ -320,8 +332,23 @@ class TaskController extends Controller
             }
         } elseif ($task->taskable_type === 'App\\Models\\Ticket') {
             $ticket = clone $task->taskable;
-            if ($ticket && $task->status === 'En Proceso' && $ticket->status === 'Abierto') {
-                $ticket->update(['status' => 'En Análisis']);
+            if ($ticket) {
+                if ($task->status === 'En Proceso' && $ticket->status === 'Abierto') {
+                    $ticket->update(['status' => 'En Análisis']);
+                }
+                if ($task->status === 'Completado') {
+                    $incompleteTasks = Task::where('taskable_type', 'App\\Models\\Ticket')
+                                            ->where('taskable_id', $ticket->id)
+                                            ->where('status', '!=', 'Completado')
+                                            ->count();
+                    if ($incompleteTasks === 0 && !in_array($ticket->status, ['Resuelto', 'Cerrado'])) {
+                        $ticket->update(['status' => 'Resuelto']);
+                    }
+                } else {
+                    if ($ticket->status === 'Resuelto') {
+                         $ticket->update(['status' => 'En Análisis']);
+                    }
+                }
             }
         }
 
