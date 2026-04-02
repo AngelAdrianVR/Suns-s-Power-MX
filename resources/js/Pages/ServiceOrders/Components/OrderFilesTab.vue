@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { useSecureFile } from '@/Composables/useSecureFile';
 import { useForm, router } from '@inertiajs/vue3';
@@ -19,6 +19,25 @@ const props = defineProps({
 const { hasPermission } = usePermissions();
 const { isOpeningFile, openFileWithRetry } = useSecureFile();
 const { notification } = createDiscreteApi(['notification']);
+
+// --- LÓGICA PARA ORDENAR EVIDENCIAS ---
+const sortedEvidences = computed(() => {
+    if (!props.order.evidences) return [];
+    
+    // Clonamos para no mutar el prop y ordenamos
+    return [...props.order.evidences].sort((a, b) => {
+        // Obtenemos el valor de order, si es nulo (órdenes viejas), será 0
+        const orderA = a.order !== undefined && a.order !== null ? a.order : 0;
+        const orderB = b.order !== undefined && b.order !== null ? b.order : 0;
+        
+        // Si el 'order' es el mismo, el fallback será ordenar por ID
+        if (orderA === orderB) {
+            return a.id - b.id;
+        }
+        
+        return orderA - orderB;
+    });
+});
 
 // --- LÓGICA EVIDENCIAS ESPECÍFICAS (REQUERIDAS) ---
 const triggerEvidenceFileInput = (evidenceId) => {
@@ -82,7 +101,8 @@ const isImage = (file) => {
             </h3>
             
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                <div v-for="evidence in order.evidences" :key="evidence.id" 
+                <!-- NUEVO: Iteramos sobre sortedEvidences en lugar de order.evidences -->
+                <div v-for="evidence in sortedEvidences" :key="evidence.id" 
                      class="border rounded-2xl overflow-hidden shadow-sm hover:shadow transition-shadow flex flex-col"
                      :class="evidence.media?.length ? 'bg-emerald-50/30 border-emerald-100' : 'bg-white border-gray-200'">
                     

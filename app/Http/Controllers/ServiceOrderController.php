@@ -168,7 +168,7 @@ class ServiceOrderController extends Controller
             $serviceOrder = ServiceOrder::create($validated);
 
             if (!empty($validated['system_type'])) {
-                // 1. Programar Tareas (NUEVO: Lógica de Fechas)
+                // 1. Programar Tareas
                 $templates = TaskTemplate::with('users')
                     ->where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
@@ -193,8 +193,8 @@ class ServiceOrderController extends Controller
                         'priority' => $template->priority,
                         'status' => 'Pendiente',
                         'created_by' => $userId,
-                        'start_date' => $startDate,  // <-- Asignación dinámica
-                        'due_date' => $dueDate,      // <-- Asignación dinámica
+                        'start_date' => $startDate,  
+                        'due_date' => $dueDate,      
                     ]);
 
                     $userIds = $template->users->pluck('id')->toArray();
@@ -206,7 +206,7 @@ class ServiceOrderController extends Controller
                 // 2. Programar Evidencias Requeridas
                 $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
-                    ->orderBy('order', 'asc') // <-- NUEVO: Respetar el orden definido en las plantillas
+                    ->orderBy('order', 'asc') // <-- NUEVO: Obtenemos plantillas ya ordenadas
                     ->get();
 
                 foreach ($evidenceTemplates as $evTemplate) {
@@ -214,6 +214,7 @@ class ServiceOrderController extends Controller
                         'title' => $evTemplate->title,
                         'description' => $evTemplate->description,
                         'allows_multiple' => $evTemplate->allows_multiple ?? false,
+                        'order' => $evTemplate->order ?? 0, // <-- NUEVO: Traspasamos el orden a la tabla hija
                     ]);
                 }
             }
@@ -230,6 +231,7 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $canViewFinancials = $user->hasAnyRole(['Admin']);
 
+        // NUEVO: Agregamos el callback para ordenar las evidencias
         $serviceOrder->load([
             'client',
             'technician',
@@ -239,12 +241,13 @@ class ServiceOrderController extends Controller
             'tasks.comments.user', 
             'media',
             'evidences' => function ($query) {
-                // <-- NUEVO: Ordenar por ID ascendente para mantener el orden de inserción y cargar sus archivos
-                $query->orderBy('id', 'asc')->with('media'); 
-            }
+                $query->orderBy('order', 'asc')->orderBy('id', 'asc');
+            },
+            'evidences.media'
         ]);
 
         $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
+
         if (!$canViewFinancials) {
             $serviceOrder->total_amount = 0;
         }

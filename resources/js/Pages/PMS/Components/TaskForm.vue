@@ -46,15 +46,29 @@ const typeOptions = [
     { label: 'Ticket de Soporte', value: 'App\\Models\\Ticket' }
 ];
 
-    const getTaskableOptions = computed(() => {
-        if (form.taskable_type === 'App\\Models\\ServiceOrder') {
-            return props.serviceOrders.map(o => ({ label: o.label || `OS #${o.id}`, value: o.id }));
-        }
-        if (form.taskable_type === 'App\\Models\\Ticket') {
-            return props.tickets.map(t => ({ label: t.label || `Ticket #${t.id} - ${t.title}`, value: t.id }));
-        }
-        return [];
-    });
+const getTaskableOptions = computed(() => {
+    if (form.taskable_type === 'App\\Models\\ServiceOrder') {
+        return props.serviceOrders.map(o => {
+            // Obtenemos el nombre del cliente o un valor por defecto si no tiene
+            const clientName = o.client?.name ? o.client.name : 'Sin Cliente';
+            return { 
+                label: `OS#${o.id} - ${clientName}`, 
+                value: o.id 
+            };
+        });
+    }
+    if (form.taskable_type === 'App\\Models\\Ticket') {
+        return props.tickets.map(t => {
+            // Aplicamos la misma lógica para los tickets por consistencia
+            const clientName = t.client?.name ? t.client.name : 'Sin Cliente';
+            return { 
+                label: `Ticket #${t.id} - ${clientName}`, 
+                value: t.id 
+            };
+        });
+    }
+    return [];
+});
 
 const onTypeChange = () => {
     form.taskable_id = null;
