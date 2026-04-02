@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
+use App\Http\Controllers\SystemTypeController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -71,6 +72,12 @@ Route::middleware([
     // ---------------------------- // RUTAS DE GESTIÓN DE PLANTILLAS DE TAREAS Y EVIDENCIAS ----------------------------
     Route::resource('task-templates', TaskTemplateController::class)->except(['create', 'show', 'edit']);
     Route::resource('evidence-templates', EvidenceTemplateController::class)->only(['store', 'update', 'destroy']);
+    Route::post('/evidence-templates/reorder', [EvidenceTemplateController::class, 'reorder'])->name('evidence-templates.reorder');
+
+        // Gestión de Tipos de Sistema
+    Route::post('/system-types', [SystemTypeController::class, 'store'])->name('system-types.store');
+    Route::put('/system-types/{systemType}', [SystemTypeController::class, 'update'])->name('system-types.update');
+    Route::delete('/system-types/{systemType}', [SystemTypeController::class, 'destroy'])->name('system-types.destroy');
 });
 
 

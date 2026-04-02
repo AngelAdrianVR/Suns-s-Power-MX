@@ -19,6 +19,8 @@ class ServiceOrderEvidence extends Model implements HasMedia
         'service_order_id',
         'title',
         'description',
+        'allows_multiple', // <-- NUEVO: Para saber si esta evidencia en particular acepta múltiples fotos
+        'order'            // <-- NUEVO: Para guardar y respetar el orden asignado en las plantillas
     ];
 
     public function serviceOrder()

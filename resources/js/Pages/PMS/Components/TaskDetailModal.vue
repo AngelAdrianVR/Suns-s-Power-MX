@@ -1,13 +1,16 @@
 <script setup>
 import { computed, watch } from 'vue';
-import { router, useForm } from '@inertiajs/vue3';
+import { router, useForm, Link } from '@inertiajs/vue3';
 import { 
     NModal, NCard, NTag, NAvatar, NBadge, NPopselect, 
-    NIcon, NInput, NButton, createDiscreteApi 
+    NIcon, NInput, NButton, createDiscreteApi, NList, NListItem, NThing
 } from 'naive-ui';
 import { 
     CreateOutline, ChatbubbleOutline, SendOutline, 
-    TrashOutline, ChevronDownOutline 
+    TrashOutline, ChevronDownOutline, ConstructOutline,
+    LocationOutline, MapOutline, PersonOutline, CashOutline,
+    FlashOutline, HardwareChipOutline, SpeedometerOutline,
+    TicketOutline, WarningOutline, LinkOutline
 } from '@vicons/ionicons5';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -115,15 +118,31 @@ const formatCommentDate = (dateStr) => {
         return dateStr;
     }
 };
+
+// Helper para crear url de google maps
+const getGoogleMapsUrl = (lat, lng, fullAddress) => {
+    if (lat && lng) {
+        return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    } else if (fullAddress) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+    }
+    return '#';
+}
+
+const formatCurrency = (value) => {
+    if (value === null || value === undefined) return '';
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+};
+
 </script>
 
 <template>
     <n-modal v-model:show="isOpen">
-        <n-card style="width: 800px; max-width: 95vw;" :title="task?.title || 'Detalle de la Tarea'" :bordered="false" size="huge" closable @close="isOpen = false" content-style="padding: 0;">
+        <n-card style="width: 900px; max-width: 95vw;" :title="task?.title || 'Detalle de la Tarea'" :bordered="false" size="huge" closable @close="isOpen = false" content-style="padding: 0;">
             
-            <div class="flex flex-col md:flex-row h-[550px] max-h-[75vh]" v-if="task">
+            <div class="flex flex-col md:flex-row h-[600px] max-h-[80vh]" v-if="task">
                 <!-- Columna Izquierda: Información -->
-                <div class="w-full md:w-1/2 p-5 space-y-5 border-r border-gray-100 overflow-y-auto bg-white">
+                <div class="w-full md:w-1/2 p-5 space-y-5 border-r border-gray-100 overflow-y-auto bg-white custom-scrollbar">
                     
                     <div class="flex justify-between items-center bg-gray-50/80 p-3 rounded-xl border border-gray-100">
                          <div class="flex flex-col">
@@ -159,6 +178,126 @@ const formatCommentDate = (dateStr) => {
                         </div>
                         <p class="text-gray-700 text-sm mt-1 bg-gray-50 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap leading-relaxed">{{ task.description || 'Sin descripción detallada.' }}</p>
                     </div>
+
+                    <!-- ========================================== -->
+                    <!-- SECCIÓN DINÁMICA: DEPENDIENDO DEL TASKABLE -->
+                    <!-- ========================================== -->
+                    <div v-if="task.taskable_type === 'App\\Models\\ServiceOrder' && task.taskable" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="flex justify-between items-center mb-3">
+                            <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider flex items-center">
+                                <n-icon class="mr-1 text-sm"><ConstructOutline/></n-icon>Orden de Servicio #{{ task.taskable.id }}
+                            </div>
+                            <!-- Link a la Orden -->
+                            <Link :href="route('service-orders.show', task.taskable.id)">
+                                <n-button size="tiny" secondary type="info">
+                                    <template #icon><n-icon><LinkOutline/></n-icon></template>
+                                    Ver Orden
+                                </n-button>
+                            </Link>
+                        </div>
+                        
+                        <div class="bg-blue-50/30 rounded-xl p-4 border border-blue-100/50 space-y-3">
+                            
+                            <!-- Cliente -->
+                            <div class="flex items-start gap-2" v-if="task.taskable.client">
+                                <n-icon class="mt-0.5 text-gray-400"><PersonOutline/></n-icon>
+                                <div>
+                                    <div class="text-xs text-gray-500 font-medium">Cliente</div>
+                                    <div class="text-sm font-semibold text-gray-800">{{ task.taskable.client.name }}</div>
+                                </div>
+                            </div>
+
+                            <!-- Sistema & Medidor -->
+                            <div class="grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-gray-100 shadow-sm" v-if="task.taskable.system_type || task.taskable.meter_number">
+                                <div v-if="task.taskable.system_type">
+                                    <div class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><n-icon><HardwareChipOutline/></n-icon> Sistema</div>
+                                    <div class="text-xs font-semibold text-gray-700">{{ task.taskable.system_type }}</div>
+                                </div>
+                                <div v-if="task.taskable.meter_number">
+                                    <div class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><n-icon><SpeedometerOutline/></n-icon> Medidor</div>
+                                    <div class="text-xs font-semibold text-gray-700">{{ task.taskable.meter_number }}</div>
+                                </div>
+                            </div>
+
+                            <!-- Ubicación y Coordenadas -->
+                            <div class="flex items-start gap-2 pt-2 border-t border-gray-200/50" v-if="task.taskable.installation_street">
+                                <n-icon class="mt-0.5 text-gray-400"><LocationOutline/></n-icon>
+                                <div class="flex-1">
+                                    <div class="text-xs text-gray-500 font-medium">Ubicación de Instalación</div>
+                                    <div class="text-sm text-gray-700 leading-snug">
+                                        {{ task.taskable.installation_street }} {{ task.taskable.installation_exterior_number }} {{ task.taskable.installation_interior_number ? 'Int. ' + task.taskable.installation_interior_number : '' }}, 
+                                        {{ task.taskable.installation_neighborhood }}, {{ task.taskable.installation_municipality }}, {{ task.taskable.installation_state }}
+                                    </div>
+                                    <div class="text-[11px] text-gray-500 font-mono mt-1" v-if="task.taskable.installation_lat && task.taskable.installation_lng">
+                                        📍 {{ task.taskable.installation_lat }}, {{ task.taskable.installation_lng }}
+                                    </div>
+                                    <div class="mt-2">
+                                        <a :href="getGoogleMapsUrl(task.taskable.installation_lat, task.taskable.installation_lng, `${task.taskable.installation_street} ${task.taskable.installation_exterior_number}, ${task.taskable.installation_municipality}, ${task.taskable.installation_state}`)" target="_blank" class="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-2 py-1 rounded">
+                                            <n-icon><MapOutline/></n-icon> Abrir en Google Maps
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Materiales Asignados (Si hay) -->
+                            <div v-if="task.taskable.items && task.taskable.items.length > 0" class="pt-2 border-t border-gray-200/50">
+                                <div class="text-[10px] text-gray-500 font-bold uppercase mb-2">Materiales Asignados a la Orden</div>
+                                <ul class="space-y-1">
+                                    <li v-for="item in task.taskable.items" :key="item.id" class="text-xs flex justify-between items-center bg-white px-2 py-1 rounded shadow-sm border border-gray-50">
+                                        <span class="text-gray-700 truncate mr-2">{{ item.product?.name || 'Producto Desconocido' }}</span>
+                                        <n-tag size="small" :bordered="false" type="info" class="flex-shrink-0">x{{ item.quantity }}</n-tag>
+                                    </li>
+                                </ul>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div v-else-if="task.taskable_type === 'App\\Models\\Ticket' && task.taskable" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="flex justify-between items-center mb-3">
+                            <div class="text-[10px] text-orange-500 font-bold uppercase tracking-wider flex items-center">
+                                <n-icon class="mr-1 text-sm"><TicketOutline/></n-icon>Ticket de Soporte #{{ task.taskable.id }}
+                            </div>
+                            <!-- Link al Ticket -->
+                            <Link :href="route('tickets.show', task.taskable.id)">
+                                <n-button size="tiny" secondary type="warning">
+                                    <template #icon><n-icon><LinkOutline/></n-icon></template>
+                                    Ver Ticket
+                                </n-button>
+                            </Link>
+                        </div>
+
+                        <div class="bg-orange-50/30 rounded-xl p-4 border border-orange-100/50 space-y-3">
+                            
+                            <!-- Estatus del Ticket -->
+                            <div class="flex justify-between items-center bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+                                <span class="text-xs text-gray-500 font-medium">Estatus del Ticket:</span>
+                                <n-tag size="small" round :type="task.taskable.status === 'Resuelto' ? 'success' : (task.taskable.status === 'Abierto' ? 'error' : 'warning')">{{ task.taskable.status }}</n-tag>
+                            </div>
+
+                            <!-- Cliente -->
+                            <div class="flex items-start gap-2" v-if="task.taskable.client">
+                                <n-icon class="mt-0.5 text-gray-400"><PersonOutline/></n-icon>
+                                <div>
+                                    <div class="text-xs text-gray-500 font-medium">Cliente Afectado</div>
+                                    <div class="text-sm font-semibold text-gray-800">{{ task.taskable.client.name }}</div>
+                                </div>
+                            </div>
+
+                            <!-- Orden Relacionada -->
+                            <div v-if="task.taskable.serviceOrder" class="pt-2 border-t border-gray-200/50 flex justify-between items-center">
+                                <div>
+                                    <div class="text-xs text-gray-500 font-medium flex items-center gap-1"><n-icon><ConstructOutline/></n-icon> Orden Vinculada</div>
+                                    <div class="text-sm font-semibold text-gray-700">OS #{{ task.taskable.serviceOrder.id }}</div>
+                                </div>
+                                <Link :href="route('service-orders.show', task.taskable.serviceOrder.id)">
+                                    <n-button size="tiny" quaternary type="info">Ir a Orden</n-button>
+                                </Link>
+                            </div>
+
+                        </div>
+                    </div>
+                    <!-- ========================================== -->
 
                     <div class="grid grid-cols-1 gap-3 bg-gray-50 p-4 rounded-xl text-xs border border-gray-100 shadow-sm">
                         <div class="flex justify-between border-b border-gray-200 pb-2">
@@ -198,7 +337,7 @@ const formatCommentDate = (dateStr) => {
                         <n-badge :value="task.comments?.length || 0" type="info" />
                     </div>
                     
-                    <div class="flex-1 p-5 overflow-y-auto space-y-5">
+                    <div class="flex-1 p-5 overflow-y-auto space-y-5 custom-scrollbar">
                          <div v-if="!task.comments?.length" class="h-full flex flex-col items-center justify-center text-gray-400 py-8 opacity-70">
                             <n-icon size="48" class="mb-3 text-gray-300"><ChatbubbleOutline /></n-icon>
                             <span class="text-sm font-medium">No hay comentarios aún</span>
@@ -253,3 +392,19 @@ const formatCommentDate = (dateStr) => {
         </n-card>
     </n-modal>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #e5e7eb;
+    border-radius: 20px;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+}
+</style>

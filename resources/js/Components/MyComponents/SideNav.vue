@@ -235,14 +235,14 @@ export default {
                     label: 'Configuraciones',
                     icon: icons.settings,
                     route: 'roles.index', 
-                    active: current('roles.*'), 
-                    show: hasPermission('roles.index'),
+                    active: current('roles.*') || current('task-templates.*'), 
+                    show: hasPermission('roles.index') || hasPermission('task-templates.index'),
                     children: [
                         {
                             label: 'Roles y Permisos',
                             route: 'roles.index',
                             active: current('roles.*'),
-                            show: true
+                            show: hasPermission('roles.index')
                         },
                         {
                             label: 'Programación de tareas',

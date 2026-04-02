@@ -1,17 +1,18 @@
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NForm, NFormItem, NInput, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi 
+    NForm, NFormItem, NInput, NSelect, NButton, NCard, NUpload, NIcon, NGrid, NGridItem, createDiscreteApi, NInputNumber
 } from 'naive-ui';
 import { 
-    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline, DocumentTextOutline
+    SaveOutline, ArrowBackOutline, CloudUploadOutline, PersonOutline, AlertCircleOutline, TicketOutline, DocumentTextOutline, TimeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     clients: Array,
-    serviceOrders: Array // Nueva prop con las órdenes disponibles
+    serviceOrders: Array, 
+    assignableUsers: Array 
 });
 
 const { notification } = createDiscreteApi(['notification']);
@@ -29,7 +30,7 @@ const serviceOrderOptions = props.serviceOrders.map(order => ({
     value: order.id
 }));
 
-// Opciones estáticas según la migración
+// Opciones estáticas
 const priorityOptions = [
     { label: 'Baja', value: 'Baja' },
     { label: 'Media', value: 'Media' },
@@ -44,20 +45,27 @@ const statusOptions = [
     { label: 'Cerrado', value: 'Cerrado' }
 ];
 
+// Opciones de usuarios
+const assignableUserOptions = props.assignableUsers.map(user => ({
+    label: user.name,
+    value: user.id
+}));
+
 const form = useForm({
     title: '',
     description: '',
     client_id: null,
     related_service_order_id: null, 
-    priority: 'Media', // Valor por defecto
-    status: 'Abierto', // Valor por defecto
-    evidence: [], // Array para múltiples archivos
+    priority: 'Media', 
+    status: 'Abierto', 
+    evidence: [], 
+    task_duration_days: null, 
+    task_user_id: null,       
 });
 
-// Variable computada para saber si deshabilitar el selector de cliente
+// Variable para bloquear el selector de cliente si se escoge una OS
 const isClientDisabled = ref(false);
 
-// Watcher: Si selecciona una orden de servicio, autocompletar y bloquear cliente
 watch(
     () => form.related_service_order_id,
     (newOrderId) => {
@@ -68,9 +76,7 @@ watch(
                 isClientDisabled.value = true;
             }
         } else {
-            // Si deselecciona la orden, desbloqueamos el cliente (opcional: ¿limpiar cliente?)
             isClientDisabled.value = false;
-            // No limpiamos el cliente automáticamente para no molestar al usuario si solo se equivocó de orden
         }
     }
 );
@@ -83,9 +89,8 @@ const rules = {
     status: { required: true, message: 'Selecciona un estatus inicial', trigger: ['blur', 'change'] }
 };
 
-// Manejo de archivos (Múltiples)
+// Manejo de archivos 
 const handleUploadChange = (data) => {
-    // Naive UI devuelve fileList. Actualizamos el form con los archivos raw.
     form.evidence = data.fileList.map(file => file.file);
 };
 
@@ -93,7 +98,7 @@ const submit = () => {
     formRef.value?.validate((errors) => {
         if (!errors) {
             form.post(route('tickets.store'), {
-                forceFormData: true, // Necesario para subir archivos
+                forceFormData: true, 
                 onSuccess: () => {
                     notification.success({
                         title: 'Ticket Creado',
@@ -270,6 +275,37 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
                                 </n-grid>
+                            </n-card>
+
+                            <!-- Programación de Tarea Automática -->
+                            <n-card :bordered="false" class="shadow-sm rounded-2xl bg-blue-50/50">
+                                <template #header>
+                                    <span class="text-blue-800 font-semibold flex items-center gap-2">
+                                        <n-icon :component="TimeOutline"/> Generar Tarea en PMS
+                                    </span>
+                                </template>
+                                
+                                <div class="grid gap-4">
+                                    <n-form-item label="Duración Estimada (Días)" path="task_duration_days">
+                                        <n-input-number 
+                                            v-model:value="form.task_duration_days" 
+                                            :min="1" 
+                                            placeholder="Ej. 3" 
+                                            clearable 
+                                            class="w-full"
+                                        />
+                                    </n-form-item>
+
+                                    <n-form-item label="Asignar a (Opcional)" path="task_user_id">
+                                        <n-select 
+                                            v-model:value="form.task_user_id" 
+                                            :options="assignableUserOptions" 
+                                            placeholder="Seleccionar técnico..." 
+                                            clearable 
+                                            filterable 
+                                        />
+                                    </n-form-item>
+                                </div>
                             </n-card>
 
                             <!-- Evidencias -->

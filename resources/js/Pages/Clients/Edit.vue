@@ -268,12 +268,12 @@ const submit = () => {
                                             </n-form-item>
 
                                             <n-form-item 
-                                                label="Alias / Atención A" 
+                                                label="Alias" 
                                                 path="contact_person"
                                             >
                                                 <n-input 
                                                     v-model:value="form.contact_person" 
-                                                    placeholder="Si es empresa, ¿quién atiende?" 
+                                                    placeholder="Ej. Energy" 
                                                     :input-props="{ autocomplete: 'off' }"
                                                 >
                                                     <template #prefix>
