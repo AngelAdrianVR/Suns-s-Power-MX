@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\TaskTemplate;
 use App\Models\EvidenceTemplate;
 use App\Models\User;
+use App\Models\SystemType; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -21,13 +22,15 @@ class TaskTemplateController extends Controller
 
         $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)->get();
 
-        $systemTypes = [
-            'Interconectado', 
-            'Autónomo', 
-            'Multimodo', 
-            'Respaldo', 
-            'Bombeo'
-        ];
+        $systemTypes = SystemType::where('branch_id', $branchId)->get(['id', 'name']);
+
+        if ($systemTypes->isEmpty()) {
+             $defaultTypes = ['Interconectado', 'Autónomo', 'Multimodo', 'Respaldo', 'Bombeo'];
+             foreach($defaultTypes as $type){
+                 SystemType::create(['branch_id' => $branchId, 'name' => $type]);
+             }
+             $systemTypes = SystemType::where('branch_id', $branchId)->get(['id', 'name']);
+        }
 
         $assignableUsers = User::where('branch_id', $branchId)
             ->where('is_active', true)
@@ -53,6 +56,8 @@ class TaskTemplateController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'priority' => 'required|in:Baja,Media,Alta',
+            'start_days' => 'required|integer|min:0', // <-- NUEVO
+            'duration_days' => 'required|integer|min:1', // <-- NUEVO
             'users' => 'nullable|array',
             'users.*' => 'exists:users,id',
         ]);
@@ -63,6 +68,8 @@ class TaskTemplateController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'],
             'priority' => $validated['priority'],
+            'start_days' => $validated['start_days'], // <-- NUEVO
+            'duration_days' => $validated['duration_days'], // <-- NUEVO
         ]);
 
         if (!empty($validated['users'])) {
@@ -81,6 +88,8 @@ class TaskTemplateController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'priority' => 'required|in:Baja,Media,Alta',
+            'start_days' => 'required|integer|min:0', // <-- NUEVO
+            'duration_days' => 'required|integer|min:1', // <-- NUEVO
             'users' => 'nullable|array',
             'users.*' => 'exists:users,id',
         ]);
@@ -89,6 +98,8 @@ class TaskTemplateController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'],
             'priority' => $validated['priority'],
+            'start_days' => $validated['start_days'], // <-- NUEVO
+            'duration_days' => $validated['duration_days'], // <-- NUEVO
         ]);
 
         if (isset($validated['users'])) {

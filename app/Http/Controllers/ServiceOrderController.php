@@ -168,13 +168,24 @@ class ServiceOrderController extends Controller
             $serviceOrder = ServiceOrder::create($validated);
 
             if (!empty($validated['system_type'])) {
-                // 1. Programar Tareas
+                // 1. Programar Tareas (NUEVO: Lógica de Fechas)
                 $templates = TaskTemplate::with('users')
                     ->where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
                     ->get();
 
                 foreach ($templates as $template) {
+                    
+                    // Cálculo de Fechas basadas en la configuración de la plantilla
+                    $startDays = $template->start_days ?? 0;
+                    $durationDays = $template->duration_days ?? 1;
+
+                    // La fecha de inicio es HOY + los días configurados al inicio del día
+                    $startDate = now()->addDays($startDays)->startOfDay();
+                    
+                    // La fecha de finalización es Fecha Inicio + Duración (Restamos 1 si la duración incluye el mismo día)
+                    $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
                     $task = $serviceOrder->tasks()->create([
                         'branch_id' => $branchId,
                         'title' => $template->title,
@@ -182,6 +193,8 @@ class ServiceOrderController extends Controller
                         'priority' => $template->priority,
                         'status' => 'Pendiente',
                         'created_by' => $userId,
+                        'start_date' => $startDate,  // <-- Asignación dinámica
+                        'due_date' => $dueDate,      // <-- Asignación dinámica
                     ]);
 
                     $userIds = $template->users->pluck('id')->toArray();
@@ -199,6 +212,7 @@ class ServiceOrderController extends Controller
                     $serviceOrder->evidences()->create([
                         'title' => $evTemplate->title,
                         'description' => $evTemplate->description,
+                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
                     ]);
                 }
             }
@@ -219,7 +233,7 @@ class ServiceOrderController extends Controller
             'client',
             'technician',
             'salesRep',
-            'items.product', 
+            'items.product.category', 
             'tasks.assignees', 
             'tasks.comments.user', 
             'media',
@@ -232,7 +246,6 @@ class ServiceOrderController extends Controller
             $serviceOrder->total_amount = 0;
         }
 
-        // Convertir las cantidades de String a Float para evitar el warning de <n-input-number>
         $serviceOrder->items->transform(function ($item) use ($canViewFinancials) {
             $item->quantity = (float) $item->quantity;
             if ($item->used_quantity !== null) {
@@ -372,23 +385,17 @@ class ServiceOrderController extends Controller
 
         $newStatus = $validated['status'];
 
-        // --- VALIDACIÓN ESTRICTA EN BACKEND ---
         if ($newStatus === 'Completado') {
-            // 1. Validar Tareas
             $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
             if ($incompleteTasks > 0) {
-                // Puedes usar abort(403) o enviar un withErrors dependiendo de cómo gestiones errores en Inertia.
-                // Aquí devuelvo un mensaje flash de error de sesión genérico compatible.
                 return back()->with('error', 'No se puede completar la orden: Tareas pendientes de finalizar.');
             }
 
-            // 2. Validar Materiales
             $unreportedCount = $serviceOrder->items()->whereNull('used_quantity')->count();
             if ($unreportedCount > 0) {
                 return back()->with('error', 'No se puede completar la orden: Faltan materiales por conciliar.');
             }
         }
-        // --------------------------------------
 
         $updateData = ['status' => $newStatus];
 
@@ -402,7 +409,6 @@ class ServiceOrderController extends Controller
         return back()->with('success', "Estatus actualizado a {$newStatus}.");
     }
 
-    // === MODIFICADO: CONCILIAR MATERIAL ===
     public function confirmInstallation(Request $request, ServiceOrder $serviceOrder)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -416,7 +422,6 @@ class ServiceOrderController extends Controller
         ]);
 
         DB::transaction(function () use ($serviceOrder, $validated) {
-            // 1. Guardar la cantidad realmente utilizada
             if (!empty($validated['items'])) {
                 foreach ($validated['items'] as $itemData) {
                     $serviceOrder->items()->where('id', $itemData['id'])->update([
@@ -425,27 +430,24 @@ class ServiceOrderController extends Controller
                 }
             }
 
-            // 2. Concatenar notas si es que el técnico dejó observaciones sobre el material
             $newNotes = $serviceOrder->notes;
             if (!empty($validated['installation_notes'])) {
                 $newNotes .= "\n\n--- Reporte de Materiales (Instalación) ---\n" . $validated['installation_notes'];
                 $serviceOrder->update(['notes' => $newNotes]);
             }
 
-            // 3. Revisar si ya están todas las tareas terminadas para auto-completar
             $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
             if ($incompleteTasks === 0 && !in_array($serviceOrder->status, ['Completado', 'Facturado', 'Cancelado'])) {
                 $serviceOrder->update([
                     'status' => 'Completado',
                     'completion_date' => now(),
-                    'inventory_reconciled' => false // Queda pendiente para que almacén haga el cuadre
+                    'inventory_reconciled' => false 
                 ]);
             }
         });
 
         return back()->with('success', 'Cantidades de material conciliadas y guardadas correctamente.');
     }
-    // =========================================================================
 
     public function addItems(Request $request, ServiceOrder $serviceOrder)
     {
@@ -540,8 +542,19 @@ class ServiceOrderController extends Controller
 
     public function uploadEvidenceMedia(Request $request, ServiceOrderEvidence $evidence)
     {
-        $request->validate(['file' => 'required|file|max:10240']);
-        $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
-        return back()->with('success', 'Evidencia requerida subida correctamente.');
+        $request->validate([
+            'file' => 'nullable|file|max:10240',
+            'files.*' => 'nullable|file|max:10240'
+        ]);
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $evidence->addMedia($file)->toMediaCollection('specific_evidences');
+            }
+        } elseif ($request->hasFile('file')) {
+            $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
+        }
+
+        return back()->with('success', 'Evidencia(s) requerida(s) subida(s) correctamente.');
     }
 }

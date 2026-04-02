@@ -240,7 +240,7 @@ const openDetail = (task) => {
                     <div v-if="hasPermission('pms.view_all')" class="w-full lg:w-72 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-shrink-0">
                         <div class="p-4 border-b border-gray-100 bg-gray-50">
                             <h3 class="font-bold text-gray-700 flex items-center justify-between">
-                                Por Asignar
+                                Por Asignar/Sin fecha
                                 <n-badge :value="backlogTasks.length" type="warning" />
                             </h3>
                             <p class="text-xs text-gray-500 mt-1">Arrastra hacia un día para asignar.</p>

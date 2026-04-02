@@ -14,6 +14,8 @@ class EvidenceTemplate extends Model
         'system_type',
         'title',
         'description',
+        'order',            // NUEVO: Para guardar el orden de la evidencia
+        'allows_multiple'   // NUEVO: Para saber si permite múltiples archivos
     ];
 
     public function branch()

@@ -228,10 +228,10 @@ const submit = () => {
                                                 </n-input>
                                             </n-form-item>
 
-                                            <n-form-item label="Persona de Atención (Alias)" path="contact_person">
+                                            <n-form-item label="Alias" path="contact_person">
                                                 <n-input 
                                                     v-model:value="form.contact_person" 
-                                                    placeholder="Atención a..."
+                                                    placeholder="Ej. Energy"
                                                     :input-props="{ autocomplete: 'off' }"
                                                 >
                                                     <template #prefix><n-icon :component="PersonOutline"/></template>

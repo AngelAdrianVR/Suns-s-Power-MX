@@ -41,11 +41,20 @@ class TaskController extends Controller
             ];
         }
 
-        // QUERY BASE: Tareas ASIGNADAS en esa semana
+        // QUERY BASE: Tareas ASIGNADAS que se solapan con la semana actual
+        // Necesitamos tareas cuyo inicio sea <= al fin de semana y su fin (o inicio si no tiene fin) sea >= al inicio de semana
         $assignedTasksQuery = Task::with(['assignees', 'taskable', 'comments.user'])
             ->where('branch_id', $branchId)
             ->has('assignees')
-            ->whereBetween('start_date', [$weekStart->startOfDay(), $weekEnd]);
+            ->whereNotNull('start_date') // <-- IMPORTANTE: Solo mostrar aquí si tienen fecha
+            ->where(function ($query) use ($weekStart, $weekEnd) {
+                // Tareas que inician antes del fin de semana Y terminan (o su límite es) después del inicio de semana
+                $query->where('start_date', '<=', $weekEnd)
+                      ->where(function($q) use ($weekStart) {
+                          $q->where('due_date', '>=', $weekStart->startOfDay())
+                            ->orWhereNull('due_date'); // Si no tiene due_date, usamos solo start_date
+                      });
+            });
 
         // RESTRICCIÓN DE PERMISO: Si NO tiene view_all, solo ve tareas donde esté asignado
         if (!Auth::user()->can('pms.view_all')) {
@@ -54,16 +63,43 @@ class TaskController extends Controller
             });
         }
 
-        $assignedTasks = $assignedTasksQuery->get()->groupBy(function($task) {
-            return Carbon::parse($task->start_date)->format('Y-m-d');
-        });
+        $fetchedTasks = $assignedTasksQuery->get();
+
+        // Agrupar las tareas por día. Si una tarea dura varios días, aparecerá en cada día correspondiente.
+        $assignedTasks = [];
+        
+        foreach ($fetchedTasks as $task) {
+            $taskStart = Carbon::parse($task->start_date)->startOfDay();
+            // Si tiene due_date lo usamos, si no, asume que solo dura el día de inicio
+            $taskEnd = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : $taskStart->copy();
+
+            // Iterar desde el inicio de la tarea hasta el fin de la tarea
+            $currentDate = $taskStart->copy();
+            while ($currentDate->lte($taskEnd)) {
+                $dateString = $currentDate->format('Y-m-d');
+                
+                // Solo agregar la tarea al arreglo si el día cae dentro de la semana que estamos viendo
+                // (Para evitar llenar el arreglo con días fuera de la vista)
+                if ($currentDate->between($weekStart->startOfDay(), $weekEnd)) {
+                    if (!isset($assignedTasks[$dateString])) {
+                        $assignedTasks[$dateString] = [];
+                    }
+                    $assignedTasks[$dateString][] = $task;
+                }
+                $currentDate->addDay();
+            }
+        }
 
         // RESTRICCIÓN DE PERMISO: Tareas SIN ASIGNAR (Backlog) solo visibles para view_all
         $unassignedTasks = [];
         if (Auth::user()->can('pms.view_all')) {
-            $unassignedTasks = Task::with(['taskable'])
+            // <-- CORRECCIÓN: Agregadas relaciones de comentarios y asignados, y modificado el where
+            $unassignedTasks = Task::with(['taskable', 'assignees', 'comments.user'])
                 ->where('branch_id', $branchId)
-                ->doesntHave('assignees')
+                ->where(function ($query) {
+                    $query->doesntHave('assignees')
+                          ->orWhereNull('start_date'); // También mostrar aquí si no tienen fecha
+                })
                 ->whereNotIn('status', ['Completado', 'Cancelado'])
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -89,7 +125,7 @@ class TaskController extends Controller
             'prev_week' => $weekStart->copy()->subWeek()->format('Y-m-d'),
             'next_week' => $weekStart->copy()->addWeek()->format('Y-m-d'),
             'days' => $days,
-            'assigned_tasks' => $assignedTasks,
+            'assigned_tasks' => $assignedTasks, // Ahora pasa el arreglo con tareas repetidas por día
             'unassigned_tasks' => $unassignedTasks,
             'assignable_users' => $assignableUsers,
             'service_orders' => $serviceOrders,

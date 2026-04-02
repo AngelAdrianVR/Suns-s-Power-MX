@@ -9,7 +9,7 @@ import {
 } from 'naive-ui';
 import { 
     CloudUploadOutline, DocumentOutline, 
-    CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline
+    CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline, AddOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -26,15 +26,16 @@ const triggerEvidenceFileInput = (evidenceId) => {
 };
 
 const handleEvidenceFileChange = (event, evidenceId) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-    const form = useForm({ file: file });
+    // Convertimos el FileList a un arreglo para mandarlo como múltiples archivos
+    const form = useForm({ files: Array.from(files) });
 
     form.post(route('service-orders.evidences.upload', evidenceId), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Evidencia Completada', content: 'Archivo adjuntado correctamente.' });
+            notification.success({ title: 'Evidencia Completada', content: 'Archivo(s) adjuntado(s) correctamente.' });
             window.location.reload();
         },
         onError: () => {
@@ -97,40 +98,54 @@ const isImage = (file) => {
 
                     <!-- Visualizador o Botón de Carga -->
                     <div class="p-4 bg-gray-50/50">
-                        <!-- Si ya se subió archivo -->
-                        <div v-if="evidence.media?.length" class="relative group">
-                            <n-image
-                                v-if="isImage(evidence.media[0])"
-                                :src="evidence.media[0].original_url"
-                                class="rounded-lg shadow-sm border border-gray-200 w-full h-32 object-cover"
-                                object-fit="cover"
-                            />
-                            <div v-else 
-                                 class="w-full h-32 rounded-lg shadow-sm border border-gray-200 bg-white flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50"
-                                 @click="openFileWithRetry(evidence.media[0].original_url)"
-                            >
-                                <n-icon size="30" class="text-emerald-400 mb-2"><DocumentOutline /></n-icon>
-                                <span class="text-xs text-emerald-600 font-bold">Ver Documento</span>
+                        <!-- Si ya se subieron archivos -->
+                        <div v-if="evidence.media?.length" class="space-y-3">
+                            <!-- Cuadrícula para mostrar las imágenes/documentos subidos -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div v-for="media in evidence.media" :key="media.id" class="relative group">
+                                    <n-image
+                                        v-if="isImage(media)"
+                                        :src="media.original_url"
+                                        class="rounded-lg shadow-sm border border-gray-200 w-full h-24 object-cover"
+                                        object-fit="cover"
+                                    />
+                                    <div v-else 
+                                         class="w-full h-24 rounded-lg shadow-sm border border-gray-200 bg-white flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50"
+                                         @click="openFileWithRetry(media.original_url)"
+                                    >
+                                        <n-icon size="24" class="text-emerald-400 mb-1"><DocumentOutline /></n-icon>
+                                        <span class="text-[10px] text-emerald-600 font-bold">Ver Documento</span>
+                                    </div>
+                                    
+                                    <!-- Borrar Archivo Individual -->
+                                    <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', media.id), { preserveScroll: true, onSuccess: () => router.reload() })">
+                                        <template #trigger>
+                                            <button class="absolute top-1 right-1 bg-white p-1 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
+                                                <n-icon size="14"><TrashOutline /></n-icon>
+                                            </button>
+                                        </template>
+                                        ¿Eliminar este archivo?
+                                    </n-popconfirm>
+                                </div>
                             </div>
                             
-                            <!-- Borrar Archivo Requerido -->
-                            <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', evidence.media[0].id), { preserveScroll: true, onSuccess: () => router.reload() })">
-                                <template #trigger>
-                                    <button class="absolute top-2 right-2 bg-white p-1.5 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
-                                        <n-icon><TrashOutline /></n-icon>
-                                    </button>
-                                </template>
-                                ¿Eliminar para subir uno nuevo?
-                            </n-popconfirm>
+                            <!-- Botón para agregar MÁS archivos si está permitido -->
+                            <div v-if="evidence.allows_multiple">
+                                <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" multiple @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
+                                <n-button dashed size="small" type="primary" class="w-full bg-white text-emerald-600 hover:text-emerald-700" @click="triggerEvidenceFileInput(evidence.id)">
+                                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                                    Agregar Más
+                                </n-button>
+                            </div>
                         </div>
 
-                        <!-- Si no se ha subido, mostrar input específico -->
+                        <!-- Si no se ha subido NADA, mostrar input principal -->
                         <div v-else>
-                            <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
+                            <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" :multiple="evidence.allows_multiple" @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
                             <n-button dashed type="primary" class="w-full h-16 bg-white" @click="triggerEvidenceFileInput(evidence.id)">
                                 <div class="flex flex-col items-center gap-1 text-emerald-600">
                                     <n-icon size="20"><CameraOutline /></n-icon>
-                                    <span class="text-xs font-semibold">Subir Fotografía</span>
+                                    <span class="text-xs font-semibold">Subir Fotografía{{ evidence.allows_multiple ? 's' : '' }}</span>
                                 </div>
                             </n-button>
                         </div>

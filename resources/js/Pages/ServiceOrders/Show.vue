@@ -132,6 +132,7 @@ const openMaterialReportModal = () => {
         id: item.id,
         name: item.product.name,
         sku: item.product.sku,
+        category: item.product.category?.name || item.product.category || 'Sin categoría',
         assigned_qty: item.quantity,
         used_quantity: item.used_quantity !== null ? item.used_quantity : item.quantity
     }));
@@ -391,6 +392,7 @@ const confirmDelete = () => {
                         <thead class="bg-gray-50 sticky top-0 z-10">
                             <tr>
                                 <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500">Categoría</th>
                                 <th class="px-4 py-2 text-center text-xs font-medium text-gray-500">Asignado</th>
                                 <th class="px-4 py-2 text-center text-xs font-medium text-indigo-600">Usado Realmente</th>
                             </tr>
@@ -399,6 +401,9 @@ const confirmDelete = () => {
                             <tr v-for="(item, index) in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
                                 <td class="px-4 py-2 text-sm text-gray-800">
                                     {{ item.name }} <br><span class="text-[10px] text-gray-400">{{ item.sku }}</span>
+                                </td>
+                                <td class="px-4 py-2 text-sm text-gray-600">
+                                    <n-tag size="small" :bordered="false" type="info">{{ item.category }}</n-tag>
                                 </td>
                                 <td class="px-4 py-2 text-sm text-center font-semibold text-gray-600">
                                     {{ item.assigned_qty }}
@@ -409,7 +414,7 @@ const confirmDelete = () => {
                                 </td>
                             </tr>
                             <tr v-if="!completionForm.items.length">
-                                <td colspan="3" class="px-4 py-8">
+                                <td colspan="4" class="px-4 py-8">
                                     <n-empty description="No se asignaron materiales a esta orden." />
                                 </td>
                             </tr>

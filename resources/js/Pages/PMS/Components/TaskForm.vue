@@ -36,12 +36,12 @@ const form = useForm({
     start_date: props.task?.start_date ? parseISO(props.task.start_date).getTime() : null,
     due_date: props.task?.due_date ? parseISO(props.task.due_date).getTime() : null,
     user_ids: props.task?.assignees?.map(u => u.id) || [],
-    taskable_type: props.task?.taskable_type || null,
+    taskable_type: props.task?.taskable_type || 'General', // <-- Cambio clave: Usar texto por defecto
     taskable_id: props.task?.taskable_id || null
 });
 
 const typeOptions = [
-    { label: 'General (Sin asignar a módulo)', value: null },
+    { label: 'General (Sin asignar a módulo)', value: 'General' }, // <-- Uso de cadena no nula
     { label: 'Orden de Servicio', value: 'App\\Models\\ServiceOrder' },
     { label: 'Ticket de Soporte', value: 'App\\Models\\Ticket' }
 ];
@@ -83,6 +83,11 @@ const submit = () => {
     if (payload.start_date) payload.start_date = format(new Date(payload.start_date), 'yyyy-MM-dd HH:mm:ss');
     if (payload.due_date) payload.due_date = format(new Date(payload.due_date), 'yyyy-MM-dd HH:mm:ss');
 
+    // <-- Transformar el 'General' a nulo para el Backend
+    if (payload.taskable_type === 'General') {
+        payload.taskable_type = null;
+    }
+
     if (props.task) {
         // Modo Edición
         form.transform(() => payload).put(route('tasks.update', props.task.id), {
@@ -107,11 +112,11 @@ const submit = () => {
             </n-form-item>
             
             <!-- El label se mantiene siempre, y el required es dinámico -->
-            <n-form-item label="Referencia (Módulo)" :required="!!form.taskable_type">
+            <n-form-item label="Referencia (Módulo)" :required="form.taskable_type !== 'General'">
                 
                 <!-- Si se seleccionó un módulo (Orden o Ticket), mostramos el selector normal -->
                 <n-select 
-                    v-if="form.taskable_type" 
+                    v-if="form.taskable_type !== 'General'" 
                     v-model:value="form.taskable_id" 
                     :options="getTaskableOptions" 
                     placeholder="Seleccione..." 
@@ -147,12 +152,14 @@ const submit = () => {
         </div>
 
         <div class="grid grid-cols-2 gap-4">
-            <n-form-item label="Fecha de Inicio">
-                <n-date-picker v-model:value="form.start_date" type="date" clearable class="w-full" />
+            <n-form-item label="Fecha y Hora de Inicio">
+                <!-- <-- Cambio: type="datetime" para poder escoger la hora -->
+                <n-date-picker v-model:value="form.start_date" type="datetime" clearable class="w-full" />
             </n-form-item>
             
-            <n-form-item label="Fecha Límite">
-                <n-date-picker v-model:value="form.due_date" type="date" clearable class="w-full" />
+            <n-form-item label="Fecha y Hora Límite">
+                <!-- <-- Cambio: type="datetime" para poder escoger la hora -->
+                <n-date-picker v-model:value="form.due_date" type="datetime" clearable class="w-full" />
             </n-form-item>
         </div>
 

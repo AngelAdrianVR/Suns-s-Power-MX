@@ -57,6 +57,24 @@ const removeProduct = (itemId) => {
 const showReportedQuantities = computed(() => {
     return ['Completado', 'Facturado'].includes(props.order.status) || props.order.items?.some(i => i.used_quantity !== null);
 });
+
+// Función para obtener la categoría, buscando en el item o en los available_products
+const getCategoryName = (item) => {
+    const product = item.product;
+    
+    // 1. Intentar obtenerlo directamente si el controlador cargó la relación
+    if (product?.category) {
+        return typeof product.category === 'object' ? product.category.name : product.category;
+    }
+
+    // 2. Fallback: Buscar en los available_products usando el ID del producto
+    const fallbackProduct = props.available_products?.find(p => p.id === product?.id || p.id === item.product_id);
+    if (fallbackProduct?.category) {
+        return typeof fallbackProduct.category === 'object' ? fallbackProduct.category.name : fallbackProduct.category;
+    }
+
+    return 'Sin categoría';
+};
 </script>
 
 <template>
@@ -87,6 +105,7 @@ const showReportedQuantities = computed(() => {
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Cant. Asignada</th>
                         <th v-if="showReportedQuantities" class="px-6 py-3 text-center text-xs font-bold text-indigo-600 uppercase bg-indigo-50/30">Cant. Utilizada</th>
                         <th v-if="can_view_financials" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">P. Unit (Ref)</th>
@@ -98,6 +117,9 @@ const showReportedQuantities = computed(() => {
                     <tr v-for="item in order.items" :key="item.id" :class="{'bg-red-50/20': item.used_quantity !== null && item.used_quantity !== item.quantity}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {{ item.product.name }} <span class="text-gray-400 text-xs">({{ item.product.sku }})</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            <n-tag size="small" :bordered="false" type="info">{{ getCategoryName(item) }}</n-tag>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ item.quantity }}</td>
                         
@@ -131,12 +153,12 @@ const showReportedQuantities = computed(() => {
                         </td>
                     </tr>
                     <tr v-if="!order.items?.length">
-                        <td colspan="6" class="px-6 py-8 text-center text-gray-400 text-sm">No hay materiales asignados.</td>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-400 text-sm">No hay materiales asignados.</td>
                     </tr>
                 </tbody>
                 <tfoot v-if="can_view_financials" class="bg-gray-50 font-bold border-t-2 border-gray-200">
                     <tr>
-                        <td :colspan="showReportedQuantities ? 4 : 3" class="px-6 py-3 text-right">Costo Interno Instalación:</td>
+                        <td :colspan="showReportedQuantities ? 5 : 4" class="px-6 py-3 text-right">Costo Interno Instalación:</td>
                         <td class="px-6 py-3 text-right text-indigo-700 text-base">
                             <!-- Calcula el total sumando (precio * cantidad_usada o cantidad_asignada) -->
                             {{ formatCurrency(order.items?.reduce((sum, i) => sum + (i.product.purchase_price * (i.used_quantity !== null ? i.used_quantity : i.quantity)), 0) || 0) }}
