@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Client;
 use App\Models\ServiceOrder;
 use App\Models\Ticket;
+use App\Models\Task; // Importamos el modelo Task
+use App\Models\User; // Importamos el modelo User
+use Carbon\Carbon;   // Importamos Carbon para manejo de fechas
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -12,23 +15,23 @@ use Inertia\Inertia;
 class TicketController extends Controller
 {
     /**
-     * Muestra el listado de tickets filtrados por sucursal y búsqueda.
+     * Muestra el listado de tickets filtrados por sucursal, búsqueda y pestaña activa.
      */
     public function index(Request $request)
     {
-        // Agregamos municipality y state a los filtros recibidos
-        $filters = $request->only(['search', 'status', 'priority', 'municipality', 'state']);
+        // Agregamos municipality, state y tab a los filtros recibidos
+        $filters = $request->only(['search', 'status', 'priority', 'municipality', 'state', 'tab']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
         $priority = $filters['priority'] ?? null;
         $municipality = $filters['municipality'] ?? null;
         $state = $filters['state'] ?? null;
+        $tab = $filters['tab'] ?? 'pendientes'; // Por defecto mostramos pendientes
 
         // Contexto de sucursal
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         // Obtener listas para los selectores (solo de clientes de esta sucursal)
-        // Usamos distinct para no repetir opciones
         $availableMunicipalities = Client::where('branch_id', $branchId)
             ->whereNotNull('municipality')
             ->where('municipality', '!=', '')
@@ -51,12 +54,25 @@ class TicketController extends Controller
                       ->orWhere('description', 'like', "%{$search}%")
                       ->orWhere('id', 'like', "%{$search}%")
                       ->orWhereHas('client', function ($cq) use ($search) {
-                          $cq->where('name', 'like', "%{$search}%");
+                          $cq->where('name', 'like', "%{$search}%")
+                             ->orWhere('contact_person', 'like', "%{$search}%"); // Agregamos búsqueda por Alias
                       });
                 });
             })
-            ->when($status, function ($query, $status) {
-                $query->where('status', $status);
+            // Lógica de separación por Pestañas y Estatus
+            ->where(function ($query) use ($status, $tab) {
+                if ($status) {
+                    // Si el usuario filtra por un estatus específico, respetamos ese filtro
+                    $query->where('status', $status);
+                } else {
+                    // Si no hay filtro específico, filtramos por la pestaña activa
+                    if ($tab === 'terminados') {
+                        $query->whereIn('status', ['Resuelto', 'Cerrado']);
+                    } else {
+                        // Por defecto (pendientes)
+                        $query->whereIn('status', ['Abierto', 'En Análisis']);
+                    }
+                }
             })
             ->when($priority, function ($query, $priority) {
                 $query->where('priority', $priority);
@@ -86,8 +102,9 @@ class TicketController extends Controller
                     'client' => $ticket->client ? [
                         'id' => $ticket->client->id,
                         'name' => $ticket->client->name,
-                        'phone' => $ticket->client->phone, // Nota: Si eliminaste 'phone' de Client, ajusta esto a contact_person o relations
-                        'municipality' => $ticket->client->municipality, // Útil si quieres mostrarlo en tabla
+                        'contact_person' => $ticket->client->contact_person, // Mandamos el alias
+                        'phone' => $ticket->client->phone,
+                        'municipality' => $ticket->client->municipality,
                         'state' => $ticket->client->state,
                     ] : null,
                     'service_order_id' => $ticket->related_service_order_id,
@@ -97,7 +114,7 @@ class TicketController extends Controller
         return Inertia::render('Ticket/Index', [
             'tickets' => $tickets,
             'filters' => $filters,
-            'municipalities' => $availableMunicipalities, // Pasamos las opciones a la vista
+            'municipalities' => $availableMunicipalities,
             'states' => $availableStates,
         ]);
     }
@@ -107,26 +124,41 @@ class TicketController extends Controller
      */
     public function create()
     {
-        $clients = Client::select('id', 'name')->orderBy('name')->get();
-        
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        // Obtenemos solo los clientes de esta sucursal
+        $clients = Client::where('branch_id', $branchId)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
         
         $serviceOrders = ServiceOrder::with('client:id,name')
             ->where('branch_id', $branchId)
-            ->select('id', 'client_id', 'created_at', 'total_amount', 'status')
+            ->select('id', 'client_id', 'created_at', 'status') // CORRECCIÓN: Se quita 'total_amount'
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($order) {
+                // CORRECCIÓN: Validación por si el cliente fue eliminado
+                $clientName = $order->client ? $order->client->name : 'Sin Cliente';
                 return [
                     'id' => $order->id,
-                    'label' => "Orden #{$order->id} - {$order->client->name} ({$order->created_at->format('d/m/Y')})",
+                    'label' => "Orden #{$order->id} - {$clientName} ({$order->created_at->format('d/m/Y')})",
                     'client_id' => $order->client_id
                 ];
             });
+
+        // Obtenemos los usuarios para asignar tareas
+        $assignableUsers = User::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->where('id', '!=', 1)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
         
         return Inertia::render('Ticket/Create', [
             'clients' => $clients,
             'serviceOrders' => $serviceOrders,
+            'assignableUsers' => $assignableUsers, // Enviamos los usuarios a la vista
         ]);
     }
 
@@ -143,6 +175,9 @@ class TicketController extends Controller
             'priority' => 'required|in:Baja,Media,Alta,Urgente',
             'status' => 'required|in:Abierto,En Análisis,Resuelto,Cerrado',
             'evidence.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,mp4|max:10240',
+            // Nuevos campos para la creación de la tarea:
+            'task_duration_days' => 'nullable|integer|min:1',
+            'task_user_id' => 'nullable|exists:users,id',
         ]);
 
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
@@ -156,6 +191,27 @@ class TicketController extends Controller
             'priority' => $validated['priority'],
             'status' => $validated['status'],
         ]);
+
+        // Evitar el error de rawAddUnit al forzar (int)
+        $taskDuration = !empty($validated['task_duration_days']) ? (int) $validated['task_duration_days'] : null;
+
+        // Creación automática de la tarea SIEMPRE
+        $task = Task::create([
+            'title' => 'Atender Ticket #' . $ticket->id . ': ' . $ticket->title,
+            'description' => $ticket->description,
+            'taskable_id' => $ticket->id,
+            'taskable_type' => Ticket::class,
+            'branch_id' => $branchId,
+            'created_by' => Auth::id(),
+            'status' => in_array($validated['status'], ['Resuelto', 'Cerrado']) ? 'Completado' : 'Pendiente', // Sincronizar estado inicial
+            'priority' => $ticket->priority === 'Urgente' ? 'Alta' : $ticket->priority, // Normaliza a prioridades de tareas
+            'start_date' => $taskDuration ? Carbon::now() : null,
+            'due_date' => $taskDuration ? Carbon::now()->addDays($taskDuration) : null,
+        ]);
+
+        if (!empty($validated['task_user_id'])) {
+            $task->assignees()->attach($validated['task_user_id']);
+        }
 
         if ($request->hasFile('evidence')) {
             foreach ($request->file('evidence') as $file) {
@@ -244,6 +300,17 @@ class TicketController extends Controller
         if (!empty($validated['new_status']) && $validated['new_status'] !== $ticket->status) {
             $ticket->status = $validated['new_status'];
             $ticket->save();
+
+            // Sincronizar tareas al responder
+            if (in_array($validated['new_status'], ['Resuelto', 'Cerrado'])) {
+                Task::where('taskable_type', Ticket::class)
+                    ->where('taskable_id', $ticket->id)
+                    ->where('status', '!=', 'Completado')
+                    ->update([
+                        'status' => 'Completado',
+                        'finish_date' => now()
+                    ]);
+            }
         } else {
             $ticket->touch(); 
         }
@@ -257,23 +324,56 @@ class TicketController extends Controller
     public function edit(Ticket $ticket)
     {
         $ticket->load(['media']);
-        $clients = Client::select('id', 'name')->orderBy('name')->get();
         
-        // Replicamos la carga de órdenes de servicio como en 'create' para permitir cambiarla
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         
+        $clients = Client::where('branch_id', $branchId)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
         $serviceOrders = ServiceOrder::with('client:id,name')
             ->where('branch_id', $branchId)
             ->select('id', 'client_id', 'created_at', 'status')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($order) {
+                // CORRECCIÓN: Validación por si el cliente fue eliminado
+                $clientName = $order->client ? $order->client->name : 'Sin Cliente';
                 return [
                     'id' => $order->id,
-                    'label' => "Orden #{$order->id} - {$order->client->name} ({$order->created_at->format('d/m/Y')})",
+                    'label' => "Orden #{$order->id} - {$clientName} ({$order->created_at->format('d/m/Y')})",
                     'client_id' => $order->client_id
                 ];
             });
+
+        // Usuarios disponibles
+        $assignableUsers = User::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->where('id', '!=', 1)
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        // Buscar si existe una tarea asociada a este ticket para precargar duracion/usuario
+        $task = Task::where('taskable_type', Ticket::class)
+            ->where('taskable_id', $ticket->id)
+            ->with('assignees')
+            ->first();
+
+        $taskDuration = null;
+        $taskUserId = null;
+
+        if ($task) {
+            if ($task->start_date && $task->due_date) {
+                $taskDuration = (int) Carbon::parse($task->start_date)->diffInDays(Carbon::parse($task->due_date));
+                if ($taskDuration === 0) $taskDuration = 1; 
+            }
+            $assignee = $task->assignees->first();
+            if ($assignee) {
+                $taskUserId = $assignee->id;
+            }
+        }
 
         return Inertia::render('Ticket/Edit', [
             'ticket' => [
@@ -285,6 +385,8 @@ class TicketController extends Controller
                 'status' => $ticket->status,
                 'priority' => $ticket->priority,
                 'resolution_notes' => $ticket->resolution_notes,
+                'task_duration_days' => $taskDuration, // Se pasa a la vista
+                'task_user_id' => $taskUserId,         // Se pasa a la vista
                 'evidence' => $ticket->getMedia('ticket_evidence')->map(function ($media) {
                     return [
                         'id' => $media->id,
@@ -294,8 +396,8 @@ class TicketController extends Controller
                 }),
             ],
             'clients' => $clients,
-            // Enviamos 'serviceOrders' (todas las disponibles) en lugar de solo 'client_orders'
             'serviceOrders' => $serviceOrders, 
+            'assignableUsers' => $assignableUsers, // Pasamos usuarios a la vista
         ]);
     }
 
@@ -313,6 +415,9 @@ class TicketController extends Controller
             'status' => 'required|in:Abierto,En Análisis,Resuelto,Cerrado',
             'resolution_notes' => 'nullable|string',
             'evidence.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf,mp4|max:10240',
+            // Campos de la tarea
+            'task_duration_days' => 'nullable|integer|min:1',
+            'task_user_id' => 'nullable|exists:users,id',
         ]);
 
         $ticket->update([
@@ -324,6 +429,59 @@ class TicketController extends Controller
             'status' => $validated['status'],
             'resolution_notes' => $validated['resolution_notes'] ?? null,
         ]);
+
+        // Evitar el error de rawAddUnit al forzar (int)
+        $taskDuration = !empty($validated['task_duration_days']) ? (int) $validated['task_duration_days'] : null;
+
+        // Actualizar o Crear la tarea asociada SIEMPRE
+        $task = Task::where('taskable_type', Ticket::class)
+            ->where('taskable_id', $ticket->id)
+            ->first();
+
+        $startDate = $task && $task->start_date ? $task->start_date : ($taskDuration ? Carbon::now() : null);
+        $dueDate = $taskDuration ? ($startDate ? Carbon::parse($startDate)->addDays($taskDuration) : Carbon::now()->addDays($taskDuration)) : ($task ? $task->due_date : null);
+
+        // Si se resolvió el ticket manualmente, marcamos completada la tarea
+        $newStatus = in_array($validated['status'], ['Resuelto', 'Cerrado']) ? 'Completado' : ($task ? $task->status : 'Pendiente');
+        // Si el estado de la tarea estaba completada pero regresaron el ticket a abierto, regresamos la tarea a pendiente
+        if (in_array($validated['status'], ['Abierto', 'En Análisis']) && $newStatus === 'Completado') {
+            $newStatus = 'Pendiente';
+        }
+
+        if ($task) {
+            // Actualiza
+            $task->update([
+                'title' => 'Atender Ticket #' . $ticket->id . ': ' . $ticket->title,
+                'description' => $ticket->description,
+                'priority' => $ticket->priority === 'Urgente' ? 'Alta' : $ticket->priority,
+                'status' => $newStatus,
+                'start_date' => $startDate,
+                'due_date' => $dueDate,
+                'finish_date' => $newStatus === 'Completado' ? ($task->finish_date ?? now()) : null
+            ]);
+        } else {
+            // Crea si no existía (por si fue eliminada manualmente)
+            $task = Task::create([
+                'title' => 'Atender Ticket #' . $ticket->id . ': ' . $ticket->title,
+                'description' => $ticket->description,
+                'taskable_id' => $ticket->id,
+                'taskable_type' => Ticket::class,
+                'branch_id' => session('current_branch_id') ?? Auth::user()->branch_id,
+                'created_by' => Auth::id(),
+                'status' => $newStatus,
+                'priority' => $ticket->priority === 'Urgente' ? 'Alta' : $ticket->priority,
+                'start_date' => $startDate,
+                'due_date' => $dueDate,
+                'finish_date' => $newStatus === 'Completado' ? now() : null
+            ]);
+        }
+
+        // Sincroniza al responsable
+        if (!empty($validated['task_user_id'])) {
+            $task->assignees()->sync([$validated['task_user_id']]);
+        } else {
+            $task->assignees()->detach();
+        }
 
         if ($request->hasFile('evidence')) {
             foreach ($request->file('evidence') as $file) {
@@ -353,6 +511,17 @@ class TicketController extends Controller
         ]);
 
         $ticket->update(['status' => $validated['status']]);
+
+        // Sincronizar tareas al cambio rápido de estatus
+        if (in_array($validated['status'], ['Resuelto', 'Cerrado'])) {
+            Task::where('taskable_type', Ticket::class)
+                ->where('taskable_id', $ticket->id)
+                ->where('status', '!=', 'Completado')
+                ->update([
+                    'status' => 'Completado',
+                    'finish_date' => now()
+                ]);
+        }
 
         return back()->with('success', 'Estatus actualizado.');
     }

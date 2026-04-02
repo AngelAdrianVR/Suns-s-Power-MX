@@ -15,6 +15,8 @@ class TaskTemplate extends Model
         'title',
         'description',
         'priority',
+        'start_days',      // <-- NUEVO CAMPO: Días para iniciar
+        'duration_days',   // <-- NUEVO CAMPO: Duración en días
     ];
 
     public function branch()

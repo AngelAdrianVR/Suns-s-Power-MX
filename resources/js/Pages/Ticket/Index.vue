@@ -4,11 +4,11 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
-    NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NModal, NEmpty, NPagination, createDiscreteApi, NSelect
+    NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NModal, NEmpty, NPagination, createDiscreteApi, NSelect, NTabs, NTabPane
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, CreateOutline, TrashOutline, 
-    TicketOutline, PersonOutline, ConstructOutline, TimeOutline, AlertCircleOutline, LocationOutline
+    TicketOutline, PersonOutline, ConstructOutline, TimeOutline, AlertCircleOutline, LocationOutline, CheckmarkCircleOutline
 } from '@vicons/ionicons5';
 import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -32,15 +32,23 @@ const statusFilter = ref(props.filters.status || null);
 const priorityFilter = ref(props.filters.priority || null);
 const municipalityFilter = ref(props.filters.municipality || null);
 const stateFilter = ref(props.filters.state || null);
+const tab = ref(props.filters.tab || 'pendientes'); // Estado de la pestaña activa
 
-// Opciones para selectores estáticos
-const statusOptions = [
-    { label: 'Todos los Estatus', value: null },
-    { label: 'Abierto', value: 'Abierto' },
-    { label: 'En Análisis', value: 'En Análisis' },
-    { label: 'Resuelto', value: 'Resuelto' },
-    { label: 'Cerrado', value: 'Cerrado' }
-];
+// Opciones para selectores estáticos (Dinámicas según la pestaña)
+const statusOptions = computed(() => {
+    if (tab.value === 'terminados') {
+        return [
+            { label: 'Todos los Estatus', value: null },
+            { label: 'Resuelto', value: 'Resuelto' },
+            { label: 'Cerrado', value: 'Cerrado' }
+        ];
+    }
+    return [
+        { label: 'Todos los Estatus', value: null },
+        { label: 'Abierto', value: 'Abierto' },
+        { label: 'En Análisis', value: 'En Análisis' }
+    ];
+});
 
 const priorityOptions = [
     { label: 'Todas las Prioridades', value: null },
@@ -61,6 +69,12 @@ const stateOptions = computed(() => {
     return [{ label: 'Todos los Estados', value: null }, ...opts];
 });
 
+// Al cambiar de pestaña, reiniciamos el estatus
+const handleTabChange = (val) => {
+    statusFilter.value = null;
+    tab.value = val;
+};
+
 // Función para recargar la vista con filtros (Debounce solo para search)
 let timeout = null;
 
@@ -70,7 +84,8 @@ const applyFilters = () => {
         status: statusFilter.value,
         priority: priorityFilter.value,
         municipality: municipalityFilter.value,
-        state: stateFilter.value
+        state: stateFilter.value,
+        tab: tab.value
     }, { preserveState: true, replace: true });
 };
 
@@ -79,7 +94,7 @@ watch(search, () => {
     timeout = setTimeout(applyFilters, 300);
 });
 
-watch([statusFilter, priorityFilter, municipalityFilter, stateFilter], () => {
+watch([statusFilter, priorityFilter, municipalityFilter, stateFilter, tab], () => {
     applyFilters();
 });
 
@@ -182,8 +197,12 @@ const createColumns = () => [
             return h('div', { class: 'flex items-center gap-2' }, [
                 h(NIcon, { component: PersonOutline, class: 'text-gray-400' }),
                 h('div', { class: 'flex flex-col' }, [
-                    h('span', { class: 'text-gray-700 text-sm font-medium' }, row.client.name),
-                    locationText ? h('span', { class: 'text-[10px] text-gray-400 flex items-center gap-1' }, [
+                    h('div', { class: 'flex items-center gap-1' }, [
+                        h('span', { class: 'text-gray-700 text-sm font-medium' }, row.client.name),
+                        // Renderizamos el alias al lado del nombre si existe
+                        row.client.contact_person ? h(NTag, { size: 'tiny', type: 'info', bordered: false, round: true }, { default: () => row.client.contact_person }) : null
+                    ]),
+                    locationText ? h('span', { class: 'text-[10px] text-gray-400 flex items-center gap-1 mt-0.5' }, [
                         h(NIcon, { component: LocationOutline, class: 'text-xs' }),
                         locationText
                     ]) : null
@@ -253,7 +272,8 @@ const handlePageChange = (page) => {
         status: statusFilter.value,
         priority: priorityFilter.value,
         municipality: municipalityFilter.value,
-        state: stateFilter.value
+        state: stateFilter.value,
+        tab: tab.value
     }, { preserveState: true });
 };
 
@@ -288,6 +308,28 @@ const rowProps = (row) => {
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 
+                <!-- Pestañas para dividir Terminados y Pendientes -->
+                <div class="mb-6 bg-white/80 backdrop-blur-xl rounded-2xl shadow-sm border border-gray-100 px-4 pt-2">
+                    <n-tabs v-model:value="tab" type="line" size="large" @update:value="handleTabChange">
+                        <n-tab-pane name="pendientes">
+                            <template #tab>
+                                <div class="flex items-center gap-2">
+                                    <n-icon><TimeOutline /></n-icon>
+                                    Pendientes
+                                </div>
+                            </template>
+                        </n-tab-pane>
+                        <n-tab-pane name="terminados">
+                            <template #tab>
+                                <div class="flex items-center gap-2">
+                                    <n-icon><CheckmarkCircleOutline /></n-icon>
+                                    Terminados
+                                </div>
+                            </template>
+                        </n-tab-pane>
+                    </n-tabs>
+                </div>
+
                 <!-- Barra de filtros -->
                 <div class="mb-6 px-4 sm:px-0 space-y-4">
                     <div class="flex flex-col md:flex-row gap-3">
@@ -411,8 +453,11 @@ const rowProps = (row) => {
                                 <n-icon><PersonOutline/></n-icon>
                             </n-avatar>
                             <div class="flex flex-col w-full">
-                                <span class="text-xs font-semibold text-gray-700">{{ ticket.client?.name || 'Sin Cliente' }}</span>
-                                <div v-if="ticket.client?.municipality || ticket.client?.state" class="flex items-center gap-1 text-[10px] text-gray-400">
+                                <div class="flex items-center gap-1 flex-wrap">
+                                    <span class="text-xs font-semibold text-gray-700">{{ ticket.client?.name || 'Sin Cliente' }}</span>
+                                    <n-tag v-if="ticket.client?.contact_person" size="tiny" type="info" :bordered="false" round>{{ ticket.client.contact_person }}</n-tag>
+                                </div>
+                                <div v-if="ticket.client?.municipality || ticket.client?.state" class="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
                                     <n-icon><LocationOutline /></n-icon>
                                     {{ [ticket.client?.municipality, ticket.client?.state].filter(Boolean).join(', ') }}
                                 </div>
