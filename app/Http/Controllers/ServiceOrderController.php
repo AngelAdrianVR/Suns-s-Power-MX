@@ -8,8 +8,10 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
+use App\Models\SystemType;
 use App\Models\User;
 use App\Models\TaskTemplate; 
+use App\Models\Ticket;
 use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +20,7 @@ use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
+use Carbon\Carbon;
 
 class ServiceOrderController extends Controller
 {
@@ -32,6 +35,7 @@ class ServiceOrderController extends Controller
         $municipality = $filters['municipality'] ?? null;
         $state = $filters['state'] ?? null;
         $systemType = $filters['system_type'] ?? null;
+        $dateRange = $filters['date_range'] ?? null;
 
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
@@ -82,6 +86,24 @@ class ServiceOrderController extends Controller
             ->when($systemType, function ($query, $systemType) {
                 $query->where('system_type', $systemType);
             })
+            ->when($dateRange, function ($query, $dateRange) {
+                if (is_array($dateRange) && count($dateRange) === 2) {
+                    try {
+                        // Naive UI envía timestamps en milisegundos desde Vue
+                        $start = is_numeric($dateRange[0]) 
+                            ? Carbon::createFromTimestampMs($dateRange[0])->startOfDay()
+                            : Carbon::parse($dateRange[0])->startOfDay();
+                            
+                        $end = is_numeric($dateRange[1])
+                            ? Carbon::createFromTimestampMs($dateRange[1])->endOfDay()
+                            : Carbon::parse($dateRange[1])->endOfDay();
+
+                        $query->whereBetween('created_at', [$start, $end]);
+                    } catch (\Exception $e) {
+                        // Ignorar filtro si hay error en el parseo de fechas
+                    }
+                }
+            })
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
@@ -130,6 +152,7 @@ class ServiceOrderController extends Controller
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
+            'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
         ]);
     }
 
@@ -148,6 +171,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
+            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
+            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
+            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
+            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
             'meter_number' => 'nullable|string|max:255',
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -344,6 +372,7 @@ class ServiceOrderController extends Controller
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->get(['id', 'name']),
+            'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
         ]);
     }
 
@@ -362,6 +391,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
+            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
+            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
+            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
+            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
             'meter_number' => 'nullable|string|max:255', 
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -581,6 +615,7 @@ class ServiceOrderController extends Controller
 
         try {
             DB::transaction(function () use ($serviceOrder) {
+                // 1. Restaurar stock de materiales
                 foreach ($serviceOrder->items as $item) {
                     if ($item->product) {
                         InventoryService::addStock(
@@ -593,8 +628,39 @@ class ServiceOrderController extends Controller
                         );
                     }
                 }
+
+                // 2. Eliminar evidencias individuales y forzar el borrado de sus fotos del disco (Spatie)
+                foreach ($serviceOrder->evidences as $evidence) {
+                    $evidence->clearMediaCollection('specific_evidences');
+                    $evidence->delete();
+                }
+
+                // 3. Eliminar archivos generales de la orden del disco (Spatie)
+                $serviceOrder->clearMediaCollection('evidences');
+
+                // 4. Eliminar dependencias basadas en el modelo ServiceOrder
+                $serviceOrder->tasks()->delete();
                 $serviceOrder->payments()->delete(); 
-                $serviceOrder->items()->delete();    
+                $serviceOrder->items()->delete();
+                $serviceOrder->documents()->delete();
+                
+                if ($serviceOrder->contract) {
+                    $serviceOrder->contract()->delete();
+                }
+
+                // 5. Eliminar tickets de soporte relacionados a esta orden y sus dependencias (tareas)
+                $ticketIds = Ticket::where('related_service_order_id', $serviceOrder->id)->pluck('id');
+                if ($ticketIds->isNotEmpty()) {
+                    // Eliminar tareas asociadas a los tickets (relación polimórfica)
+                    \App\Models\Task::where('taskable_type', Ticket::class)
+                        ->whereIn('taskable_id', $ticketIds)
+                        ->delete();
+                        
+                    // Finalmente eliminar los tickets
+                    Ticket::whereIn('id', $ticketIds)->delete();
+                }
+
+                // 6. Finalmente, eliminar la Orden
                 $serviceOrder->delete(); 
             });
             return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
@@ -614,7 +680,8 @@ class ServiceOrderController extends Controller
     {
         $request->validate([
             'file' => 'nullable|file|max:10240',
-            'files.*' => 'nullable|file|max:10240'
+            'files.*' => 'nullable|file|max:10240',
+            'comment' => 'nullable|string' // <-- Permitir recibir el comentario
         ]);
 
         if ($request->hasFile('files')) {
@@ -625,7 +692,12 @@ class ServiceOrderController extends Controller
             $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
         }
 
-        return back()->with('success', 'Evidencia(s) requerida(s) subida(s) correctamente.');
+        // <-- NUEVO: Guardar el comentario si viene en la petición
+        if ($request->has('comment')) {
+            $evidence->update(['comment' => $request->comment]);
+        }
+
+        return back()->with('success', 'Evidencia actualizada correctamente.');
     }
 
     /**
