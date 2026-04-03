@@ -74,4 +74,11 @@ class Product extends Model implements HasMedia
              ->useDisk('public')
              ->singleFile(); // O multi-file si quieres galería
     }
+
+        public function systemTypes()
+    {
+        return $this->belongsToMany(SystemType::class, 'product_system_type')
+                    ->withPivot('quantity')
+                    ->withTimestamps();
+    }
 }

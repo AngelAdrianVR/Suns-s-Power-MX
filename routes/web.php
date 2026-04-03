@@ -78,6 +78,8 @@ Route::middleware([
     Route::post('/system-types', [SystemTypeController::class, 'store'])->name('system-types.store');
     Route::put('/system-types/{systemType}', [SystemTypeController::class, 'update'])->name('system-types.update');
     Route::delete('/system-types/{systemType}', [SystemTypeController::class, 'destroy'])->name('system-types.destroy');
+    Route::post('/system-type-products', [SystemTypeProductController::class, 'store'])->name('system-type-products.store');
+    Route::delete('/system-type-products/{system_type}/{product}', [SystemTypeProductController::class, 'destroy'])->name('system-type-products.destroy');
 
     // NUEVO: Ruta segura para ejecutar la sincronización manualmente una sola vez desde el navegador
     Route::get('/ejecutar-sincronizacion', function (\Illuminate\Http\Request $request) {
