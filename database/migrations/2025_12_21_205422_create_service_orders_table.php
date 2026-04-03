@@ -26,6 +26,11 @@ return new class extends Migration
             $table->string('service_number')->nullable(); // Número de servicio
             $table->string('rate_type')->nullable();      // Tipo de tarifa
             $table->string('system_type')->nullable();    // Tipo de Sistema (Interconectado, Autónomo, etc.)
+             $table->string('voltage')->nullable();
+            $table->integer('number_of_wires')->nullable();
+            $table->integer('number_of_units')->nullable();
+            $table->decimal('unit_capacity', 10, 2)->nullable(); // En Watts
+            $table->decimal('total_capacity', 10, 2)->nullable(); // En KW calculados
             $table->string('meter_number')->nullable();   // Número de medidor
             $table->dateTime('completion_date')->nullable();
             // Bandera para que almacén sepa si ya ajustaron el inventario de esta orden

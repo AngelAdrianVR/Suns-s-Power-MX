@@ -24,6 +24,7 @@ return new class extends Migration
             $table->foreignId('service_order_id')->constrained('service_orders')->cascadeOnDelete();
             $table->string('title');
             $table->text('description')->nullable();
+            $table->text('comment')->nullable(); // Para que el técnico pueda agregar comentarios específicos al subir la evidencia
             $table->timestamps();
         });
     }

@@ -165,7 +165,7 @@ const googleMapsUrl = computed(() => {
                             </div>
                         </div>
 
-                        <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <div v-if="hasPermission('clients.view_balance')" class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
@@ -241,7 +241,7 @@ const googleMapsUrl = computed(() => {
                             <ClientTicketsTab :client="client" />
                         </n-tab-pane>
 
-                        <n-tab-pane name="payments" tab="Pagos">
+                        <n-tab-pane v-if="hasPermission('clients.view_balance')" name="payments" tab="Pagos">
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
                                     <n-icon size="18"><WalletOutline /></n-icon> 
