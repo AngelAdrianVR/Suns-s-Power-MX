@@ -21,6 +21,8 @@ class Task extends Model
         'due_date',
         'status', // Pendiente, En Proceso, Completada, Detenido
         'priority',
+        'taskable_id',  
+        'taskable_type',
     ];
 
     protected $casts = [
@@ -31,6 +33,11 @@ class Task extends Model
 
     // --- Relaciones ---
 
+    public function taskable()
+    {
+        return $this->morphTo();
+    }
+    
     public function assignees()
     {
         return $this->belongsToMany(User::class, 'task_user')

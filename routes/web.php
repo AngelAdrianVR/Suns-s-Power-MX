@@ -4,6 +4,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EvidenceTemplateController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
@@ -13,12 +14,15 @@ use App\Http\Controllers\ServiceOrderController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TicketController; // Importar el controlador
+use App\Http\Controllers\TaskTemplateController; // IMPORTANTE: Agregado
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WarehouseReconciliationController; // <-- NUEVO CONTROLADOR ALMACÉN
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
+use App\Http\Controllers\SystemTypeController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -64,6 +68,23 @@ Route::middleware([
     Route::post('/permissions', [RoleController::class, 'storePermission'])->name('permissions.store');
     Route::put('/permissions/{permission}', [RoleController::class, 'updatePermission'])->name('permissions.update');
     Route::delete('/permissions/{permission}', [RoleController::class, 'destroyPermission'])->name('permissions.destroy');
+
+    // ---------------------------- // RUTAS DE GESTIÓN DE PLANTILLAS DE TAREAS Y EVIDENCIAS ----------------------------
+    Route::resource('task-templates', TaskTemplateController::class)->except(['create', 'show', 'edit']);
+    Route::resource('evidence-templates', EvidenceTemplateController::class)->only(['store', 'update', 'destroy']);
+    Route::post('/evidence-templates/reorder', [EvidenceTemplateController::class, 'reorder'])->name('evidence-templates.reorder');
+
+    // Gestión de Tipos de Sistema
+    Route::post('/system-types', [SystemTypeController::class, 'store'])->name('system-types.store');
+    Route::put('/system-types/{systemType}', [SystemTypeController::class, 'update'])->name('system-types.update');
+    Route::delete('/system-types/{systemType}', [SystemTypeController::class, 'destroy'])->name('system-types.destroy');
+
+    // NUEVO: Ruta segura para ejecutar la sincronización manualmente una sola vez desde el navegador
+    Route::get('/ejecutar-sincronizacion', function (\Illuminate\Http\Request $request) {
+        app(ServiceOrderController::class)->syncEvidences($request);
+        return response('¡Sincronización de evidencias completada con éxito! Ya puedes cerrar esta pestaña y volver a tu sistema.', 200)
+               ->header('Content-Type', 'text/plain; charset=utf-8');
+    });
 });
 
 
@@ -75,17 +96,29 @@ Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
 
 
-// ---------------------------- Rutas de ordenes de servicio --------------------------------
-// Ruta específica para actualizar solo el estatus (método PATCH)
+// ---------------------------------- RUTAS DE ÓRDENES DE SERVICIO ----------------------------------
 Route::patch('ordenes-servicio/{serviceOrder}/status', [ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
-// Nueva ruta para subir evidencias (Media Library)
+// Archivos Generales
 Route::post('ordenes-servicio/{serviceOrder}/media', [ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
-// Recurso principal de órdenes de servicio CRUD
-Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')
-    ->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
-// RUTAS PARA PRODUCTOS / MATERIALES (Stock)
+// Evidencias Específicas Requeridas
+Route::post('/service-order-evidences/{evidence}/media', [ServiceOrderController::class, 'uploadEvidenceMedia'])->name('service-orders.evidences.upload');
+
+// Regresamos a POST la original por si en un futuro decides colocar un botón en el sistema para dispararla
+Route::post('/ordenes-servicio/sync-evidences', [ServiceOrderController::class, 'syncEvidences'])->name('service-orders.sync-evidences')->middleware('auth');
+
+Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
 Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
 Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
+
+Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
+    ->name('service-orders.confirm-installation')
+    ->middleware('auth');
+
+// ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
+Route::middleware('auth')->group(function () {
+    Route::get('/almacen/conciliaciones', [WarehouseReconciliationController::class, 'index'])->name('warehouse.reconciliations.index');
+    Route::post('/almacen/conciliaciones/{serviceOrder}/approve', [WarehouseReconciliationController::class, 'approve'])->name('warehouse.reconciliations.approve');
+});
 
 
 // ---------------------------- Rutas de Tickets (Soporte) --------------------------------
@@ -98,9 +131,12 @@ Route::resource('tickets', TicketController::class)->names('tickets')
     ->parameters(['tickets' => 'ticket'])->middleware('auth');
 
 
-// ---------------------------- Rutas de Tareas --------------------------------
-Route::resource('tareas', TaskController::class)->only(['store', 'update', 'destroy'])->parameters(['tareas' => 'task'])
-    ->names('tasks')->middleware('auth');
+// ---------------------------- Rutas de Tareas (PMS) --------------------------------
+Route::resource('tareas', TaskController::class)
+    ->only(['index', 'store', 'update', 'destroy']) // <-- Agregamos 'index' aquí
+    ->parameters(['tareas' => 'task'])
+    ->names('tasks')
+    ->middleware('auth');
 
 
 // Ruta para Comentarios Generales

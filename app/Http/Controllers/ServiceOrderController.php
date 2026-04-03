@@ -6,27 +6,26 @@ use App\Models\ServiceOrder;
 use App\Models\ServiceOrderItem;
 use App\Models\Product;
 use App\Models\Client;
+use App\Models\EvidenceTemplate;
+use App\Models\ServiceOrderEvidence;
 use App\Models\User;
+use App\Models\TaskTemplate; 
 use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\URL; // Importante para Signed Routes
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 
 class ServiceOrderController extends Controller
 {
-    /**
-     * Muestra el listado de órdenes de servicio (Dashboard Operativo).
-     */
     public function index(Request $request)
     {
         $user = Auth::user();
         $branchId = session('current_branch_id') ?? $user->branch_id;
         
-        // Filtros
         $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range', 'system_type']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
@@ -34,7 +33,6 @@ class ServiceOrderController extends Controller
         $state = $filters['state'] ?? null;
         $systemType = $filters['system_type'] ?? null;
 
-        // Catálogos para los filtros
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
             ->where('installation_municipality', '!=', '')
@@ -49,8 +47,6 @@ class ServiceOrderController extends Controller
             ->orderBy('installation_state')
             ->pluck('installation_state');
 
-        // Consulta limpia: Traemos todo lo de la sucursal
-        // Las validaciones de acceso se manejan vía Middleware en las rutas
         $query = ServiceOrder::query()
             ->with([
                 'client:id,name,branch_id',
@@ -104,12 +100,14 @@ class ServiceOrderController extends Controller
                     'installation_address' => $order->full_installation_address, 
                     'municipality' => $order->installation_municipality,
                     'state' => $order->installation_state,
+                    'installation_lat' => $order->installation_lat,
+                    'installation_lng' => $order->installation_lng,
                     'start_date' => $order->start_date?->format('d/m/Y H:i'),
                     'technician' => $order->technician ? [
                         'name' => $order->technician->name,
                         'photo' => $order->technician->profile_photo_url, 
                     ] : null,
-                    'total_amount' => $order->total_amount, // Mandamos el dato, la vista decide si mostrarlo
+                    'total_amount' => $order->total_amount,
                     'progress' => $order->progress ?? 0, 
                     'created_at_human' => $order->created_at->diffForHumans(),
                 ];
@@ -138,6 +136,7 @@ class ServiceOrderController extends Controller
     public function store(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        $userId = Auth::id();
         
         $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
@@ -146,12 +145,10 @@ class ServiceOrderController extends Controller
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
-            
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            'system_type' => 'nullable|string|max:255', // Nuevo campo validado
+            'system_type' => 'nullable|string|max:255',
             'meter_number' => 'nullable|string|max:255',
-
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
             'installation_interior_number' => 'nullable|string|max:50',
@@ -160,17 +157,70 @@ class ServiceOrderController extends Controller
             'installation_state' => 'nullable|string|max:255',
             'installation_zip_code' => 'nullable|string|max:10',
             'installation_country' => 'nullable|string|max:100',
-            
+            'installation_lat' => 'nullable|numeric',
+            'installation_lng' => 'nullable|numeric',
             'notes' => 'nullable|string'
         ]);
 
         $validated['branch_id'] = $branchId;
         
-        DB::transaction(function () use ($validated) {
-            ServiceOrder::create($validated);
+        DB::transaction(function () use ($validated, $branchId, $userId) {
+            $serviceOrder = ServiceOrder::create($validated);
+
+            if (!empty($validated['system_type'])) {
+                // 1. Programar Tareas
+                $templates = TaskTemplate::with('users')
+                    ->where('branch_id', $branchId)
+                    ->where('system_type', $validated['system_type'])
+                    ->get();
+
+                foreach ($templates as $template) {
+                    
+                    // Cálculo de Fechas basadas en la configuración de la plantilla
+                    $startDays = $template->start_days ?? 0;
+                    $durationDays = $template->duration_days ?? 1;
+
+                    // La fecha de inicio es HOY + los días configurados al inicio del día
+                    $startDate = now()->addDays($startDays)->startOfDay();
+                    
+                    // La fecha de finalización es Fecha Inicio + Duración (Restamos 1 si la duración incluye el mismo día)
+                    $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                    $task = $serviceOrder->tasks()->create([
+                        'branch_id' => $branchId,
+                        'title' => $template->title,
+                        'description' => $template->description,
+                        'priority' => $template->priority,
+                        'status' => 'Pendiente',
+                        'created_by' => $userId,
+                        'start_date' => $startDate,  
+                        'due_date' => $dueDate,      
+                    ]);
+
+                    $userIds = $template->users->pluck('id')->toArray();
+                    if (!empty($userIds)) {
+                        $task->assignees()->sync($userIds);
+                    }
+                }
+
+                // 2. Programar Evidencias Requeridas
+                $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+                    ->where('system_type', $validated['system_type'])
+                    ->orderBy('order', 'asc') // <-- NUEVO: Obtenemos plantillas ya ordenadas
+                    ->get();
+
+                foreach ($evidenceTemplates as $evTemplate) {
+                    $serviceOrder->evidences()->create([
+                        'title' => $evTemplate->title,
+                        'description' => $evTemplate->description,
+                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
+                        'order' => $evTemplate->order ?? 0, // <-- NUEVO: Traspasamos el orden a la tabla hija
+                    ]);
+                }
+            }
         });
 
-        return redirect()->route('service-orders.index')->with('success', 'Orden de servicio generada correctamente.');
+        return redirect()->route('service-orders.index')->with('success', 'Orden de servicio y cronograma generados correctamente.');
     }
 
     public function show(ServiceOrder $serviceOrder)
@@ -181,29 +231,42 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $canViewFinancials = $user->hasAnyRole(['Admin']);
 
+        // NUEVO: Agregamos el callback para ordenar las evidencias
         $serviceOrder->load([
             'client',
             'technician',
             'salesRep',
-            'items.product', 
+            'items.product.category', 
             'tasks.assignees', 
             'tasks.comments.user', 
             'media',
+            'evidences' => function ($query) {
+                $query->orderBy('order', 'asc')->orderBy('id', 'asc');
+            },
+            'evidences.media'
         ]);
 
         $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
 
         if (!$canViewFinancials) {
             $serviceOrder->total_amount = 0;
-            $serviceOrder->items->transform(function ($item) {
+        }
+
+        $serviceOrder->items->transform(function ($item) use ($canViewFinancials) {
+            $item->quantity = (float) $item->quantity;
+            if ($item->used_quantity !== null) {
+                $item->used_quantity = (float) $item->used_quantity;
+            }
+
+            if (!$canViewFinancials) {
                 $item->price = 0;
                 if ($item->product) {
                     $item->product->sale_price = 0;
                     $item->product->purchase_price = 0;
                 }
-                return $item;
-            });
-        }
+            }
+            return $item;
+        });
 
         $currentUserId = $user->id;
 
@@ -296,12 +359,10 @@ class ServiceOrderController extends Controller
             'status' => 'required|in:Cotización,Aceptado,En Proceso,Completado,Facturado,Cancelado',
             'start_date' => 'nullable|date',
             'total_amount' => 'required|numeric|min:0',
-
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
-            'system_type' => 'nullable|string|max:255', // Nuevo campo validado
+            'system_type' => 'nullable|string|max:255',
             'meter_number' => 'nullable|string|max:255', 
-            
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
             'installation_interior_number' => 'nullable|string|max:50',
@@ -310,11 +371,75 @@ class ServiceOrderController extends Controller
             'installation_state' => 'nullable|string|max:255',
             'installation_zip_code' => 'nullable|string|max:10',
             'installation_country' => 'nullable|string|max:100',
-            
+            'installation_lat' => 'nullable|numeric',
+            'installation_lng' => 'nullable|numeric',
             'notes' => 'nullable|string',
         ]);
 
-        $serviceOrder->update($validated);
+        $oldSystemType = $serviceOrder->system_type;
+
+        DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
+            $serviceOrder->update($validated);
+
+            // Si se cambió el tipo de sistema al editar la orden, actualizamos tareas y evidencias
+            if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
+                
+                // 1. Limpiar las tareas pendientes y evidencias vacías del sistema anterior
+                $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
+                $serviceOrder->evidences()->doesntHave('media')->delete();
+
+                // 2. Generar las nuevas
+                if (!empty($validated['system_type'])) {
+                    
+                    // Tareas
+                    $templates = TaskTemplate::with('users')
+                        ->where('branch_id', $branchId)
+                        ->where('system_type', $validated['system_type'])
+                        ->get();
+
+                    $userId = Auth::id();
+
+                    foreach ($templates as $template) {
+                        $startDays = $template->start_days ?? 0;
+                        $durationDays = $template->duration_days ?? 1;
+
+                        $startDate = now()->addDays($startDays)->startOfDay();
+                        $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                        $task = $serviceOrder->tasks()->create([
+                            'branch_id' => $branchId,
+                            'title' => $template->title,
+                            'description' => $template->description,
+                            'priority' => $template->priority,
+                            'status' => 'Pendiente',
+                            'created_by' => $userId,
+                            'start_date' => $startDate,  
+                            'due_date' => $dueDate,      
+                        ]);
+
+                        $userIds = $template->users->pluck('id')->toArray();
+                        if (!empty($userIds)) {
+                            $task->assignees()->sync($userIds);
+                        }
+                    }
+
+                    // Evidencias
+                    $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+                        ->where('system_type', $validated['system_type'])
+                        ->orderBy('order', 'asc')
+                        ->get();
+
+                    foreach ($evidenceTemplates as $evTemplate) {
+                        $serviceOrder->evidences()->create([
+                            'title' => $evTemplate->title,
+                            'description' => $evTemplate->description,
+                            'allows_multiple' => true, // Forzamos a true para permitir múltiples siempre
+                            'order' => $evTemplate->order ?? 0,
+                        ]);
+                    }
+                }
+            }
+        });
 
         return redirect()->route('service-orders.show', $serviceOrder->id)->with('success', 'Orden actualizada.');
     }
@@ -329,6 +454,19 @@ class ServiceOrderController extends Controller
         ]);
 
         $newStatus = $validated['status'];
+
+        if ($newStatus === 'Completado') {
+            $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
+            if ($incompleteTasks > 0) {
+                return back()->with('error', 'No se puede completar la orden: Tareas pendientes de finalizar.');
+            }
+
+            $unreportedCount = $serviceOrder->items()->whereNull('used_quantity')->count();
+            if ($unreportedCount > 0) {
+                return back()->with('error', 'No se puede completar la orden: Faltan materiales por conciliar.');
+            }
+        }
+
         $updateData = ['status' => $newStatus];
 
         if ($newStatus === 'Completado') {
@@ -341,15 +479,44 @@ class ServiceOrderController extends Controller
         return back()->with('success', "Estatus actualizado a {$newStatus}.");
     }
 
-    public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
+    public function confirmInstallation(Request $request, ServiceOrder $serviceOrder)
     {
-        $request->validate([
-            'file' => 'required|file|max:10240', 
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
+
+        $validated = $request->validate([
+            'items' => 'nullable|array',
+            'items.*.id' => 'required|exists:service_order_items,id',
+            'items.*.used_quantity' => 'required|numeric|min:0',
+            'installation_notes' => 'nullable|string',
         ]);
 
-        $serviceOrder->addMediaFromRequest('file')->toMediaCollection('evidences');
+        DB::transaction(function () use ($serviceOrder, $validated) {
+            if (!empty($validated['items'])) {
+                foreach ($validated['items'] as $itemData) {
+                    $serviceOrder->items()->where('id', $itemData['id'])->update([
+                        'used_quantity' => $itemData['used_quantity']
+                    ]);
+                }
+            }
 
-        return back()->with('success', 'Archivo subido correctamente.');
+            $newNotes = $serviceOrder->notes;
+            if (!empty($validated['installation_notes'])) {
+                $newNotes .= "\n\n--- Reporte de Materiales (Instalación) ---\n" . $validated['installation_notes'];
+                $serviceOrder->update(['notes' => $newNotes]);
+            }
+
+            $incompleteTasks = $serviceOrder->tasks()->where('status', '!=', 'Completado')->count();
+            if ($incompleteTasks === 0 && !in_array($serviceOrder->status, ['Completado', 'Facturado', 'Cancelado'])) {
+                $serviceOrder->update([
+                    'status' => 'Completado',
+                    'completion_date' => now(),
+                    'inventory_reconciled' => false 
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Cantidades de material conciliadas y guardadas correctamente.');
     }
 
     public function addItems(Request $request, ServiceOrder $serviceOrder)
@@ -403,13 +570,9 @@ class ServiceOrderController extends Controller
 
     public function destroy(ServiceOrder $serviceOrder)
     {
-        // Validar sucursal
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($serviceOrder->branch_id !== $branchId) {
-            return inertia('Forbidden403');
-        }
+        if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
-        // Validar si el estatus permite la eliminación
         if ($serviceOrder->status === 'Completado' || $serviceOrder->status === 'Facturado') {
             throw ValidationException::withMessages([
                 'delete' => 'No se puede eliminar una orden que ya ha sido completada o facturada.'
@@ -418,7 +581,6 @@ class ServiceOrderController extends Controller
 
         try {
             DB::transaction(function () use ($serviceOrder) {
-                // Restaurar stock de los productos incluidos en la orden
                 foreach ($serviceOrder->items as $item) {
                     if ($item->product) {
                         InventoryService::addStock(
@@ -431,20 +593,85 @@ class ServiceOrderController extends Controller
                         );
                     }
                 }
-
-                // Limpiar relaciones y eliminar
                 $serviceOrder->payments()->delete(); 
                 $serviceOrder->items()->delete();    
                 $serviceOrder->delete(); 
             });
-
-            return redirect()->route('service-orders.index')
-                ->with('success', 'Orden eliminada y stock restaurado correctamente.');
-
+            return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
         } catch (\Exception $e) {
-            throw ValidationException::withMessages([
-                'delete' => 'Ocurrió un error inesperado al intentar eliminar la orden.'
-            ]);
+            throw ValidationException::withMessages(['delete' => 'Ocurrió un error al intentar eliminar la orden.']);
         }
+    }
+
+    public function uploadMedia(Request $request, ServiceOrder $serviceOrder)
+    {
+        $request->validate(['file' => 'required|file|max:10240']);
+        $serviceOrder->addMediaFromRequest('file')->toMediaCollection('evidences');
+        return back()->with('success', 'Archivo subido correctamente.');
+    }
+
+    public function uploadEvidenceMedia(Request $request, ServiceOrderEvidence $evidence)
+    {
+        $request->validate([
+            'file' => 'nullable|file|max:10240',
+            'files.*' => 'nullable|file|max:10240'
+        ]);
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $evidence->addMedia($file)->toMediaCollection('specific_evidences');
+            }
+        } elseif ($request->hasFile('file')) {
+            $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
+        }
+
+        return back()->with('success', 'Evidencia(s) requerida(s) subida(s) correctamente.');
+    }
+
+    /**
+     * Sincroniza y genera las evidencias faltantes en las órdenes de servicio anteriores
+     */
+    public function syncEvidences(Request $request)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        // Obtener todas las órdenes de la sucursal actual que tengan un tipo de sistema
+        $orders = ServiceOrder::with('evidences')
+            ->where('branch_id', $branchId)
+            ->whereNotNull('system_type')
+            ->get();
+
+        $addedCount = 0;
+
+        // Obtener plantillas y agruparlas por sistema
+        $templatesBySystem = EvidenceTemplate::where('branch_id', $branchId)
+            ->orderBy('order', 'asc')
+            ->get()
+            ->groupBy('system_type');
+
+        DB::transaction(function () use ($orders, $templatesBySystem, &$addedCount) {
+            foreach ($orders as $order) {
+                if ($templatesBySystem->has($order->system_type)) {
+                    $templates = $templatesBySystem->get($order->system_type);
+                    
+                    // Nombres de evidencias que ya tiene esta orden para no duplicar
+                    $existingTitles = $order->evidences->pluck('title')->toArray();
+
+                    foreach ($templates as $template) {
+                        if (!in_array($template->title, $existingTitles)) {
+                            $order->evidences()->create([
+                                'title' => $template->title,
+                                'description' => $template->description,
+                                'allows_multiple' => true, 
+                                'order' => $template->order ?? 0,
+                            ]);
+                            $addedCount++;
+                        }
+                    }
+                }
+            }
+        });
+
+        return back()->with('success', "Sincronización completada. Se generaron {$addedCount} evidencias faltantes en servicios anteriores.");
     }
 }
