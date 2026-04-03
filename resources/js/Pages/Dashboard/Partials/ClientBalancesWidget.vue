@@ -44,7 +44,8 @@ const goToShow = (id) => {
 <template>
     <n-card title="Cuentas por Cobrar" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
         <template #header-extra>
-            <Link :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            <!-- Ocultamos también este enlace si el usuario no tiene permisos de ver el índice de clientes -->
+            <Link v-if="hasPermission('clients.index')" :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
                 Clientes
             </Link>
         </template>

@@ -5,7 +5,7 @@ import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, 
-    createDiscreteApi, NTooltip, NProgress, NSelect, NPopselect 
+    createDiscreteApi, NTooltip, NProgress, NSelect, NPopselect, NDatePicker
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
@@ -29,12 +29,19 @@ const { hasPermission } = usePermissions();
 // Configuración de Notificaciones
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
+// Transformar array de fechas de la URL (Strings) a Numbers (Timestamps para Naive UI)
+const parseDateRange = (range) => {
+    if (!range || !Array.isArray(range)) return null;
+    return [Number(range[0]), Number(range[1])];
+};
+
 // Lógica de búsqueda y filtrado
 const search = ref(props.filters.search || '');
 const statusFilter = ref(props.filters.status || null);
-const municipalityFilter = ref(props.filters.municipality || null); // Nuevo filtro Municipio
-const stateFilter = ref(props.filters.state || null); // Nuevo filtro Estado
-const systemTypeFilter = ref(props.filters.system_type || null); // Nuevo filtro Tipo de Sistema
+const municipalityFilter = ref(props.filters.municipality || null);
+const stateFilter = ref(props.filters.state || null);
+const systemTypeFilter = ref(props.filters.system_type || null);
+const dateRangeFilter = ref(parseDateRange(props.filters.date_range)); // NUEVO FILTRO DE FECHAS
 
 let searchTimeout;
 
@@ -44,7 +51,8 @@ const applyFilters = () => {
         status: statusFilter.value,
         municipality: municipalityFilter.value,
         state: stateFilter.value,
-        system_type: systemTypeFilter.value // Enviamos nuevo filtro
+        system_type: systemTypeFilter.value,
+        date_range: dateRangeFilter.value // Enviamos el rango de fechas
     }, { preserveState: true, replace: true });
 };
 
@@ -53,8 +61,8 @@ watch(search, (value) => {
     searchTimeout = setTimeout(applyFilters, 300);
 });
 
-// Observamos todos los filtros
-watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter], applyFilters);
+// Observamos todos los filtros, incluyendo el de fecha
+watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter, dateRangeFilter], applyFilters);
 
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
@@ -86,14 +94,24 @@ const handleStatusUpdate = (row, newStatus) => {
 
 const confirmDelete = (order) => {
     dialog.warning({
-        title: 'Eliminar Orden',
-        content: `¿Estás seguro de eliminar la orden #${order.id}?`,
-        positiveText: 'Eliminar',
+        title: 'Eliminar Orden de Servicio',
+        content: () => h('div', [
+            h('p', { class: 'mb-2' }, `¿Estás seguro de eliminar la orden #${order.id}? Esta acción es irreversible y borrará por completo:`),
+            h('ul', { class: 'list-disc pl-5 text-red-600 font-medium text-sm space-y-1' }, [
+                h('li', 'Tareas y cronograma asignado.'),
+                h('li', 'Todas las evidencias, fotografías y notas.'),
+                h('li', 'Pagos y registros financieros asociados.'),
+                h('li', 'Contratos y documentos generados.'),
+                h('li', 'Tickets de soporte relacionados (y tareas relacionadas).'),
+                h('li', 'Materiales asignados (el stock volverá al almacén).')
+            ])
+        ]),
+        positiveText: 'Sí, Eliminar Todo',
         negativeText: 'Cancelar',
         onPositiveClick: () => {
             router.delete(route('service-orders.destroy', order.id), {
-                onSuccess: () => notification.success({ title: 'Éxito', content: 'Orden eliminada', duration: 3000 }),
-                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar una orden Completada o Facturada.', duration: 4000 })
+                onSuccess: () => notification.success({ title: 'Éxito', content: 'Orden y todos sus registros asociados eliminados', duration: 4000 }),
+                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar una orden Completada o Facturada.', duration: 5000 })
             });
         }
     });
@@ -119,7 +137,7 @@ const statusOptions = props.statuses.map(s => ({ label: s, value: s }));
 const municipalityOptions = props.municipalities.map(m => ({ label: m, value: m }));
 const stateOptions = props.states.map(s => ({ label: s, value: s }));
 
-// Opciones para Tipo de Sistema (Mismas que en Create.vue)
+// Opciones para Tipo de Sistema
 const systemTypeOptions = [
     { label: 'Interconectado', value: 'Interconectado' },
     { label: 'Autónomo', value: 'Autónomo' },
@@ -153,7 +171,6 @@ const createColumns = () => {
                 ]);
             }
         },
-        // --- NUEVA COLUMNA: Datos de Servicio ---
         {
             title: 'Info. Servicio',
             key: 'service_info',
@@ -164,7 +181,6 @@ const createColumns = () => {
                 }
 
                 return h('div', { class: 'flex flex-col gap-1 items-start' }, [
-                    // Tag Tipo de Sistema (Nuevo)
                     row.system_type ? h(NTag, { size: 'small', type: 'info', bordered: false, class: 'mb-1' }, { 
                         default: () => [
                             h(NIcon, { class: 'mr-1' }, { default: () => h(HardwareChipOutline) }),
@@ -186,7 +202,6 @@ const createColumns = () => {
                 ]);
             }
         },
-        // ----------------------------------------
         {
             title: 'Estado & Avance',
             key: 'status',
@@ -245,10 +260,13 @@ const createColumns = () => {
                         h('span', { class: 'text-gray-600 font-medium' }, row.technician.name)
                     ]) : h('span', { class: 'text-amber-500 italic' }, 'Sin asignar'),
                     
-                    row.start_date ? h('div', { class: 'flex items-center gap-1 text-gray-400' }, [
-                        h(NIcon, { component: CalendarOutline }),
-                        h('span', row.start_date)
-                    ]) : null
+                    h('div', { class: 'flex flex-col gap-1 text-gray-400 mt-1' }, [
+                        // Mostrando fecha de creación como principal (ya que filtramos por esta)
+                        h('div', { class: 'flex items-center gap-1' }, [
+                            h(NIcon, { component: CalendarOutline }),
+                            h('span', row.created_at_human)
+                        ])
+                    ])
                 ]);
             }
         }
@@ -307,7 +325,8 @@ const handlePageChange = (page) => {
         status: statusFilter.value,
         municipality: municipalityFilter.value,
         state: stateFilter.value,
-        system_type: systemTypeFilter.value // Incluir en paginación
+        system_type: systemTypeFilter.value,
+        date_range: dateRangeFilter.value // Incluir fecha en paginación
     }, { preserveState: true });
 };
 
@@ -355,10 +374,19 @@ const rowProps = (row) => ({
                         <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
                     </n-input>
 
-                    <!-- Grupo de Selectores (Municipo, Estado, Estatus, Sistema) -->
-                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto flex-wrap">
+                    <!-- Grupo de Selectores (Fecha, Municipo, Estado, Estatus, Sistema) -->
+                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto flex-wrap justify-end">
                         
-                         <!-- Filtro Municipio -->
+                        <!-- FILTRO FECHA (NUEVO) -->
+                        <n-date-picker 
+                            v-model:value="dateRangeFilter" 
+                            type="daterange" 
+                            clearable 
+                            placeholder="Rango de Fechas"
+                            class="w-full md:w-60 shadow-sm"
+                        />
+                        
+                        <!-- Filtro Municipio -->
                         <n-select 
                             v-model:value="municipalityFilter"
                             :options="municipalityOptions"
@@ -378,7 +406,7 @@ const rowProps = (row) => ({
                             class="w-full md:w-40"
                         />
 
-                        <!-- Filtro Tipo de Sistema (NUEVO) -->
+                        <!-- Filtro Tipo de Sistema -->
                         <n-select 
                             v-model:value="systemTypeFilter"
                             :options="systemTypeOptions"
@@ -400,7 +428,6 @@ const rowProps = (row) => ({
                 </div>
 
                 <!-- TABLA (Escritorio) -->
-                <!-- Se cambió overflow-hidden por overflow-x-auto para permitir scroll horizontal -->
                 <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-x-auto">
                     <n-data-table
                         :columns="columns"
@@ -489,7 +516,6 @@ const rowProps = (row) => ({
                                     Tarifa: {{ order.rate_type }}
                                 </n-tag>
                             </div>
-                            <!-- -------------------------------------- -->
                         </div>
 
                         <!-- Técnico y Progreso -->
