@@ -170,6 +170,12 @@ class ClientController extends Controller
                   ->orderBy('payment_date', 'desc')
                   ->take(15);
             },
+            // NUEVO: Agregamos la carga de tickets
+            'tickets' => function ($q) {
+                $q->select('id', 'client_id', 'title', 'status', 'priority', 'created_at')
+                  ->orderBy('created_at', 'desc')
+                  ->take(15);
+            },
         ]);
 
         // --- NUEVA LÓGICA ---
