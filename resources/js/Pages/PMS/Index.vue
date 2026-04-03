@@ -29,7 +29,7 @@ const props = defineProps({
     days: Array,
     assigned_tasks: Object,
     unassigned_tasks: Array,
-    all_tasks: Array, // Prop nueva
+    all_tasks: Array,
     assignable_users: Array,
     service_orders: Array,
     tickets: Array,
@@ -210,12 +210,19 @@ const filteredAllTasks = computed(() => {
     });
 });
 
-// Paginación reactiva para la tabla
+// Paginación reactiva para la tabla con funciones de actualización
 const paginationReactive = reactive({
     page: 1,
     pageSize: 15,
     showSizePicker: true,
     pageSizes: [15, 30, 50],
+    onChange: (page) => {
+        paginationReactive.page = page;
+    },
+    onUpdatePageSize: (pageSize) => {
+        paginationReactive.pageSize = pageSize;
+        paginationReactive.page = 1;
+    },
     prefix({ itemCount }) {
         return `Total: ${itemCount} tareas`;
     }
@@ -263,6 +270,7 @@ const listColumns = computed(() => [
     {
         title: 'Responsables',
         key: 'assignees',
+        minWidth: 250, // <-- Anchura mínima ajustada
         sorter: (a, b) => {
             const nameA = a.assignees && a.assignees.length ? a.assignees[0].name : '';
             const nameB = b.assignees && b.assignees.length ? b.assignees[0].name : '';
@@ -280,13 +288,14 @@ const listColumns = computed(() => [
             if (!row.assignees || row.assignees.length === 0) {
                 return h(NTag, { size: 'small', type: 'warning', bordered: false, round: true }, { default: () => 'Sin asignar' });
             }
-            const tags = row.assignees.map(u => h(NTag, { size: 'small', round: true, class: 'mr-1 mb-1 border shadow-sm', bordered: false }, { 
-                default: () => h('div', { class: 'flex items-center gap-1' }, [
-                    h(NAvatar, { size: 14, round: true, src: u.profile_photo_url || `/storage/${u.profile_photo_path}` }),
-                    u.name
+            const tags = row.assignees.map(u => h(NTag, { size: 'small', round: true, class: 'mr-1 mb-1 border shadow-sm max-w-full', bordered: false }, { 
+                default: () => h('div', { class: 'flex items-center gap-1 overflow-hidden' }, [
+                    h(NAvatar, { size: 14, round: true, src: u.profile_photo_url || `/storage/${u.profile_photo_path}`, class: 'flex-shrink-0' }),
+                    // <-- Span truncado con max-width para que si el nombre es muy largo, no encime las columnas
+                    h('span', { class: 'truncate max-w-[140px]', title: u.name }, u.name)
                 ]) 
             }));
-            return h('div', { class: 'flex flex-wrap mt-1' }, tags);
+            return h('div', { class: 'flex flex-wrap mt-1 w-full' }, tags);
         }
     },
     {
@@ -365,21 +374,32 @@ const rowProps = (row) => {
 
 const metricsData = computed(() => {
     const pendingTasks = props.all_tasks.filter(t => t.status !== 'Completado' && t.status !== 'Cancelado');
+    const inProcessTasks = props.all_tasks.filter(t => t.status === 'En Proceso');
+    
     const totalPending = pendingTasks.length;
+    const totalInProcess = inProcessTasks.length;
     
     const userCounts = {};
     props.assignable_users.forEach(u => {
-        userCounts[u.id] = { name: u.name, count: 0, avatar: u.profile_photo_url || `/storage/${u.profile_photo_path}` };
+        userCounts[u.id] = { name: u.name, count: 0, inProcessCount: 0, avatar: u.profile_photo_url || `/storage/${u.profile_photo_path}` };
     });
     
-    let unassignedCount = 0;
+    let unassignedOrNoDateCount = 0;
 
     pendingTasks.forEach(task => {
-        if (!task.assignees || task.assignees.length === 0) {
-            unassignedCount++;
-        } else {
+        // Validación de Por Asignar o Sin Fecha (similar a backlog)
+        if (!task.assignees || task.assignees.length === 0 || !task.start_date) {
+            unassignedOrNoDateCount++;
+        }
+
+        if (task.assignees && task.assignees.length > 0) {
             task.assignees.forEach(u => {
-                if (userCounts[u.id]) userCounts[u.id].count++;
+                if (userCounts[u.id]) {
+                    userCounts[u.id].count++;
+                    if (task.status === 'En Proceso') {
+                        userCounts[u.id].inProcessCount++;
+                    }
+                }
             });
         }
     });
@@ -388,7 +408,8 @@ const metricsData = computed(() => {
 
     return {
         totalPending,
-        unassignedCount,
+        totalInProcess,
+        unassignedOrNoDateCount,
         users: sortedUsers
     };
 });
@@ -558,15 +579,20 @@ const metricsData = computed(() => {
             <n-drawer-content title="Métricas Operativas" closable>
                 
                 <!-- Resumen Global -->
-                <div class="bg-blue-50/50 rounded-xl p-5 border border-blue-100 text-center mb-6 shadow-sm">
-                    <div class="text-xs text-blue-600 font-bold uppercase tracking-wider mb-2">Total de Tareas Pendientes</div>
-                    <div class="text-5xl font-black text-blue-700">{{ metricsData.totalPending }}</div>
-                    <div class="text-xs text-gray-500 mt-2">En todo el sistema (Sin completar)</div>
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <div class="bg-blue-50/50 rounded-xl p-4 border border-blue-100 text-center shadow-sm">
+                        <div class="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1">Pendientes Totales</div>
+                        <div class="text-4xl font-black text-blue-700">{{ metricsData.totalPending }}</div>
+                    </div>
+                    <div class="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 text-center shadow-sm">
+                        <div class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider mb-1">En Proceso</div>
+                        <div class="text-4xl font-black text-indigo-700">{{ metricsData.totalInProcess }}</div>
+                    </div>
                 </div>
 
                 <div class="mb-4 flex justify-between items-center px-1">
                     <span class="text-sm font-bold text-gray-700">Carga por Usuario</span>
-                    <span class="text-[10px] text-gray-400 font-mono">Tareas Pendientes</span>
+                    <span class="text-[10px] text-gray-400 font-mono">Tareas Asignadas</span>
                 </div>
 
                 <!-- Lista de Usuarios -->
@@ -576,30 +602,50 @@ const metricsData = computed(() => {
                             <n-avatar round :src="user.avatar" size="medium" class="ring-2 ring-gray-50 flex-shrink-0" />
                             <div class="flex-1 min-w-0">
                                 <div class="font-bold text-sm text-gray-800 truncate">{{ user.name }}</div>
-                                <n-progress 
-                                    type="line" 
-                                    :percentage="metricsData.totalPending > 0 ? (user.count / metricsData.totalPending) * 100 : 0" 
-                                    :show-indicator="false"
-                                    :height="6"
-                                    :color="user.count > 10 ? '#ef4444' : (user.count > 5 ? '#f59e0b' : '#3b82f6')"
-                                    class="mt-1"
-                                />
-                            </div>
-                            <div class="flex flex-col items-end flex-shrink-0 ml-2">
-                                <span class="font-black text-lg text-gray-700 leading-none">{{ user.count }}</span>
+                                
+                                <div class="mt-1.5 space-y-1">
+                                    <!-- Barra Pendientes -->
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[9px] font-bold text-gray-400 w-14 text-right">PENDIENTES</span>
+                                        <n-progress 
+                                            type="line" 
+                                            :percentage="metricsData.totalPending > 0 ? (user.count / metricsData.totalPending) * 100 : 0" 
+                                            :show-indicator="false"
+                                            :height="5"
+                                            :color="user.count > 10 ? '#ef4444' : (user.count > 5 ? '#f59e0b' : '#3b82f6')"
+                                            class="flex-1"
+                                        />
+                                        <span class="text-[10px] font-black text-gray-600 w-4">{{ user.count }}</span>
+                                    </div>
+
+                                    <!-- Barra En Proceso -->
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[9px] font-bold text-indigo-400 w-14 text-right">EN PROCESO</span>
+                                        <n-progress 
+                                            type="line" 
+                                            :percentage="metricsData.totalInProcess > 0 ? (user.inProcessCount / metricsData.totalInProcess) * 100 : 0" 
+                                            :show-indicator="false"
+                                            :height="5"
+                                            color="#6366f1"
+                                            class="flex-1"
+                                        />
+                                        <span class="text-[10px] font-black text-indigo-600 w-4">{{ user.inProcessCount }}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </n-list-item>
 
-                    <!-- Sin Asignar -->
+                    <!-- Sin Asignar / Sin Fecha (Backlog) -->
                     <n-list-item class="px-4 py-3 bg-orange-50/30">
                         <div class="flex items-center gap-3 w-full">
                             <n-avatar round class="bg-orange-100 text-orange-600 flex-shrink-0" size="medium">?</n-avatar>
                             <div class="flex-1 min-w-0">
-                                <div class="font-bold text-sm text-orange-800 truncate">Sin Asignar (Backlog)</div>
+                                <div class="font-bold text-sm text-orange-800 truncate">Por Asignar / Sin Fecha</div>
+                                <div class="text-[10px] text-orange-600/70 font-medium mt-0.5">Tareas en Backlog</div>
                             </div>
                             <div class="flex flex-col items-end flex-shrink-0 ml-2">
-                                <span class="font-black text-lg text-orange-600 leading-none">{{ metricsData.unassignedCount }}</span>
+                                <span class="font-black text-xl text-orange-600 leading-none">{{ metricsData.unassignedOrNoDateCount }}</span>
                             </div>
                         </div>
                     </n-list-item>

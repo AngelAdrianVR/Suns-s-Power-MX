@@ -435,11 +435,6 @@ const getPriorityColor = (priority) => {
                 <n-form-item label="Instrucciones para la foto/documento" path="description">
                     <n-input type="textarea" v-model:value="evidenceForm.description" placeholder="Asegúrate que se vean los cables..." />
                 </n-form-item>
-                
-                <div class="flex items-center gap-4 mb-4">
-                    <span class="text-sm text-gray-600">¿Permitir múltiples archivos en esta evidencia?</span>
-                    <n-switch v-model:value="evidenceForm.allows_multiple" />
-                </div>
 
                 <n-form-item label="Tipo de Sistema"><n-input :value="evidenceForm.system_type" disabled /></n-form-item>
                 <div class="flex justify-end gap-3 mt-4">
