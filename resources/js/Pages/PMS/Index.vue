@@ -44,7 +44,15 @@ const viewMode = ref('kanban'); // 'kanban' o 'list'
 const showMetricsDrawer = ref(false);
 const listSearch = ref('');
 const showCompletedTasks = ref(false); // Toggle para ocultar tareas completadas en Kanban
-const showMobileBacklog = ref(false); // <-- NUEVO: Toggle para mostrar/ocultar backlog en móvil
+const showMobileBacklog = ref(false); // Toggle para mostrar/ocultar backlog en móvil
+
+// --- FILTRO DE PRIORIDAD PARA KANBAN ---
+const kanbanPriorityFilter = ref(null);
+const priorityFilterOptions = [
+    { label: 'Alta', value: 'Alta' },
+    { label: 'Media', value: 'Media' },
+    { label: 'Baja', value: 'Baja' }
+];
 
 const boardColumns = ref({});
 
@@ -93,11 +101,13 @@ watch(() => props.unassigned_tasks, (newVal) => {
 
 // --- CÁLCULO PARA EL HEADER DEL BACKLOG ---
 const backlogUnassignedCount = computed(() => {
-    return unassignedBacklog.value.length;
+    if (!kanbanPriorityFilter.value) return unassignedBacklog.value.length;
+    return unassignedBacklog.value.filter(t => t.priority === kanbanPriorityFilter.value).length;
 });
 
 const backlogNoDateCount = computed(() => {
-    return noDateBacklog.value.length;
+    if (!kanbanPriorityFilter.value) return noDateBacklog.value.length;
+    return noDateBacklog.value.filter(t => t.priority === kanbanPriorityFilter.value).length;
 });
 
 const changeWeek = (dateStr) => {
@@ -500,6 +510,17 @@ const metricsData = computed(() => {
                         {{ showMobileBacklog ? 'Ocultar Backlog' : 'Ver Backlog' }}
                     </n-button>
 
+                    <!-- FILTRO DE PRIORIDAD (Sólo en Kanban) -->
+                    <div v-show="viewMode === 'kanban'" class="w-24 sm:w-32 shadow-sm">
+                        <n-select 
+                            v-model:value="kanbanPriorityFilter" 
+                            :options="priorityFilterOptions" 
+                            placeholder="Prioridad" 
+                            clearable 
+                            size="small" 
+                        />
+                    </div>
+
                     <!-- TOGGLE: Mostrar Tareas Completadas -->
                     <div v-show="viewMode === 'kanban'" class="flex items-center gap-1 lg:gap-2 bg-white px-2 py-1 lg:px-3 lg:py-1.5 rounded-lg shadow-sm border border-gray-100">
                         <span class="text-[10px] lg:text-[11px] font-bold text-gray-500 uppercase tracking-wide hidden sm:inline">Ver Completadas</span>
@@ -549,14 +570,14 @@ const metricsData = computed(() => {
                 <div v-if="viewMode === 'kanban'" class="flex flex-col lg:flex-row gap-3 lg:gap-4 flex-1 min-h-0">
                     
                     <!-- SIDEBAR: BACKLOG -->
-                    <!-- En móvil, se oculta/muestra con el toggle showMobileBacklog. Toma 40vh al mostrarse. -->
                     <div v-if="hasPermission('pms.view_all')" 
                          :class="showMobileBacklog ? 'flex h-[40vh] lg:h-auto' : 'hidden lg:flex'" 
                          class="w-full lg:w-72 flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-shrink-0">
                         
                         <div class="p-2 lg:p-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                            <h3 class="font-bold text-gray-600 mb-2 lg:mb-3 text-[12px] lg:text-[13px] uppercase tracking-wider">
+                            <h3 class="font-bold text-gray-600 mb-2 lg:mb-3 text-[12px] lg:text-[13px] uppercase tracking-wider flex items-center justify-between">
                                 Backlog de Tareas
+                                <n-tag v-if="kanbanPriorityFilter" size="small" type="info" :bordered="false" round>Filtrado</n-tag>
                             </h3>
                             <div class="flex flex-col gap-1.5 lg:gap-2">
                                 <div class="flex items-center justify-between bg-orange-50 px-2 py-1.5 rounded border border-orange-100">
@@ -582,6 +603,7 @@ const metricsData = computed(() => {
                             >
                                 <template #item="{ element }">
                                     <TaskCard 
+                                        v-show="!kanbanPriorityFilter || element.priority === kanbanPriorityFilter"
                                         :task="element" 
                                         :is-backlog="true" 
                                         @click="openDetail(element)" 
@@ -605,6 +627,7 @@ const metricsData = computed(() => {
                             >
                                 <template #item="{ element }">
                                     <TaskCard 
+                                        v-show="!kanbanPriorityFilter || element.priority === kanbanPriorityFilter"
                                         :task="element" 
                                         :is-backlog="true" 
                                         @click="openDetail(element)" 
@@ -618,7 +641,7 @@ const metricsData = computed(() => {
                     <div class="flex-1 overflow-x-auto overflow-y-hidden bg-white rounded-2xl shadow-sm border border-gray-100 flex p-3 gap-3 snap-x snap-mandatory scroll-smooth custom-scrollbar min-h-0 h-full" style="scroll-padding: 0.75rem;">
                         <div 
                             v-for="day in days" :key="day.date" 
-                            class="snap-start shrink-0 w-[70vw] sm:w-[280px] md:w-[300px] xl:w-auto xl:flex-1 flex flex-col bg-gray-50/50 rounded-xl border border-gray-100 h-full max-h-full"
+                            class="snap-start shrink-0 w-[85vw] sm:w-[280px] md:w-[300px] xl:w-auto xl:flex-1 flex flex-col bg-gray-50/50 rounded-xl border border-gray-100 h-full max-h-full"
                         >
                             <!-- El header del día siempre visible en el top -->
                             <div class="py-2 border-b border-gray-100 text-center flex flex-col items-center bg-white rounded-t-xl sticky top-0 z-10 flex-shrink-0">
@@ -638,7 +661,7 @@ const metricsData = computed(() => {
                                 >
                                     <template #item="{ element }">
                                         <TaskCard 
-                                            v-show="showCompletedTasks || (element.status !== 'Completado' && element.status !== 'Cancelado')"
+                                            v-show="(showCompletedTasks || (element.status !== 'Completado' && element.status !== 'Cancelado')) && (!kanbanPriorityFilter || element.priority === kanbanPriorityFilter)"
                                             :task="element" 
                                             @click="openDetail(element)" 
                                         />

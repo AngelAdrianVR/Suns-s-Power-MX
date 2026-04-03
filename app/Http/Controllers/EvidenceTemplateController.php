@@ -16,22 +16,28 @@ class EvidenceTemplateController extends Controller
             'system_type' => 'required|string|max:255',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'allows_multiple' => 'boolean' // Validar el nuevo campo
+            'allows_multiple' => 'boolean',
+            'tasks' => 'nullable|array',
+            'tasks.*' => 'exists:task_templates,id',
         ]);
 
-        // Calcular el siguiente número de orden para el nuevo registro
         $maxOrder = EvidenceTemplate::where('branch_id', $branchId)
             ->where('system_type', $validated['system_type'])
             ->max('order') ?? 0;
 
-        EvidenceTemplate::create([
+        $evidenceTemplate = EvidenceTemplate::create([
             'branch_id' => $branchId,
             'system_type' => $validated['system_type'],
             'title' => $validated['title'],
             'description' => $validated['description'],
             'allows_multiple' => $validated['allows_multiple'] ?? false,
-            'order' => $maxOrder + 1, // Asignar al final de la lista
+            'order' => $maxOrder + 1,
         ]);
+
+        // Guardar tareas a las que pertenece esta evidencia (si se seleccionaron)
+        if (!empty($validated['tasks'])) {
+            $evidenceTemplate->taskTemplates()->sync($validated['tasks']);
+        }
 
         return back()->with('success', 'Plantilla de evidencia agregada correctamente.');
     }
@@ -44,7 +50,9 @@ class EvidenceTemplateController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'allows_multiple' => 'boolean' // Validar el nuevo campo
+            'allows_multiple' => 'boolean',
+            'tasks' => 'nullable|array',
+            'tasks.*' => 'exists:task_templates,id',
         ]);
 
         $evidenceTemplate->update([
@@ -52,6 +60,9 @@ class EvidenceTemplateController extends Controller
             'description' => $validated['description'],
             'allows_multiple' => $validated['allows_multiple'] ?? false,
         ]);
+
+        // Actualizar tareas relacionadas
+        $evidenceTemplate->taskTemplates()->sync($validated['tasks'] ?? []);
 
         return back()->with('success', 'Plantilla de evidencia actualizada.');
     }
@@ -66,7 +77,6 @@ class EvidenceTemplateController extends Controller
         return back()->with('success', 'Plantilla de evidencia eliminada.');
     }
 
-    // NUEVO MÉTODO: Guarda el orden cuando el usuario arrastra las tarjetas
     public function reorder(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
