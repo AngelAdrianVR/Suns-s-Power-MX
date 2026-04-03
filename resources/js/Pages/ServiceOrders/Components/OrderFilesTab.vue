@@ -149,8 +149,8 @@ const isImage = (file) => {
                                 </div>
                             </div>
                             
-                            <!-- Botón para agregar MÁS archivos si está permitido -->
-                            <div v-if="evidence.allows_multiple">
+                            <!-- Botón para agregar MÁS archivos (Siempre visible ahora) -->
+                            <div class="mt-2">
                                 <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" multiple @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
                                 <n-button dashed size="small" type="primary" class="w-full bg-white text-emerald-600 hover:text-emerald-700" @click="triggerEvidenceFileInput(evidence.id)">
                                     <template #icon><n-icon><AddOutline /></n-icon></template>
@@ -161,11 +161,11 @@ const isImage = (file) => {
 
                         <!-- Si no se ha subido NADA, mostrar input principal -->
                         <div v-else>
-                            <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" :multiple="evidence.allows_multiple" @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
+                            <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" multiple @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
                             <n-button dashed type="primary" class="w-full h-16 bg-white" @click="triggerEvidenceFileInput(evidence.id)">
                                 <div class="flex flex-col items-center gap-1 text-emerald-600">
                                     <n-icon size="20"><CameraOutline /></n-icon>
-                                    <span class="text-xs font-semibold">Subir Fotografía{{ evidence.allows_multiple ? 's' : '' }}</span>
+                                    <span class="text-xs font-semibold">Subir Fotografía(s)</span>
                                 </div>
                             </n-button>
                         </div>

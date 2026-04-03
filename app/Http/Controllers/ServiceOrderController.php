@@ -376,7 +376,71 @@ class ServiceOrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $serviceOrder->update($validated);
+        $oldSystemType = $serviceOrder->system_type;
+
+        DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
+            $serviceOrder->update($validated);
+
+            // Si se cambió el tipo de sistema al editar la orden, actualizamos tareas y evidencias
+            if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
+                
+                // 1. Limpiar las tareas pendientes y evidencias vacías del sistema anterior
+                $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
+                $serviceOrder->evidences()->doesntHave('media')->delete();
+
+                // 2. Generar las nuevas
+                if (!empty($validated['system_type'])) {
+                    
+                    // Tareas
+                    $templates = TaskTemplate::with('users')
+                        ->where('branch_id', $branchId)
+                        ->where('system_type', $validated['system_type'])
+                        ->get();
+
+                    $userId = Auth::id();
+
+                    foreach ($templates as $template) {
+                        $startDays = $template->start_days ?? 0;
+                        $durationDays = $template->duration_days ?? 1;
+
+                        $startDate = now()->addDays($startDays)->startOfDay();
+                        $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                        $task = $serviceOrder->tasks()->create([
+                            'branch_id' => $branchId,
+                            'title' => $template->title,
+                            'description' => $template->description,
+                            'priority' => $template->priority,
+                            'status' => 'Pendiente',
+                            'created_by' => $userId,
+                            'start_date' => $startDate,  
+                            'due_date' => $dueDate,      
+                        ]);
+
+                        $userIds = $template->users->pluck('id')->toArray();
+                        if (!empty($userIds)) {
+                            $task->assignees()->sync($userIds);
+                        }
+                    }
+
+                    // Evidencias
+                    $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+                        ->where('system_type', $validated['system_type'])
+                        ->orderBy('order', 'asc')
+                        ->get();
+
+                    foreach ($evidenceTemplates as $evTemplate) {
+                        $serviceOrder->evidences()->create([
+                            'title' => $evTemplate->title,
+                            'description' => $evTemplate->description,
+                            'allows_multiple' => true, // Forzamos a true para permitir múltiples siempre
+                            'order' => $evTemplate->order ?? 0,
+                        ]);
+                    }
+                }
+            }
+        });
+
         return redirect()->route('service-orders.show', $serviceOrder->id)->with('success', 'Orden actualizada.');
     }
 
@@ -562,5 +626,52 @@ class ServiceOrderController extends Controller
         }
 
         return back()->with('success', 'Evidencia(s) requerida(s) subida(s) correctamente.');
+    }
+
+    /**
+     * Sincroniza y genera las evidencias faltantes en las órdenes de servicio anteriores
+     */
+    public function syncEvidences(Request $request)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        // Obtener todas las órdenes de la sucursal actual que tengan un tipo de sistema
+        $orders = ServiceOrder::with('evidences')
+            ->where('branch_id', $branchId)
+            ->whereNotNull('system_type')
+            ->get();
+
+        $addedCount = 0;
+
+        // Obtener plantillas y agruparlas por sistema
+        $templatesBySystem = EvidenceTemplate::where('branch_id', $branchId)
+            ->orderBy('order', 'asc')
+            ->get()
+            ->groupBy('system_type');
+
+        DB::transaction(function () use ($orders, $templatesBySystem, &$addedCount) {
+            foreach ($orders as $order) {
+                if ($templatesBySystem->has($order->system_type)) {
+                    $templates = $templatesBySystem->get($order->system_type);
+                    
+                    // Nombres de evidencias que ya tiene esta orden para no duplicar
+                    $existingTitles = $order->evidences->pluck('title')->toArray();
+
+                    foreach ($templates as $template) {
+                        if (!in_array($template->title, $existingTitles)) {
+                            $order->evidences()->create([
+                                'title' => $template->title,
+                                'description' => $template->description,
+                                'allows_multiple' => true, 
+                                'order' => $template->order ?? 0,
+                            ]);
+                            $addedCount++;
+                        }
+                    }
+                }
+            }
+        });
+
+        return back()->with('success', "Sincronización completada. Se generaron {$addedCount} evidencias faltantes en servicios anteriores.");
     }
 }

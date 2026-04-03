@@ -74,10 +74,17 @@ Route::middleware([
     Route::resource('evidence-templates', EvidenceTemplateController::class)->only(['store', 'update', 'destroy']);
     Route::post('/evidence-templates/reorder', [EvidenceTemplateController::class, 'reorder'])->name('evidence-templates.reorder');
 
-        // Gestión de Tipos de Sistema
+    // Gestión de Tipos de Sistema
     Route::post('/system-types', [SystemTypeController::class, 'store'])->name('system-types.store');
     Route::put('/system-types/{systemType}', [SystemTypeController::class, 'update'])->name('system-types.update');
     Route::delete('/system-types/{systemType}', [SystemTypeController::class, 'destroy'])->name('system-types.destroy');
+
+    // NUEVO: Ruta segura para ejecutar la sincronización manualmente una sola vez desde el navegador
+    Route::get('/ejecutar-sincronizacion', function (\Illuminate\Http\Request $request) {
+        app(ServiceOrderController::class)->syncEvidences($request);
+        return response('¡Sincronización de evidencias completada con éxito! Ya puedes cerrar esta pestaña y volver a tu sistema.', 200)
+               ->header('Content-Type', 'text/plain; charset=utf-8');
+    });
 });
 
 
@@ -90,15 +97,18 @@ Route::resource('productos', ProductController::class)->names('products')
 
 
 // ---------------------------------- RUTAS DE ÓRDENES DE SERVICIO ----------------------------------
-Route::patch('ordenes-servicio/{serviceOrder}/status', [App\Http\Controllers\ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
+Route::patch('ordenes-servicio/{serviceOrder}/status', [ServiceOrderController::class, 'updateStatus'])->name('service-orders.update-status');
 // Archivos Generales
-Route::post('ordenes-servicio/{serviceOrder}/media', [App\Http\Controllers\ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
-// Evidencias Específicas Requeridas (NUEVO)
-Route::post('/service-order-evidences/{evidence}/media', [App\Http\Controllers\ServiceOrderController::class, 'uploadEvidenceMedia'])->name('service-orders.evidences.upload');
+Route::post('ordenes-servicio/{serviceOrder}/media', [ServiceOrderController::class, 'uploadMedia'])->name('service-orders.upload-media');
+// Evidencias Específicas Requeridas
+Route::post('/service-order-evidences/{evidence}/media', [ServiceOrderController::class, 'uploadEvidenceMedia'])->name('service-orders.evidences.upload');
 
-Route::resource('ordenes-servicio', App\Http\Controllers\ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
-Route::post('/service-orders/{serviceOrder}/items', [App\Http\Controllers\ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
-Route::delete('/service-orders/items/{item}', [App\Http\Controllers\ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
+// Regresamos a POST la original por si en un futuro decides colocar un botón en el sistema para dispararla
+Route::post('/ordenes-servicio/sync-evidences', [ServiceOrderController::class, 'syncEvidences'])->name('service-orders.sync-evidences')->middleware('auth');
+
+Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
+Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
+Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
 
 Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
     ->name('service-orders.confirm-installation')
