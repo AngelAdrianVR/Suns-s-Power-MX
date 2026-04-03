@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
+use App\Models\SystemType;
 use App\Models\User;
 use App\Models\TaskTemplate; 
 use App\Models\Ticket;
@@ -151,6 +152,7 @@ class ServiceOrderController extends Controller
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
+            'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
         ]);
     }
 
@@ -169,6 +171,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
+            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
+            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
+            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
+            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
             'meter_number' => 'nullable|string|max:255',
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -365,6 +372,7 @@ class ServiceOrderController extends Controller
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
             'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->get(['id', 'name']),
+            'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
         ]);
     }
 
@@ -383,6 +391,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
+            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
+            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
+            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
+            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
             'meter_number' => 'nullable|string|max:255', 
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',

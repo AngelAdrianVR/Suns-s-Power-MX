@@ -32,6 +32,11 @@ class ServiceOrder extends Model implements HasMedia
         'rate_type',
         'inventory_reconciled',
         'system_type', // Interconectado, Autónomo, Multimodo, Respaldo, Bombeo u Otro.
+        'voltage',           // <-- NUEVO
+        'number_of_wires',   // <-- NUEVO
+        'number_of_units',   // <-- NUEVO
+        'unit_capacity',     // <-- NUEVO
+        'total_capacity',    // <-- NUEVO
         'meter_number',
         
         // Installation Address Fields
@@ -56,6 +61,8 @@ class ServiceOrder extends Model implements HasMedia
         'completion_date' => 'datetime',
         'installation_lat' => 'decimal:8',
         'installation_lng' => 'decimal:8',
+        'unit_capacity' => 'decimal:2',   // <-- NUEVO
+        'total_capacity' => 'decimal:2',  // <-- NUEVO
     ];
 
     protected function fullInstallationAddress(): Attribute
