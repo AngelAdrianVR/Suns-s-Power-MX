@@ -160,8 +160,11 @@ const submit = () => {
                 <n-select v-model:value="form.priority" :options="priorityOptions" />
             </n-form-item>
             
+            <!-- CAMBIO: Se deshabilita dinámicamente y se agrega atributo title como tooltip nativo -->
             <n-form-item label="Estatus" v-if="task" required>
-                <n-select v-model:value="form.status" :options="statusOptions" />
+                <div class="w-full" :title="form.user_ids.length === 0 ? 'Asigna al menos un responsable para poder cambiar el estatus' : ''">
+                    <n-select v-model:value="form.status" :options="statusOptions" :disabled="form.user_ids.length === 0" />
+                </div>
             </n-form-item>
         </div>
 

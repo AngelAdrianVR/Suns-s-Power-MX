@@ -38,118 +38,120 @@ const priorityInfo = computed(() => {
     return map[props.task.priority] || { color: 'text-gray-500', bg: 'bg-gray-50', border: 'border-gray-200', icon: ArrowForward };
 });
 
-// Configuración visual del Estatus (Ícono y Color)
-const statusIconInfo = computed(() => {
+const statusColor = computed(() => {
     const map = {
-        'Pendiente': { icon: TimeOutline, color: 'text-gray-400' },
-        'En Proceso': { icon: PlayCircleOutline, color: 'text-blue-500' },
-        'Completado': { icon: CheckmarkCircle, color: 'text-green-500' },
-        'Detenido': { icon: PauseCircleOutline, color: 'text-red-500' }
+        'Pendiente': 'bg-gray-200 text-gray-600 border-gray-200',
+        'En Proceso': 'bg-blue-200 text-blue-700 border-blue-200',
+        'Completado': 'bg-emerald-300 text-emerald-700 border-emerald-200',
+        'Detenido': 'bg-red-100 text-red-700 border-red-200'
     };
-    return map[props.task.status] || { icon: TimeOutline, color: 'text-gray-400' };
+    return map[props.task.status] || 'bg-gray-100 text-gray-600';
 });
 
-const isCompleted = computed(() => props.task.status === 'Completado');
-
-// Formatear la fecha de finalización si existe
-const formattedFinishDate = computed(() => {
-    if (!props.task.finish_date) return null;
-    try {
-        return format(parseISO(props.task.finish_date), "d MMM, HH:mm", { locale: es });
-    } catch (error) {
-        return null; // Fallback por si la fecha viene mal formada
-    }
-});
-
-// Función segura para obtener la imagen del usuario
 const getAvatarSrc = (user) => {
     if (user.profile_photo_url) return user.profile_photo_url;
     if (user.profile_photo_path) return '/storage/' + user.profile_photo_path;
-    return null;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`;
 };
 </script>
 
 <template>
     <div 
-        @click="$emit('click', task)"
-        class="bg-white p-3 sm:p-4 rounded-xl shadow-sm border transition-all relative group"
-        :class="[
-            isBacklog ? 'cursor-grab border-gray-200' : 'cursor-pointer hover:border-indigo-300 hover:shadow-md',
-            isCompleted ? 'border-green-100 bg-green-50/10' : 'border-gray-200'
-        ]"
+        class="bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 group cursor-pointer relative overflow-hidden"
+        @click="$emit('click')"
     >
-        <!-- Encabezado de la Tarjeta (Módulo y Estatus) -->
-        <div class="flex justify-between items-start mb-2 gap-2">
-            <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wide truncate flex-1"
-                  :class="isCompleted ? 'text-green-600' : 'text-gray-400'">
-                {{ task.taskable_type?.includes('ServiceOrder') ? 'OS #' + task.taskable_id : 
-                   task.taskable_type?.includes('Ticket') ? 'TICKET #' + task.taskable_id : 'General' }}
-            </span>
-            
-            <n-icon v-if="isBacklog" class="text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0">
-                <MoveOutline/>
-            </n-icon>
-            
-            <!-- Tooltip para el Estatus (Solo Ícono) -->
-            <n-tooltip v-else trigger="hover">
-                <template #trigger>
-                    <div class="flex items-center flex-shrink-0 mt-0.5 transition-transform hover:scale-110 cursor-help">
-                        <n-icon size="18" :class="statusIconInfo.color">
-                            <component :is="statusIconInfo.icon" />
-                        </n-icon>
-                    </div>
-                </template>
-                Estatus: {{ task.status }}
-            </n-tooltip>
-        </div>
-        
-        <!-- Título de la Tarea -->
-        <h4 class="text-sm sm:text-base font-semibold leading-tight mb-3 line-clamp-2 transition-colors break-words" 
-            :class="isCompleted ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-800'"
-            :title="task.title">
-            {{ task.title }}
-        </h4>
-        
-        <!-- Detalles extra si está completada -->
-        <div v-if="isCompleted && formattedFinishDate" class="flex items-center gap-1 text-[10px] text-green-600 font-medium mb-3 bg-green-50 w-fit px-2 py-1 rounded-md border border-green-100">
-            <n-icon><TimeOutline /></n-icon>
-            Completada el {{ formattedFinishDate }}
-        </div>
-        
-        <!-- Footer de la Tarjeta (Prioridad, Avatares, Comentarios) -->
-        <div class="flex justify-between items-center mt-auto flex-wrap gap-2 pt-1">
-            
-            <!-- Badge de Prioridad -->
-            <div class="flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold"
-                 :class="[priorityInfo.bg, priorityInfo.color, priorityInfo.border]">
-                <n-icon :component="priorityInfo.icon" />
-                {{ task.priority }}
+        <!-- Borde izquierdo de color para estatus -->
+        <div class="absolute left-0 top-0 bottom-0 w-1.5" :class="statusColor.split(' ')[0]"></div>
+
+        <div class="p-3 pl-4">
+            <!-- Header: Tipo y Prioridad -->
+            <div class="flex justify-between items-start mb-2 gap-2">
+                
+                <div class="flex flex-col min-w-0">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider truncate">
+                        <template v-if="task.taskable_type === 'App\\Models\\ServiceOrder'">
+                            <span class="text-blue-500">OS #{{ task.taskable_id }}</span>
+                        </template>
+                        <template v-else-if="task.taskable_type === 'App\\Models\\Ticket'">
+                            <span class="text-orange-500">Ticket #{{ task.taskable_id }}</span>
+                        </template>
+                        <template v-else>
+                            General
+                        </template>
+                    </span>
+                    <h4 class="text-xs sm:text-sm font-semibold text-gray-800 leading-tight mt-0.5 break-words line-clamp-2" :title="task.title">
+                        {{ task.title }}
+                    </h4>
+                </div>
+
+                <!-- Prioridad Badge -->
+                <div class="flex-shrink-0 flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border" :class="[priorityInfo.color, priorityInfo.bg, priorityInfo.border]">
+                    <n-icon size="12" class="mr-0.5"><component :is="priorityInfo.icon" /></n-icon>
+                    {{ task.priority }}
+                </div>
             </div>
-            
-            <!-- Responsables y Comentarios -->
-            <div class="flex items-center gap-3 ml-auto">
+
+            <!-- Información adicional sutil -->
+            <div class="text-[10px] text-gray-500 mt-2 flex items-center gap-2 mb-3">
+                <span class="flex items-center" v-if="task.due_date">
+                    <n-icon class="mr-1"><TimeOutline/></n-icon>
+                    Límite: {{ format(parseISO(task.due_date), 'dd MMM') }}
+                </span>
+                
+                <span v-if="task.status !== 'Pendiente'" class="flex items-center font-semibold" :class="statusColor.split(' ')[1]">
+                    <n-icon class="mr-1" v-if="task.status === 'En Proceso'"><PlayCircleOutline/></n-icon>
+                    <n-icon class="mr-1" v-if="task.status === 'Detenido'"><PauseCircleOutline/></n-icon>
+                    <n-icon class="mr-1" v-if="task.status === 'Completado'"><CheckmarkCircle/></n-icon>
+                    {{ task.status }}
+                </span>
+            </div>
+
+            <!-- Footer: Asignados y Comentarios -->
+            <div class="flex items-center justify-between border-t border-gray-50 pt-3">
+                
                 <template v-if="isBacklog">
-                    <n-tag size="tiny" :bordered="false" type="warning" style="font-size: 9px;">Sin asignar</n-tag>
+                    <div class="flex items-center gap-2">
+                        <!-- Identificador visual especial si es backlog -->
+                        <span v-if="!task.assignees?.length" class="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-100 flex items-center gap-1">
+                            Por asignar
+                        </span>
+
+                        <div v-if="task.assignees?.length > 0" class="flex -space-x-2">
+                            <n-tooltip v-for="user in task.assignees" :key="user.id" trigger="hover">
+                                <template #trigger>
+                                    <n-avatar round :size="24" :src="getAvatarSrc(user)" :fallback-src="`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`" class="border-2 border-white shadow-sm ring-1 ring-black/5" />
+                                </template>
+                                {{ user.name }}
+                            </n-tooltip>
+                        </div>
+
+                        <!-- ETIQUETA NUEVA MORADA: Si tiene asignado pero no tiene fecha -->
+                        <span v-if="task.assignees?.length > 0 && !task.start_date" class="text-[9px] text-purple-700 font-bold bg-purple-100 px-2 py-0.5 rounded border border-purple-200">
+                            Sin fecha
+                        </span>
+                    </div>
                 </template>
                 <template v-else>
                     <!-- Avatares -->
-                    <div class="flex -space-x-2">
-                        <n-tooltip v-for="user in task.assignees" :key="user.id" trigger="hover">
-                            <template #trigger>
-                                <n-avatar 
-                                    round 
-                                    :size="24" 
-                                    :src="getAvatarSrc(user)" 
-                                    :fallback-src="`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`" 
-                                    class="border-2 border-white shadow-sm ring-1 ring-black/5"
-                                />
-                            </template>
-                            {{ user.name }}
-                        </n-tooltip>
-                        
-                        <span v-if="!task.assignees?.length" class="text-[9px] sm:text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
-                            Sin asignar
-                        </span>
+                    <div class="flex items-center gap-2">
+                        <div class="flex -space-x-2">
+                            <n-tooltip v-for="user in task.assignees" :key="user.id" trigger="hover">
+                                <template #trigger>
+                                    <n-avatar 
+                                        round 
+                                        :size="24" 
+                                        :src="getAvatarSrc(user)" 
+                                        :fallback-src="`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`" 
+                                        class="border-2 border-white shadow-sm ring-1 ring-black/5"
+                                    />
+                                </template>
+                                {{ user.name }}
+                            </n-tooltip>
+                            
+                            <span v-if="!task.assignees?.length" class="text-[9px] sm:text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                                Sin asignar
+                            </span>
+                        </div>
                     </div>
                 </template>
 
