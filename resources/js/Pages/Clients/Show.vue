@@ -10,6 +10,7 @@ import ClientServicesTab from './Components/ClientServicesTab.vue';
 import ClientPaymentsTab from './Components/ClientPaymentsTab.vue';
 import ClientContactsTab from './Components/ClientContactsTab.vue';
 import ClientDocumentsTab from './Components/ClientDocumentsTab.vue';
+import ClientTicketsTab from './Components/ClientTicketsTab.vue';
 
 import { 
     NButton, NIcon, NTabs, NTabPane, NAvatar, NBadge, NAlert, createDiscreteApi
@@ -17,7 +18,8 @@ import {
 import { 
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     ConstructOutline, WalletOutline, PeopleOutline, DocumentTextOutline,
-    CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline
+    CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline,
+    TicketOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -225,6 +227,18 @@ const googleMapsUrl = computed(() => {
                                 </div>
                             </template>
                             <ClientServicesTab :client="client" />
+                        </n-tab-pane>
+
+                        <n-tab-pane name="tickets" tab="Tickets">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <n-icon size="18"><TicketOutline /></n-icon> 
+                                    <span class="hidden sm:inline">Tickets</span>
+                                    <span class="sm:hidden text-xs">Tickets</span>
+                                    <n-badge :value="client.tickets?.length || 0" type="warning" :max="99" class="scale-75 origin-left" />
+                                </div>
+                            </template>
+                            <ClientTicketsTab :client="client" />
                         </n-tab-pane>
 
                         <n-tab-pane name="payments" tab="Pagos">
