@@ -146,8 +146,8 @@ const formatCurrency = (value) => {
                             <!-- Widget de Servicios -->
                             <!-- <ServiceOrdersWidget v-if="hasPermission('service_orders.index')" :orders="pendingServiceOrders" /> -->
                             
-                            <!-- Widget de Clientes con Deuda -->
-                            <ClientBalancesWidget v-if="hasPermission('clients.index') || hasPermission('collection.create')" :clients="clientsWithBalance" />
+                             <!-- Widget de Clientes con Deuda (Protegido por el permiso 'clients.view_balance') -->
+                            <ClientBalancesWidget v-if="hasPermission('clients.view_balance')" :clients="clientsWithBalance" />
                         </div>
                     </n-grid-item>
 

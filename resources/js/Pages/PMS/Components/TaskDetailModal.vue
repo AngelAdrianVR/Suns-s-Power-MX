@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, watch, ref } from 'vue';
 import { router, useForm, Link } from '@inertiajs/vue3';
 import { 
     NModal, NCard, NTag, NAvatar, NBadge, NPopselect, 
@@ -10,7 +10,7 @@ import {
     TrashOutline, ChevronDownOutline, ConstructOutline,
     LocationOutline, MapOutline, PersonOutline, CashOutline,
     FlashOutline, HardwareChipOutline, SpeedometerOutline,
-    TicketOutline, WarningOutline, LinkOutline
+    TicketOutline, WarningOutline, LinkOutline, CameraOutline, SyncOutline
 } from '@vicons/ionicons5';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -26,6 +26,9 @@ const emit = defineEmits(['update:show', 'edit']);
 const { hasPermission } = usePermissions();
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
+// Estado para controlar la vista de comentarios en Móvil
+const showMobileComments = ref(false);
+
 // Computed para el v-model del modal
 const isOpen = computed({
     get: () => props.show,
@@ -39,14 +42,10 @@ const commentForm = useForm({
     commentable_id: null
 });
 
-// Sincronizar el ID de la tarea cuando se abre
-watch(() => props.task, (newTask) => {
-    if (newTask) {
-        commentForm.commentable_id = newTask.id;
-    }
-}, { immediate: true });
-
-// --- MÉTODOS DE LA TAREA ---
+const translateUnit = (unit) => {
+    const units = { days: 'día(s)', weeks: 'semana(s)', months: 'mes(es)', years: 'año(s)' };
+    return units[unit] || unit;
+};
 
 const submitComment = () => {
     if(!commentForm.body.trim()) return;
@@ -70,11 +69,39 @@ const statusOptions = [
 const handleStatusChange = (newStatus) => {
     if (!props.task) return;
     
+    // Validación estricta de responsables antes de permitir el cambio de estatus
+    if (!props.task.assignees || props.task.assignees.length === 0) {
+        notification.warning({ 
+            title: 'Responsable Requerido', 
+            content: 'No puedes cambiar el estatus de una tarea que no tiene personal asignado. Por favor, edita la tarea y asigna a un responsable primero.', 
+            duration: 6000 
+        });
+        return; 
+    }
+    
+    // <-- NUEVA VALIDACIÓN FRONTEND DE EVIDENCIAS -->
+    if (newStatus === 'Completado') {
+        const pendingEvidences = props.task.required_evidences?.filter(e => !e.media?.length).length || 0;
+        if (pendingEvidences > 0) {
+            notification.error({
+                title: 'Evidencias Pendientes',
+                content: `No puedes completar la tarea. Faltan ${pendingEvidences} evidencias por subir en la Orden de Servicio vinculada.`,
+                duration: 6000
+            });
+            return;
+        }
+    }
+
     router.put(route('tasks.update', props.task.id), { status: newStatus }, {
         preserveScroll: true,
-        preserveState: true, // Inertia actualizará los props automáticamente
+        preserveState: true, 
         onSuccess: () => {
             notification.success({ title: 'Estatus Actualizado', content: `La tarea ahora está: ${newStatus}`, duration: 3000 });
+        },
+        onError: (errors) => {
+            if (errors.status) {
+                notification.error({ title: 'Error', content: errors.status, duration: 5000 });
+            }
         }
     });
 };
@@ -119,7 +146,6 @@ const formatCommentDate = (dateStr) => {
     }
 };
 
-// Helper para crear url de google maps
 const getGoogleMapsUrl = (lat, lng, fullAddress) => {
     if (lat && lng) {
         return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
@@ -138,11 +164,29 @@ const formatCurrency = (value) => {
 
 <template>
     <n-modal v-model:show="isOpen">
-        <n-card style="width: 900px; max-width: 95vw;" :title="task?.title || 'Detalle de la Tarea'" :bordered="false" size="huge" closable @close="isOpen = false" content-style="padding: 0;">
+        <!-- Tarjeta con un header personalizado para reducir el espacio y adaptarlo -->
+        <n-card style="width: 900px; max-width: 95vw;" :bordered="false" size="small" closable @close="isOpen = false" content-style="padding: 0;">
+            <template #header>
+                <div class="text-sm md:text-base font-bold text-gray-800 leading-tight pr-6 break-words whitespace-normal">
+                    {{ task?.title || 'Detalle de la Tarea' }}
+                </div>
+            </template>
             
-            <div class="flex flex-col md:flex-row h-[600px] max-h-[80vh]" v-if="task">
+            <div class="flex flex-col md:flex-row h-[80vh] md:h-[600px] max-h-[85vh]" v-if="task">
+                
+                <!-- Toggle Button (Exclusivo para móviles) -->
+                <div class="md:hidden p-3 bg-gray-50 border-b border-gray-100 flex-shrink-0 sticky top-0 z-20">
+                    <n-button block type="primary" secondary @click="showMobileComments = !showMobileComments" class="font-bold">
+                        <template #icon>
+                            <n-icon><ChatbubbleOutline v-if="!showMobileComments"/><CreateOutline v-else/></n-icon>
+                        </template>
+                        {{ showMobileComments ? 'Volver a Detalles de Tarea' : `Ver Comentarios y Notas (${task.comments?.length || 0})` }}
+                    </n-button>
+                </div>
+
                 <!-- Columna Izquierda: Información -->
-                <div class="w-full md:w-1/2 p-5 space-y-5 border-r border-gray-100 overflow-y-auto bg-white custom-scrollbar">
+                <div class="w-full md:w-1/2 p-4 md:p-5 space-y-4 md:space-y-5 border-r border-gray-100 overflow-y-auto bg-white custom-scrollbar flex-1"
+                     :class="showMobileComments ? 'hidden md:block' : 'block'">
                     
                     <div class="flex justify-between items-center bg-gray-50/80 p-3 rounded-xl border border-gray-100">
                          <div class="flex flex-col">
@@ -179,10 +223,44 @@ const formatCurrency = (value) => {
                         <p class="text-gray-700 text-sm mt-1 bg-gray-50 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap leading-relaxed">{{ task.description || 'Sin descripción detallada.' }}</p>
                     </div>
 
-                    <!-- ========================================== -->
-                    <!-- SECCIÓN DINÁMICA: DEPENDIENDO DEL TASKABLE -->
-                    <!-- ========================================== -->
+                    <!-- NUEVA SECCIÓN: EVIDENCIAS REQUERIDAS -->
+                    <div v-if="task.required_evidences?.length" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 flex items-center">
+                            <n-icon class="mr-1 text-sm"><CameraOutline/></n-icon>Evidencias Requeridas
+                        </div>
+                        <div class="space-y-2">
+                            <div v-for="ev in task.required_evidences" :key="ev.id" class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                <div class="flex flex-col flex-1 min-w-0 pr-3">
+                                    <span class="text-xs font-semibold text-gray-700 truncate" :title="ev.title">{{ ev.title }}</span>
+                                </div>
+                                <n-tag :type="ev.media?.length ? 'success' : 'warning'" size="small" round :bordered="false" class="flex-shrink-0">
+                                    {{ ev.media?.length ? 'Completada' : 'Pendiente' }}
+                                </n-tag>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-[10px] text-gray-500 italic">
+                            * Las evidencias se suben directamente desde el perfil de la Orden de Servicio vinculada.
+                        </div>
+                    </div>
+                    
+                    <!-- Tarea Cíclica -->
+                    <div v-if="task.is_recurring" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="bg-purple-50/50 rounded-xl p-3 border border-purple-100 flex items-center gap-3">
+                            <div class="bg-purple-100 p-2 rounded-lg text-purple-600">
+                                <n-icon size="20"><SyncOutline/></n-icon>
+                            </div>
+                            <div>
+                                <div class="text-xs text-purple-700 font-bold uppercase tracking-wider">Tarea Cíclica</div>
+                                <div class="text-sm text-gray-700 font-medium">
+                                    Se repite cada {{ task.recurring_interval }} {{ translateUnit(task.recurring_unit) }}.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Datos de la Tarea/Orden Relacionada (Si existe) -->
                     <div v-if="task.taskable_type === 'App\\Models\\ServiceOrder' && task.taskable" class="mt-4 border-t border-gray-100 pt-4">
+
                         <div class="flex justify-between items-center mb-3">
                             <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider flex items-center">
                                 <n-icon class="mr-1 text-sm"><ConstructOutline/></n-icon>Orden de Servicio #{{ task.taskable.id }}
@@ -331,13 +409,14 @@ const formatCurrency = (value) => {
                 </div>
 
                 <!-- Columna Derecha: Chat y Notas -->
-                <div class="w-full md:w-1/2 flex flex-col bg-gray-50/50">
-                    <div class="p-4 border-b border-gray-100 bg-white text-xs font-bold text-gray-500 flex justify-between items-center shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] z-10">
+                <div class="w-full md:w-1/2 flex-col bg-gray-50/50 flex-1 md:h-auto h-full"
+                     :class="showMobileComments ? 'flex' : 'hidden md:flex'">
+                    <div class="p-4 border-b border-gray-100 bg-white text-xs font-bold text-gray-500 flex justify-between items-center shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] z-10 flex-shrink-0">
                         <span class="flex items-center gap-1.5"><n-icon size="16"><ChatbubbleOutline/></n-icon> COMENTARIOS Y NOTAS</span>
                         <n-badge :value="task.comments?.length || 0" type="info" />
                     </div>
                     
-                    <div class="flex-1 p-5 overflow-y-auto space-y-5 custom-scrollbar">
+                    <div class="flex-1 p-5 overflow-y-auto space-y-5 custom-scrollbar min-h-0">
                          <div v-if="!task.comments?.length" class="h-full flex flex-col items-center justify-center text-gray-400 py-8 opacity-70">
                             <n-icon size="48" class="mb-3 text-gray-300"><ChatbubbleOutline /></n-icon>
                             <span class="text-sm font-medium">No hay comentarios aún</span>
@@ -345,7 +424,7 @@ const formatCurrency = (value) => {
                          </div>
                          
                          <div v-for="comment in task.comments" :key="comment.id" class="flex gap-3 text-xs group">
-                            <n-avatar :src="getAvatarSrc(comment.user)" round size="medium" class="mt-1 shadow-sm ring-2 ring-white" />
+                            <n-avatar :src="getAvatarSrc(comment.user)" round size="medium" class="mt-1 shadow-sm ring-2 ring-white flex-shrink-0" />
                             <div class="bg-white p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 flex-1 relative hover:shadow-md transition-shadow">
                                 <div class="absolute -left-1.5 top-3 w-3 h-3 bg-white border-l border-b border-gray-100 rotate-45"></div>
                                 <div class="flex justify-between items-center mb-1.5 relative z-10">
@@ -357,7 +436,7 @@ const formatCurrency = (value) => {
                          </div>
                     </div>
 
-                    <div class="p-4 bg-white border-t border-gray-100 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.03)] z-10">
+                    <div class="p-4 bg-white border-t border-gray-100 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.03)] z-10 flex-shrink-0">
                          <n-input 
                             v-model:value="commentForm.body" 
                             type="textarea" 

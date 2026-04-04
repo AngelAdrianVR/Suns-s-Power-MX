@@ -358,12 +358,11 @@ class ProductController extends Controller
     {
         $query = $request->input('query');
         
-        if (!$query) {
-            return response()->json([]);
-        }
-
-        $products = Product::where('name', 'like', "%{$query}%")
-            ->orWhere('sku', 'like', "%{$query}%")
+        // Si hay query, busca por nombre o sku. Si no, solo trae los últimos 10.
+        $products = Product::when($query, function($q) use ($query) {
+                $q->where('name', 'like', "%{$query}%")
+                ->orWhere('sku', 'like', "%{$query}%");
+            })
             ->limit(10)
             ->get()
             ->map(function ($product) {
@@ -377,7 +376,7 @@ class ProductController extends Controller
             });
 
         return response()->json($products);
-    }
+    }   
 
     public function adjustStock(Request $request, Product $product)
     {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -198,11 +198,26 @@ const handleStatusUpdate = (newStatus) => {
 
 const confirmDelete = () => {
     dialog.warning({
-        title: 'Eliminar Orden',
-        content: '¿Estás seguro? Esta acción eliminará todo el historial.',
-        positiveText: 'Sí, Eliminar',
+        title: 'Eliminar Orden de Servicio',
+        content: () => h('div', [
+            h('p', { class: 'mb-2' }, `¿Estás seguro de eliminar la orden #${props.order.id}? Esta acción es irreversible y borrará por completo:`),
+            h('ul', { class: 'list-disc pl-5 text-red-600 font-medium text-sm space-y-1' }, [
+                h('li', 'Tareas y cronograma asignado.'),
+                h('li', 'Todas las evidencias, fotografías y notas.'),
+                h('li', 'Pagos y registros financieros asociados.'),
+                h('li', 'Contratos y documentos generados.'),
+                h('li', 'Tickets de soporte relacionados.'),
+                h('li', 'Materiales asignados (el stock volverá al almacén).')
+            ])
+        ]),
+        positiveText: 'Sí, Eliminar Todo',
         negativeText: 'Cancelar',
-        onPositiveClick: () => router.delete(route('service-orders.destroy', props.order.id))
+        onPositiveClick: () => {
+            router.delete(route('service-orders.destroy', props.order.id), {
+                onSuccess: () => notification.success({ title: 'Éxito', content: 'Orden y todos sus registros asociados eliminados', duration: 4000 }),
+                onError: () => notification.error({ title: 'Error', content: 'No se puede eliminar una orden Completada o Facturada.', duration: 5000 })
+            });
+        }
     });
 };
 </script>

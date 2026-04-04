@@ -23,6 +23,9 @@ class Task extends Model
         'priority',
         'taskable_id',  
         'taskable_type',
+        'is_recurring',
+        'recurring_interval',
+        'recurring_unit',
     ];
 
     protected $casts = [
@@ -58,5 +61,15 @@ class Task extends Model
     public function comments()
     {
         return $this->morphMany(Comment::class, 'commentable');
+    }
+
+    public function requiredEvidences()
+    {
+        return $this->belongsToMany(
+            \App\Models\ServiceOrderEvidence::class, 
+            'service_order_evidence_task', 
+            'task_id', 
+            'service_order_evidence_id'
+        )->withTimestamps();
     }
 }

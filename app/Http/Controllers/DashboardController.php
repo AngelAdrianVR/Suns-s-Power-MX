@@ -37,8 +37,7 @@ class DashboardController extends Controller
                 ];
             });
 
-        // 2. Productos con Stock Bajo (Corregido usando Query Builder en tabla pivote)
-        // Hacemos un JOIN entre branch_product y products para obtener el nombre y SKU
+        // 2. Productos con Stock Bajo
         $lowStockProducts = DB::table('branch_product')
             ->join('products', 'branch_product.product_id', '=', 'products.id')
             ->where('branch_product.branch_id', $branchId)
@@ -83,7 +82,9 @@ class DashboardController extends Controller
 
         // 4. Clientes con Saldos
         $clientsWithBalance = Client::where('branch_id', $branchId)
-            ->withSum('serviceOrders as total_debt', 'total_amount')
+            ->withSum(['serviceOrders as total_debt' => function($query) {
+                $query->whereNotIn('status', ['Cotización', 'Cancelado']);
+            }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
             ->get()
             ->map(function ($client) {
@@ -136,16 +137,17 @@ class DashboardController extends Controller
         $kpis = [
             'total_pending_services' => ServiceOrder::where('branch_id', $branchId)->where('status', 'En Proceso')->count(),
             
-            // Corregido: Conteo directo sobre la tabla pivote branch_product
             'total_low_stock' => DB::table('branch_product')
                 ->where('branch_id', $branchId)
                 ->whereRaw('current_stock <= min_stock_alert')
                 ->count(),
 
-            'monthly_sales' => ServiceOrder::where('branch_id', $branchId)
-                ->whereNotIn('status', ['Cotización', 'Cancelado'])
-                ->whereMonth('created_at', now()->month)
-                ->sum('total_amount'),
+            'monthly_sales' => Auth::user()->can('sales.view_sales_amount') 
+                ? ServiceOrder::where('branch_id', $branchId)
+                    ->whereNotIn('status', ['Cotización', 'Cancelado'])
+                    ->whereMonth('created_at', now()->month)
+                    ->sum('total_amount')
+                : 0,
         ];
 
         return Inertia::render('Dashboard/Index', [

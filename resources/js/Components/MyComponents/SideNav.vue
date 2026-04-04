@@ -245,7 +245,7 @@ export default {
                             show: hasPermission('roles.index')
                         },
                         {
-                            label: 'Programación de tareas',
+                            label: 'Tipos de sistemas y ajustes',
                             route: 'task-templates.index',
                             active: current('task-templates.*'),
                             show: hasPermission('task-templates.index')

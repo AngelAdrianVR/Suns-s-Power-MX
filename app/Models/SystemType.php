@@ -25,4 +25,12 @@ class SystemType extends Model
     {
         return $this->belongsTo(Branch::class);
     }
+
+    public function products()
+    {
+        // Carga los productos y el campo pivot de cantidad
+        return $this->belongsToMany(Product::class, 'product_system_type')
+                    ->withPivot('quantity')
+                    ->withTimestamps();
+    }
 }
