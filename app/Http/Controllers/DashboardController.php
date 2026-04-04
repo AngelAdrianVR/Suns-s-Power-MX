@@ -80,30 +80,28 @@ class DashboardController extends Controller
                 ];
             });
 
-        // 4. Clientes con Saldos (Protegido por Permiso)
-        $clientsWithBalance = collect([]); // Por defecto enviamos una colección vacía
-
-        if (Auth::user()->can('clients.view_balance')) {
-            $clientsWithBalance = Client::where('branch_id', $branchId)
-                ->withSum('serviceOrders as total_debt', 'total_amount')
-                ->withSum('payments as total_paid', 'amount')
-                ->get()
-                ->map(function ($client) {
-                    $balance = ($client->total_debt ?? 0) - ($client->total_paid ?? 0);
-                    return [
-                        'id' => $client->id,
-                        'name' => $client->name,
-                        'phone' => $client->phone,
-                        'balance' => $balance,
-                    ];
-                })
-                ->filter(function ($client) {
-                    return $client['balance'] > 0;
-                })
-                ->sortByDesc('balance')
-                ->take(5)
-                ->values();
-        }
+        // 4. Clientes con Saldos
+        $clientsWithBalance = Client::where('branch_id', $branchId)
+            ->withSum(['serviceOrders as total_debt' => function($query) {
+                $query->whereNotIn('status', ['Cotización', 'Cancelado']);
+            }], 'total_amount')
+            ->withSum('payments as total_paid', 'amount')
+            ->get()
+            ->map(function ($client) {
+                $balance = ($client->total_debt ?? 0) - ($client->total_paid ?? 0);
+                return [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'phone' => $client->phone,
+                    'balance' => $balance,
+                ];
+            })
+            ->filter(function ($client) {
+                return $client['balance'] > 0;
+            })
+            ->sortByDesc('balance')
+            ->take(5)
+            ->values();
 
         // 5. TAREAS SEMANALES (KANBAN PARA DASHBOARD)
         $weekStart = Carbon::now()->startOfWeek();
