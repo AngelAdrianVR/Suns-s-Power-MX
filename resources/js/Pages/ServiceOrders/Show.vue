@@ -47,6 +47,16 @@ const handleTabChange = (name) => {
     window.history.replaceState({}, '', url);
 };
 
+// NUEVO: Función para hacer el salto automático de pestaña y arreglar la carga de imagen en producción
+const bounceTab = () => {
+    handleTabChange('details'); // Salta rápido a una pestaña vecina
+    
+    // Regresa a evidencias después de 100 milisegundos (suficiente para que la url actualice y Vue re-renderice sin que apenas se note)
+    setTimeout(() => {
+        handleTabChange('files');
+    }, 100);
+};
+
 // --- ESTADO Y UTILIDADES ---
 const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 const formatDate = (dateString) => {
@@ -90,7 +100,6 @@ const generalProgress = computed(() => {
     return Math.round((props.stats.completed_tasks / props.stats.total_tasks) * 100);
 });
 
-// Neva propiedad computada para validar si las tareas están completas
 const allTasksCompleted = computed(() => {
     if (!props.stats || props.stats.total_tasks === 0) return true;
     return props.stats.completed_tasks === props.stats.total_tasks;
@@ -116,12 +125,10 @@ const completionForm = useForm({
     installation_notes: ''
 });
 
-// Control de la animación de pulso
 const isPulseActive = ref(false);
 
 const triggerPulse = () => {
     isPulseActive.value = true;
-    // Detiene la animación después de 4 segundos
     setTimeout(() => {
         isPulseActive.value = false;
     }, 4000);
@@ -138,7 +145,7 @@ const openMaterialReportModal = () => {
     }));
     completionForm.installation_notes = '';
     showCompletionModal.value = true;
-    isPulseActive.value = false; // Detener animación si abre el modal manualmente
+    isPulseActive.value = false; 
 };
 
 const submitInstallationReport = () => {
@@ -166,9 +173,7 @@ const getStatusType = (status) => {
 const handleStatusUpdate = (newStatus) => {
     if (!hasPermission('service_orders.change_status')) return;
 
-    // --- NUEVAS REGLAS DE VALIDACIÓN ---
     if (newStatus === 'Completado') {
-        // 1. Validar Tareas
         if (!allTasksCompleted.value) {
             notification.error({ 
                 title: 'Tareas Pendientes', 
@@ -178,14 +183,13 @@ const handleStatusUpdate = (newStatus) => {
             return;
         }
 
-        // 2. Validar Materiales
         if (!materialsReported.value) {
             notification.warning({ 
                 title: 'Acción Requerida', 
                 content: 'Debes conciliar el material utilizado antes de marcar la orden como Completada.', 
                 duration: 5000 
             });
-            triggerPulse(); // Dispara la animación en el botón
+            triggerPulse(); 
             return;
         }
     }
@@ -260,7 +264,6 @@ const confirmDelete = () => {
 
                 <div class="flex gap-2">
                     
-                    <!-- BOTÓN INDEPENDIENTE DE CONCILIAR MATERIAL -->
                     <n-button 
                         :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
                         quaternary 
@@ -298,7 +301,6 @@ const confirmDelete = () => {
         <div class="py-8 min-h-screen">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
                 
-                <!-- KPI Cards -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <n-card size="small" class="rounded-2xl shadow-sm md:col-span-3">
                         <n-grid cols="2 md:4" item-responsive responsive="screen">
@@ -386,8 +388,9 @@ const confirmDelete = () => {
                             <OrderDetailsTab :order="order" />
                         </n-tab-pane>
 
+                        <!-- NUEVO: Agregamos el listener @upload-success para forzar el rebote -->
                         <n-tab-pane name="files" tab="Evidencias">
-                            <OrderFilesTab :order="order" />
+                            <OrderFilesTab :order="order" @upload-success="bounceTab" />
                         </n-tab-pane>
 
                     </n-tabs>
@@ -395,7 +398,6 @@ const confirmDelete = () => {
             </div>
         </div>
 
-        <!-- === MODAL AUDITABLE: CONCILIAR MATERIAL === -->
         <n-modal v-model:show="showCompletionModal" :mask-closable="false">
             <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">
                 <p class="text-gray-600 mb-4 text-sm">
@@ -424,7 +426,6 @@ const confirmDelete = () => {
                                     {{ item.assigned_qty }}
                                 </td>
                                 <td class="px-4 py-2 text-center">
-                                    <!-- Aceptamos hasta 2 decimales para medidas fraccionadas como metros, litros, etc. -->
                                     <n-input-number v-model:value="item.used_quantity" :min="0" :step="0.1" :precision="2" size="small" class="w-24 mx-auto" />
                                 </td>
                             </tr>
@@ -478,7 +479,7 @@ const confirmDelete = () => {
 
 .animate-attention {
     animation: pulse-warning 0.8s ease-in-out infinite;
-    color: #92400e !important; /* Tailwind text-yellow-800 */
+    color: #92400e !important; 
     border-color: #f59e0b !important;
     transition: all 0.3s ease;
 }

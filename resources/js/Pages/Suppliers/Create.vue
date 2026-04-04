@@ -79,7 +79,7 @@ const submit = () => {
         if (!errors) {
             const invalidContact = form.contacts.find(c => !c.name);
             if (invalidContact) {
-                notification.error({ title: 'Error', content: 'Todos los contactos deben tener un nombre.' });
+                notification.error({ title: 'Error', content: 'Todos los contactos deben tener un nombre.', duration: 3000 });
                 return;
             }
 

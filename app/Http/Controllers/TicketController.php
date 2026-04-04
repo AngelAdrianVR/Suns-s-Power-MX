@@ -497,8 +497,13 @@ class TicketController extends Controller
      */
     public function destroy(Ticket $ticket)
     {
+        // Eliminar la tarea asociada al ticket antes de eliminar el ticket
+        Task::where('taskable_type', Ticket::class)
+            ->where('taskable_id', $ticket->id)
+            ->delete();
+
         $ticket->delete();
-        return redirect()->back()->with('success', 'Ticket eliminado.');
+        return redirect()->back()->with('success', 'Ticket y tareas relacionadas eliminados.');
     }
 
     /**
