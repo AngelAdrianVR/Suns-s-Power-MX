@@ -25,6 +25,23 @@ class SystemTypeProductController extends Controller
         return back()->with('success', 'Producto asignado correctamente.');
     }
 
+    // NUEVO: Método para actualizar la cantidad
+    public function update(Request $request, $systemTypeId, $productId)
+    {
+        $validated = $request->validate([
+            'quantity' => 'required|numeric|min:0.01',
+        ]);
+
+        $systemType = SystemType::findOrFail($systemTypeId);
+        
+        // updateExistingPivot actualiza solo los datos pivote de la relación específica
+        $systemType->products()->updateExistingPivot($productId, [
+            'quantity' => $validated['quantity']
+        ]);
+
+        return back()->with('success', 'Cantidad de material actualizada.');
+    }
+
     public function destroy($systemTypeId, $productId)
     {
         $systemType = SystemType::findOrFail($systemTypeId);

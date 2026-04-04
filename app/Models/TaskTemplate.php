@@ -20,6 +20,7 @@ class TaskTemplate extends Model
         'is_recurring',
         'recurring_interval',
         'recurring_unit',
+        'recurring_count',
     ];
 
     public function branch()

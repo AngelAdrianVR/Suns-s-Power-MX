@@ -196,22 +196,35 @@ class ServiceOrderController extends Controller
             $serviceOrder = ServiceOrder::create($validated);
 
             if (!empty($validated['system_type'])) {
-                // 1. Programar Tareas
-                $templates = TaskTemplate::with('users')
+                // 1. Evidencias Requeridas (Se crean primero para obtener sus IDs)
+                $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+                    ->where('system_type', $validated['system_type'])
+                    ->orderBy('order', 'asc')
+                    ->get();
+
+                $evidenceMap = []; // Guardaremos [Template_ID => Evidencia_Real_ID]
+
+                foreach ($evidenceTemplates as $evTemplate) {
+                    $ev = $serviceOrder->evidences()->create([
+                        'title' => $evTemplate->title,
+                        'description' => $evTemplate->description,
+                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
+                        'order' => $evTemplate->order ?? 0, 
+                    ]);
+                    $evidenceMap[$evTemplate->id] = $ev->id;
+                }
+
+                // 2. Programar Tareas
+                $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                     ->where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
                     ->get();
 
                 foreach ($templates as $template) {
-                    
-                    // Cálculo de Fechas basadas en la configuración de la plantilla
                     $startDays = $template->start_days ?? 0;
                     $durationDays = $template->duration_days ?? 1;
 
-                    // La fecha de inicio es HOY + los días configurados al inicio del día
                     $startDate = now()->addDays($startDays)->startOfDay();
-                    
-                    // La fecha de finalización es Fecha Inicio + Duración (Restamos 1 si la duración incluye el mismo día)
                     $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
 
                     $task = $serviceOrder->tasks()->create([
@@ -222,28 +235,52 @@ class ServiceOrderController extends Controller
                         'status' => 'Pendiente',
                         'created_by' => $userId,
                         'start_date' => $startDate,  
-                        'due_date' => $dueDate,      
+                        'due_date' => $dueDate,
+                        'is_recurring' => $template->is_recurring ?? false,
+                        'recurring_interval' => $template->recurring_interval ?? 1,
+                        'recurring_unit' => $template->recurring_unit ?? 'months',      
                     ]);
 
                     $userIds = $template->users->pluck('id')->toArray();
                     if (!empty($userIds)) {
                         $task->assignees()->sync($userIds);
                     }
+
+                    // Ligar Evidencias a la Tarea usando nuestro mapa
+                    $requiredEvidenceIds = [];
+                    foreach ($template->evidenceTemplates as $reqEvTpl) {
+                        if (isset($evidenceMap[$reqEvTpl->id])) {
+                            $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                        }
+                    }
+                    if (!empty($requiredEvidenceIds)) {
+                        $task->requiredEvidences()->sync($requiredEvidenceIds);
+                    }
                 }
 
-                // 2. Programar Evidencias Requeridas
-                $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
-                    ->where('system_type', $validated['system_type'])
-                    ->orderBy('order', 'asc') // <-- NUEVO: Obtenemos plantillas ya ordenadas
-                    ->get();
+                // 3. Material Predeterminado
+                $systemTypeModel = SystemType::with('products')
+                    ->where('branch_id', $branchId)
+                    ->where('name', $validated['system_type'])
+                    ->first();
 
-                foreach ($evidenceTemplates as $evTemplate) {
-                    $serviceOrder->evidences()->create([
-                        'title' => $evTemplate->title,
-                        'description' => $evTemplate->description,
-                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
-                        'order' => $evTemplate->order ?? 0, // <-- NUEVO: Traspasamos el orden a la tabla hija
-                    ]);
+                if ($systemTypeModel) {
+                    foreach ($systemTypeModel->products as $product) {
+                        $serviceOrder->items()->create([
+                            'product_id' => $product->id,
+                            'quantity' => $product->pivot->quantity,
+                            'price' => $product->sale_price,
+                        ]);
+
+                        InventoryService::removeStock(
+                            product: $product,
+                            branchId: $branchId,
+                            quantity: $product->pivot->quantity,
+                            reason: 'Instalación (Auto)',
+                            reference: $serviceOrder,
+                            notes: "Material asignado automáticamente por tipo de sistema a Orden #{$serviceOrder->id}"
+                        );
+                    }
                 }
             }
         });
@@ -267,6 +304,7 @@ class ServiceOrderController extends Controller
             'items.product.category', 
             'tasks.assignees', 
             'tasks.comments.user', 
+            'tasks.requiredEvidences.media', // <-- AÑADIDO PARA ENVIAR EVIDENCIAS AL GANTT Y MODAL
             'media',
             'evidences' => function ($query) {
                 $query->orderBy('order', 'asc')->orderBy('id', 'asc');
@@ -313,6 +351,9 @@ class ServiceOrderController extends Controller
                 'end' => $task->due_date?->format('Y-m-d H:i:s'),
                 'status' => $task->status,
                 'has_unread_comments' => $hasUnread,
+                'is_recurring' => $task->is_recurring,
+                'recurring_interval' => $task->recurring_interval,
+                'recurring_unit' => $task->recurring_unit,
                 'comments' => $task->comments->map(fn($c) => [
                     'id' => $c->id,
                     'body' => $c->body,
@@ -325,6 +366,12 @@ class ServiceOrderController extends Controller
                     'name' => $user->name,
                     'phone' => $user->phone, 
                     'avatar' => $user->profile_photo_url 
+                ]),
+                // <-- AÑADIDO PARA QUE LLEGUE A VUE
+                'required_evidences' => $task->requiredEvidences->map(fn($ev) => [
+                    'id' => $ev->id,
+                    'title' => $ev->title,
+                    'media' => $ev->media ?? []
                 ])
             ];
         });
@@ -425,8 +472,25 @@ class ServiceOrderController extends Controller
                 // 2. Generar las nuevas
                 if (!empty($validated['system_type'])) {
                     
+                    // Evidencias
+                    $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+                        ->where('system_type', $validated['system_type'])
+                        ->orderBy('order', 'asc')
+                        ->get();
+
+                    $evidenceMap = [];
+                    foreach ($evidenceTemplates as $evTemplate) {
+                        $ev = $serviceOrder->evidences()->create([
+                            'title' => $evTemplate->title,
+                            'description' => $evTemplate->description,
+                            'allows_multiple' => $evTemplate->allows_multiple ?? false, 
+                            'order' => $evTemplate->order ?? 0,
+                        ]);
+                        $evidenceMap[$evTemplate->id] = $ev->id;
+                    }
+
                     // Tareas
-                    $templates = TaskTemplate::with('users')
+                    $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                         ->where('branch_id', $branchId)
                         ->where('system_type', $validated['system_type'])
                         ->get();
@@ -448,28 +512,51 @@ class ServiceOrderController extends Controller
                             'status' => 'Pendiente',
                             'created_by' => $userId,
                             'start_date' => $startDate,  
-                            'due_date' => $dueDate,      
+                            'due_date' => $dueDate,
+                            'is_recurring' => $template->is_recurring ?? false,
+                            'recurring_interval' => $template->recurring_interval ?? 1,
+                            'recurring_unit' => $template->recurring_unit ?? 'months',    
                         ]);
 
                         $userIds = $template->users->pluck('id')->toArray();
                         if (!empty($userIds)) {
                             $task->assignees()->sync($userIds);
                         }
+
+                        $requiredEvidenceIds = [];
+                        foreach ($template->evidenceTemplates as $reqEvTpl) {
+                            if (isset($evidenceMap[$reqEvTpl->id])) {
+                                $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                            }
+                        }
+                        if (!empty($requiredEvidenceIds)) {
+                            $task->requiredEvidences()->sync($requiredEvidenceIds);
+                        }
                     }
 
-                    // Evidencias
-                    $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
-                        ->where('system_type', $validated['system_type'])
-                        ->orderBy('order', 'asc')
-                        ->get();
+                    // Productos / Material Predeterminado
+                    $systemTypeModel = SystemType::with('products')
+                        ->where('branch_id', $branchId)
+                        ->where('name', $validated['system_type'])
+                        ->first();
 
-                    foreach ($evidenceTemplates as $evTemplate) {
-                        $serviceOrder->evidences()->create([
-                            'title' => $evTemplate->title,
-                            'description' => $evTemplate->description,
-                            'allows_multiple' => true, // Forzamos a true para permitir múltiples siempre
-                            'order' => $evTemplate->order ?? 0,
-                        ]);
+                    if ($systemTypeModel) {
+                        foreach ($systemTypeModel->products as $product) {
+                            $serviceOrder->items()->create([
+                                'product_id' => $product->id,
+                                'quantity' => $product->pivot->quantity,
+                                'price' => $product->sale_price,
+                            ]);
+
+                            InventoryService::removeStock(
+                                product: $product,
+                                branchId: $branchId,
+                                quantity: $product->pivot->quantity,
+                                reason: 'Instalación (Auto)',
+                                reference: $serviceOrder,
+                                notes: "Material asignado automáticamente por edición de tipo de sistema a Orden #{$serviceOrder->id}"
+                            );
+                        }
                     }
                 }
             }
@@ -701,49 +788,174 @@ class ServiceOrderController extends Controller
     }
 
     /**
-     * Sincroniza y genera las evidencias faltantes en las órdenes de servicio anteriores
+     * Sincroniza y genera las evidencias, tareas y productos faltantes
      */
-    public function syncEvidences(Request $request)
+    public static function syncSystemTypeData($branchId = null)
     {
-        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        $query = ServiceOrder::whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
+            ->whereNotNull('system_type');
+            
+        if ($branchId) {
+            $query->where('branch_id', $branchId);
+        }
         
-        // Obtener todas las órdenes de la sucursal actual que tengan un tipo de sistema
-        $orders = ServiceOrder::with('evidences')
-            ->where('branch_id', $branchId)
-            ->whereNotNull('system_type')
-            ->get();
+        $orders = $query->get();
 
-        $addedCount = 0;
-
-        // Obtener plantillas y agruparlas por sistema
-        $templatesBySystem = EvidenceTemplate::where('branch_id', $branchId)
-            ->orderBy('order', 'asc')
-            ->get()
-            ->groupBy('system_type');
-
-        DB::transaction(function () use ($orders, $templatesBySystem, &$addedCount) {
-            foreach ($orders as $order) {
-                if ($templatesBySystem->has($order->system_type)) {
-                    $templates = $templatesBySystem->get($order->system_type);
-                    
-                    // Nombres de evidencias que ya tiene esta orden para no duplicar
-                    $existingTitles = $order->evidences->pluck('title')->toArray();
-
-                    foreach ($templates as $template) {
-                        if (!in_array($template->title, $existingTitles)) {
-                            $order->evidences()->create([
-                                'title' => $template->title,
-                                'description' => $template->description,
-                                'allows_multiple' => true, 
-                                'order' => $template->order ?? 0,
-                            ]);
-                            $addedCount++;
+        foreach ($orders as $order) {
+            $systemTypeModel = SystemType::with('products')->where('branch_id', $order->branch_id)->where('name', $order->system_type)->first();
+            
+            // 1. Sync Products (Items)
+            if ($systemTypeModel) {
+                $existingProducts = $order->items()->get()->keyBy('product_id');
+                foreach ($systemTypeModel->products as $product) {
+                    if (!$existingProducts->has($product->id)) {
+                        $order->items()->create([
+                            'product_id' => $product->id,
+                            'quantity' => $product->pivot->quantity,
+                            'price' => $product->sale_price,
+                        ]);
+                        InventoryService::removeStock(
+                            product: $product,
+                            branchId: $order->branch_id,
+                            quantity: $product->pivot->quantity,
+                            reason: 'Instalación (Auto-Sync)',
+                            reference: $order,
+                            notes: "Material auto-asignado por sincronización de Tipo de Sistema a Orden #{$order->id}"
+                        );
+                    } else {
+                        // Sincronizar cantidades si se actualizó el número en la plantilla y el material aún no se concilia
+                        $existingItem = $existingProducts->get($product->id);
+                        if ($existingItem->used_quantity === null && $existingItem->quantity != $product->pivot->quantity) {
+                            $diff = $product->pivot->quantity - $existingItem->quantity;
+                            $existingItem->update(['quantity' => $product->pivot->quantity]);
+                            
+                            if ($diff > 0) {
+                                InventoryService::removeStock($product, $order->branch_id, $diff, 'Instalación (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
+                            } else {
+                                InventoryService::addStock($product, $order->branch_id, abs($diff), 'Devolución (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
+                            }
                         }
                     }
                 }
             }
-        });
 
-        return back()->with('success', "Sincronización completada. Se generaron {$addedCount} evidencias faltantes en servicios anteriores.");
+            // 2. Sync Evidences
+            $evidenceTemplates = EvidenceTemplate::where('branch_id', $order->branch_id)
+                ->where('system_type', $order->system_type)
+                ->orderBy('order', 'asc')
+                ->get();
+                
+            $evidenceMap = []; 
+            
+            foreach ($evidenceTemplates as $evTemplate) {
+                $ev = $order->evidences()->where('title', $evTemplate->title)->first();
+                if (!$ev) {
+                    $ev = $order->evidences()->create([
+                        'title' => $evTemplate->title,
+                        'description' => $evTemplate->description,
+                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
+                        'order' => $evTemplate->order ?? 0,
+                    ]);
+                } else {
+                    // Actualizar en caso de que se haya modificado la descripción, el orden o si es múltiple
+                    $ev->update([
+                        'description' => $evTemplate->description,
+                        'allows_multiple' => $evTemplate->allows_multiple ?? false,
+                        'order' => $evTemplate->order ?? 0,
+                    ]);
+                }
+                $evidenceMap[$evTemplate->id] = $ev->id;
+            }
+            
+            // 3. Sync Tasks
+            $taskTemplates = TaskTemplate::with(['users', 'evidenceTemplates'])
+                ->where('branch_id', $order->branch_id)
+                ->where('system_type', $order->system_type)
+                ->get();
+                
+            foreach ($taskTemplates as $template) {
+                // Obtenemos cuántas veces se va a repetir y la unidad de tiempo
+                $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
+                $interval = $template->recurring_interval ?? 1;
+                $unit = $template->recurring_unit ?? 'months';
+
+                // Iteramos la cantidad de veces solicitada para crear/sincronizar las tareas cíclicas
+                for ($i = 1; $i <= $recurringCount; $i++) {
+                    $taskTitle = $template->title;
+                    if ($recurringCount > 1) {
+                        $taskTitle .= " ($i/$recurringCount)"; 
+                    }
+
+                    $task = $order->tasks()->where('title', $taskTitle)->first();
+                    
+                    if (!$task) {
+                        $startDays = $template->start_days ?? 0;
+                        $durationDays = $template->duration_days ?? 1;
+
+                        // Fecha de inicio base (creación de la orden + días para iniciar)
+                        $startDate = $order->created_at->copy()->addDays($startDays);
+
+                        // Si es la iteración 2 en adelante, sumamos el tiempo cíclico
+                        if ($i > 1 && $template->is_recurring) {
+                            $multiplier = $i - 1;
+                            if ($unit === 'days') $startDate->addDays($interval * $multiplier);
+                            elseif ($unit === 'weeks') $startDate->addWeeks($interval * $multiplier);
+                            elseif ($unit === 'months') $startDate->addMonths($interval * $multiplier);
+                            elseif ($unit === 'years') $startDate->addYears($interval * $multiplier);
+                        }
+
+                        $startDate = $startDate->startOfDay();
+                        $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                        $task = $order->tasks()->create([
+                            'branch_id' => $order->branch_id,
+                            'title' => $taskTitle,
+                            'description' => $template->description,
+                            'priority' => $template->priority,
+                            'status' => 'Pendiente',
+                            'created_by' => $order->sales_rep_id ?? 1, 
+                            'start_date' => $startDate,  
+                            'due_date' => $dueDate,
+                            'is_recurring' => $template->is_recurring ?? false,
+                            'recurring_interval' => $interval,
+                            'recurring_unit' => $unit,
+                        ]);
+
+                        $userIds = $template->users->pluck('id')->toArray();
+                        if (!empty($userIds)) {
+                            $task->assignees()->sync($userIds);
+                        }
+                    } else {
+                        // Actualizar descripciones y prioridad por si se editaron en la plantilla base
+                        $task->update([
+                            'description' => $template->description,
+                            'priority' => $template->priority,
+                        ]);
+                    }
+                    
+                    // Siempre sincronizar las evidencias por si fueron movidas/añadidas/quitadas
+                    $requiredEvidenceIds = [];
+                    foreach ($template->evidenceTemplates as $reqEvTpl) {
+                        if (isset($evidenceMap[$reqEvTpl->id])) {
+                            $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                        }
+                    }
+                    if (!empty($requiredEvidenceIds)) {
+                        $task->requiredEvidences()->sync($requiredEvidenceIds);
+                    } else {
+                        $task->requiredEvidences()->detach();
+                    }
+                }
+            }
+        }
+    }
+
+    public function syncEvidences(Request $request)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        
+        self::syncSystemTypeData($branchId);
+
+        return back()->with('success', "Sincronización de tareas, evidencias y productos completada.");
     }
 }

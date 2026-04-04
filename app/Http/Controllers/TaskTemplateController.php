@@ -3,51 +3,45 @@
 namespace App\Http\Controllers;
 
 use App\Models\TaskTemplate;
+use App\Models\SystemType;
 use App\Models\EvidenceTemplate;
 use App\Models\User;
-use App\Models\SystemType; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Inertia\Inertia;
+use Inertia\Inertia; // <-- Añade esta importación arriba si no la tienes
 
 class TaskTemplateController extends Controller
 {
+    // AÑADE ESTA FUNCIÓN INDEX AQUI
     public function index()
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
-        // Añadimos 'evidenceTemplates' al with para cargar las relaciones
-        $taskTemplates = TaskTemplate::with(['users:id,name,profile_photo_path', 'evidenceTemplates'])
-            ->where('branch_id', $branchId)
+        // Cargar los tipos de sistema con sus productos asignados (para la pestaña "Material Requerido")
+        $systemTypes = SystemType::where('branch_id', $branchId)
+            ->with(['products' => function($q) {
+                $q->withPivot('quantity');
+            }])->get();
+
+        // Cargar plantillas de tareas con sus relaciones necesarias (usuarios y evidencias)
+        $taskTemplates = TaskTemplate::where('branch_id', $branchId)
+            ->with(['users', 'evidenceTemplates'])
             ->get();
 
-        // Añadimos 'taskTemplates' al with
-        $evidenceTemplates = EvidenceTemplate::with('taskTemplates')->where('branch_id', $branchId)->get();
-
-        // Traemos el tipo de sistema incluyendo sus productos asignados
-        $systemTypes = SystemType::with('products:id,name,sku')
-            ->where('branch_id', $branchId)
+        // Cargar plantillas de evidencias con sus relaciones (tareas que las requieren)
+        $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
+            ->with('taskTemplates')
+            ->orderBy('order', 'asc') // Respetar el orden en el que las arrastran
             ->get();
 
-        if ($systemTypes->isEmpty()) {
-             $defaultTypes = ['Interconectado', 'Autónomo', 'Multimodo', 'Respaldo', 'Bombeo'];
-             foreach($defaultTypes as $type){
-                 SystemType::create(['branch_id' => $branchId, 'name' => $type]);
-             }
-             $systemTypes = SystemType::where('branch_id', $branchId)->get(['id', 'name']);
-        }
+        // Cargar los usuarios que pueden ser asignables
+        $assignableUsers = User::where('branch_id', $branchId)->get();
 
-        $assignableUsers = User::where('branch_id', $branchId)
-            ->where('is_active', true)
-            ->where('id', '!=', 1)
-            ->select('id', 'name', 'profile_photo_path')
-            ->orderBy('name')
-            ->get();
-
+        // Enviar la información a la vista de Vue (IndexTemplates.vue)
         return Inertia::render('Setting/TaskTemplates/Index', [
+            'system_types' => $systemTypes,
             'task_templates' => $taskTemplates,
             'evidence_templates' => $evidenceTemplates,
-            'system_types' => $systemTypes,
             'assignable_users' => $assignableUsers,
         ]);
     }
@@ -61,79 +55,96 @@ class TaskTemplateController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'priority' => 'required|in:Baja,Media,Alta',
-            'start_days' => 'required|integer|min:0',
-            'duration_days' => 'required|integer|min:1',
+            'start_days' => 'integer|min:0',
+            'duration_days' => 'integer|min:1',
+            'is_recurring' => 'boolean',
+            'recurring_interval' => 'nullable|integer|min:1',
+            'recurring_unit' => 'nullable|in:days,weeks,months,years',
+            'recurring_count' => 'nullable|integer|min:1', // <-- NUEVO CAMPO AÑADIDO
             'users' => 'nullable|array',
             'users.*' => 'exists:users,id',
             'evidences' => 'nullable|array',
             'evidences.*' => 'exists:evidence_templates,id',
         ]);
 
-        $template = TaskTemplate::create([
+        $taskTemplate = TaskTemplate::create([
             'branch_id' => $branchId,
             'system_type' => $validated['system_type'],
             'title' => $validated['title'],
             'description' => $validated['description'],
             'priority' => $validated['priority'],
-            'start_days' => $validated['start_days'],
-            'duration_days' => $validated['duration_days'],
+            'start_days' => $validated['start_days'] ?? 0,
+            'duration_days' => $validated['duration_days'] ?? 1,
+            'is_recurring' => $validated['is_recurring'] ?? false,
+            'recurring_interval' => $validated['recurring_interval'] ?? 1,
+            'recurring_unit' => $validated['recurring_unit'] ?? 'months',
+            'recurring_count' => $validated['recurring_count'] ?? 1, // <-- NUEVO CAMPO GUARDADO
         ]);
 
         if (!empty($validated['users'])) {
-            $template->users()->sync($validated['users']);
+            $taskTemplate->users()->sync($validated['users']);
         }
 
         if (!empty($validated['evidences'])) {
-            $template->evidenceTemplates()->sync($validated['evidences']);
+            $taskTemplate->evidenceTemplates()->sync($validated['evidences']);
         }
 
-        return back()->with('success', 'Plantilla de tarea creada correctamente.');
+        return back()->with('success', 'Plantilla de tarea guardada.');
     }
 
     public function update(Request $request, TaskTemplate $taskTemplate)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($taskTemplate->branch_id !== $branchId) abort(403);
+        if ($taskTemplate->branch_id !== $branchId) {
+            abort(403);
+        }
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'priority' => 'required|in:Baja,Media,Alta',
-            'start_days' => 'required|integer|min:0',
-            'duration_days' => 'required|integer|min:1',
+            'start_days' => 'integer|min:0',
+            'duration_days' => 'integer|min:1',
+            'is_recurring' => 'boolean',
+            'recurring_interval' => 'nullable|integer|min:1',
+            'recurring_unit' => 'nullable|in:days,weeks,months,years',
+            'recurring_count' => 'nullable|integer|min:1', // <-- ASEGURAMOS QUE ESTÉ AQUÍ TAMBIÉN
             'users' => 'nullable|array',
             'users.*' => 'exists:users,id',
             'evidences' => 'nullable|array',
             'evidences.*' => 'exists:evidence_templates,id',
-            'is_recurring' => 'boolean',
-            'recurring_interval' => 'nullable|integer|min:1',
-            'recurring_unit' => 'nullable|string|in:days,weeks,months,years',
         ]);
 
         $taskTemplate->update([
             'title' => $validated['title'],
             'description' => $validated['description'],
             'priority' => $validated['priority'],
-            'start_days' => $validated['start_days'],
-            'duration_days' => $validated['duration_days'],
+            'start_days' => $validated['start_days'] ?? 0,
+            'duration_days' => $validated['duration_days'] ?? 1,
             'is_recurring' => $validated['is_recurring'] ?? false,
             'recurring_interval' => $validated['recurring_interval'] ?? 1,
             'recurring_unit' => $validated['recurring_unit'] ?? 'months',
+            'recurring_count' => $validated['recurring_count'] ?? 1, // <-- GUARDAR AL EDITAR
         ]);
 
+        // Sincronizar usuarios
         $taskTemplate->users()->sync($validated['users'] ?? []);
-        
-        // Sincronizar evidencias requeridas
+
+        // Sincronizar evidencias
         $taskTemplate->evidenceTemplates()->sync($validated['evidences'] ?? []);
 
-        return back()->with('success', 'Plantilla actualizada correctamente.');
+        return back()->with('success', 'Plantilla de tarea actualizada.');
     }
 
     public function destroy(TaskTemplate $taskTemplate)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
-        if ($taskTemplate->branch_id !== $branchId) abort(403);
+        if ($taskTemplate->branch_id !== $branchId) {
+            abort(403);
+        }
+
         $taskTemplate->delete();
-        return back()->with('success', 'Plantilla eliminada.');
+
+        return back()->with('success', 'Plantilla de tarea eliminada.');
     }
 }

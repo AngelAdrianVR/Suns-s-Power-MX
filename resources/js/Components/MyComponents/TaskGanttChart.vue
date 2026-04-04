@@ -14,7 +14,9 @@ import { es } from 'date-fns/locale';
 import { 
     AddOutline, SaveOutline, CloseOutline, LogoWhatsapp, 
     PencilOutline, TrashOutline, ChatbubbleOutline, FlagOutline, SendOutline,
-    CalendarOutline, TimeOutline, PersonOutline
+    CalendarOutline, TimeOutline, PersonOutline,
+    ChevronDownOutline, ConstructOutline, LocationOutline, MapOutline,
+    HardwareChipOutline, SpeedometerOutline, CameraOutline, CheckmarkCircleOutline, SyncOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -36,7 +38,7 @@ const props = defineProps({
     }
 });
 
-const { notification } = createDiscreteApi(['notification']);
+const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 const { hasPermission } = usePermissions(); // Extrayendo permisos
 const page = usePage();
 const currentUserId = computed(() => page.props.auth?.user?.id); // ID del usuario logueado
@@ -45,6 +47,13 @@ const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedTask = ref(null);
 const isEditing = ref(false); 
+
+// Estado para controlar la vista de comentarios en Móvil
+const showMobileComments = ref(false);
+
+watch(showDetailModal, (val) => {
+    if (val) showMobileComments.value = false;
+});
 
 // --- REGLA DE NEGOCIO PARA CAMBIO DE STATUS ---
 const canEditTaskStatus = (task) => {
@@ -115,6 +124,7 @@ const openCreate = () => {
 };
 
 const openEdit = (task) => {
+    showDetailModal.value = false; // Cierra modal de detalles si estaba abierto
     isEditing.value = true;
     form.id = task.id;
     // Soporte hacia atrás por si viene como name o title
@@ -167,11 +177,39 @@ const submitTask = () => {
 };
 
 const updateTaskStatus = (task, newStatus) => {
+    // Validación estricta de responsables antes de permitir el cambio de estatus
+    if (!task.assignees || task.assignees.length === 0) {
+        notification.warning({ 
+            title: 'Responsable Requerido', 
+            content: 'No puedes cambiar el estatus de una tarea que no tiene personal asignado. Por favor, edita la tarea y asigna a un responsable primero.', 
+            duration: 6000 
+        });
+        return; 
+    }
+    
+    // Validación de evidencias
+    if (newStatus === 'Completado') {
+        const pendingEvidences = task.required_evidences?.filter(e => !e.media?.length).length || 0;
+        if (pendingEvidences > 0) {
+            notification.error({
+                title: 'Evidencias Pendientes',
+                content: `No puedes completar la tarea. Faltan ${pendingEvidences} evidencias por subir en la Orden de Servicio vinculada.`,
+                duration: 6000
+            });
+            return;
+        }
+    }
+
     task.status = newStatus;
     router.put(route('tasks.update', task.id), { status: newStatus }, {
         preserveScroll: true,
         preserveState: true, 
-        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.', duration: 3000 })
+        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.', duration: 3000 }),
+        onError: (errors) => {
+            if (errors.status) {
+                notification.error({ title: 'Error', content: errors.status, duration: 5000 });
+            }
+        }
     });
 };
 
@@ -182,7 +220,20 @@ const deleteTask = (taskId) => {
     });
 };
 
-// --- Comentarios ---
+const confirmDeleteFromModal = () => {
+    dialog.warning({
+        title: 'Eliminar Tarea',
+        content: '¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer.',
+        positiveText: 'Sí, Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => {
+            deleteTask(selectedTask.value.id);
+            showDetailModal.value = false;
+        }
+    });
+};
+
+// --- Comentarios y Modal de Detalle ---
 const openDetail = (task) => {
     selectedTask.value = task;
     commentForm.commentable_id = task.id;
@@ -200,6 +251,29 @@ const submitComment = () => {
         }
     });
 };
+
+// --- UTILIDADES UI ---
+
+const getStatusTagType = (status) => {
+    const map = { 'Pendiente': 'default', 'En Proceso': 'info', 'Completado': 'success', 'Detenido': 'error' };
+    return map[status] || 'default';
+};
+
+const getAvatarSrc = (user) => {
+    if (user?.avatar) return user.avatar;
+    if (user?.profile_photo_url) return user.profile_photo_url;
+    if (user?.profile_photo_path) return '/storage/' + user.profile_photo_path;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user || 'User')}&background=random`;
+};
+
+const getGoogleMapsUrl = (lat, lng, fullAddress) => {
+    if (lat && lng) {
+        return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    } else if (fullAddress) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+    }
+    return '#';
+}
 
 // --- WHATSAPP LOGIC ---
 const whatsappOptions = [
@@ -289,6 +363,11 @@ const getTaskStyle = (task) => {
 
 const getDisplayEndDate = (task) => {
     return task.finish_date || task.due_date || task.end; 
+};
+
+const translateUnit = (unit) => {
+    const units = { days: 'día(s)', weeks: 'semana(s)', months: 'mes(es)', years: 'año(s)' };
+    return units[unit] || unit;
 };
 
 </script>
@@ -417,7 +496,7 @@ const getDisplayEndDate = (task) => {
                                     <div class="flex -space-x-1.5">
                                         <n-tooltip v-for="user in task.assignees" :key="user.id" placement="bottom">
                                             <template #trigger>
-                                                <n-avatar round size="small" :src="user.avatar" class="border-2 border-white shadow-sm hover:z-10 relative"/>
+                                                <n-avatar round size="small" :src="getAvatarSrc(user)" class="border-2 border-white shadow-sm hover:z-10 relative"/>
                                             </template>
                                             {{ user.name }}
                                         </n-tooltip>
@@ -497,6 +576,12 @@ const getDisplayEndDate = (task) => {
                                     <div class="flex items-center gap-1"><n-icon><FlagOutline/></n-icon> Estatus: <strong>{{ task.status }}</strong></div>
                                     <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Inicio: {{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM, HH:mm') : 'N/A' }}</div>
                                     <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Fin: {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM, HH:mm') : 'N/A' }}</div>
+                                    <div v-if="task.is_recurring" class="flex items-center gap-1 text-purple-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
+                                        <n-icon><SyncOutline/></n-icon> Tarea Cíclica (Cada {{ task.recurring_interval }} {{ translateUnit(task.recurring_unit) }})
+                                    </div>
+                                    <div v-if="task.required_evidences?.length" class="flex items-center gap-1 text-blue-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
+                                        <n-icon><CameraOutline/></n-icon> Requiere {{ task.required_evidences.length }} evidencia(s)
+                                    </div>
                                 </div>
                             </n-tooltip>
                         </div>
@@ -552,127 +637,272 @@ const getDisplayEndDate = (task) => {
         </n-modal>
 
         <!-- ============================================== -->
-        <!-- MODAL DETALLE Y CHAT                           -->
+        <!-- MODAL DETALLE Y CHAT COMPLETO                  -->
         <!-- ============================================== -->
         <n-modal v-model:show="showDetailModal">
-            <n-card style="width: 850px; max-width: 95vw;" :bordered="false" role="dialog" aria-modal="true" content-style="padding: 0;" class="rounded-2xl shadow-2xl overflow-hidden">
-                
-                <!-- Header del Modal -->
-                <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-start bg-gray-50/80">
-                    <div class="pr-8">
-                        <div class="flex items-center gap-3 mb-1">
-                            <n-tag :type="selectedTask?.status === 'Completado' ? 'success' : 'default'" size="small" round font-bold>{{ selectedTask?.status }}</n-tag>
-                            <span class="text-xs font-bold px-2 py-0.5 rounded-md" :class="{
-                                'bg-red-100 text-red-700': selectedTask?.priority === 'Alta',
-                                'bg-amber-100 text-amber-700': selectedTask?.priority === 'Media',
-                                'bg-blue-100 text-blue-700': selectedTask?.priority === 'Baja'
-                            }">Prioridad {{ selectedTask?.priority }}</span>
-                        </div>
-                        <h2 class="text-xl font-bold text-gray-800 leading-tight mt-2">{{ selectedTask?.title || selectedTask?.name }}</h2>
+            <n-card style="width: 900px; max-width: 95vw;" :bordered="false" size="small" closable @close="showDetailModal = false" content-style="padding: 0;">
+                <template #header>
+                    <div class="text-sm md:text-base font-bold text-gray-800 leading-tight pr-6 break-words whitespace-normal">
+                        {{ selectedTask?.title || selectedTask?.name || 'Detalle de la Tarea' }}
                     </div>
-                    <n-button circle quaternary @click="showDetailModal=false">
-                        <template #icon><n-icon size="24"><CloseOutline /></n-icon></template>
-                    </n-button>
-                </div>
-
-                <div class="flex flex-col md:flex-row h-[550px] bg-white" v-if="selectedTask">
+                </template>
+                
+                <div class="flex flex-col md:flex-row h-[80vh] md:h-[600px] max-h-[85vh]" v-if="selectedTask">
                     
-                    <!-- COLUMNA IZQUIERDA: Info Detallada -->
-                    <div class="w-full md:w-[45%] p-6 space-y-6 border-r border-gray-100 overflow-y-auto">
+                    <!-- Toggle Button (Exclusivo para móviles) -->
+                    <div class="md:hidden p-3 bg-gray-50 border-b border-gray-100 flex-shrink-0 sticky top-0 z-20">
+                        <n-button block type="primary" secondary @click="showMobileComments = !showMobileComments" class="font-bold">
+                            <template #icon>
+                                <n-icon><ChatbubbleOutline v-if="!showMobileComments"/><CreateOutline v-else/></n-icon>
+                            </template>
+                            {{ showMobileComments ? 'Volver a Detalles de Tarea' : `Ver Comentarios y Notas (${selectedTask.comments?.length || 0})` }}
+                        </n-button>
+                    </div>
+
+                    <!-- Columna Izquierda: Información -->
+                    <div class="w-full md:w-1/2 p-4 md:p-5 space-y-4 md:space-y-5 border-r border-gray-100 overflow-y-auto bg-white custom-scrollbar flex-1"
+                         :class="showMobileComments ? 'hidden md:block' : 'block'">
                         
+                        <!-- Control de Estatus y Prioridad -->
+                        <div class="flex justify-between items-center bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                             <div class="flex flex-col">
+                                 <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Estatus:</span>
+                                 <n-popselect
+                                     v-if="canEditTaskStatus(selectedTask)"
+                                     :value="selectedTask.status"
+                                     :options="[
+                                         {label: 'Pendiente', value: 'Pendiente'},
+                                         {label: 'En Proceso', value: 'En Proceso'},
+                                         {label: 'Detenido', value: 'Detenido'},
+                                         {label: 'Completado', value: 'Completado'}
+                                     ]"
+                                     trigger="click"
+                                     @update:value="(val) => updateTaskStatus(selectedTask, val)"
+                                 >
+                                     <n-tag :type="getStatusTagType(selectedTask.status)" class="font-bold shadow-sm cursor-pointer hover:opacity-80 transition-all flex items-center gap-1.5" :bordered="false">
+                                         {{ selectedTask.status }}
+                                         <n-icon size="14"><ChevronDownOutline/></n-icon>
+                                     </n-tag>
+                                 </n-popselect>
+                                 <n-tag v-else :type="getStatusTagType(selectedTask.status)" class="font-bold shadow-sm flex items-center gap-1.5" :bordered="false" title="Sin permisos para editar estatus">
+                                     {{ selectedTask.status }}
+                                 </n-tag>
+                             </div>
+                             <div class="flex flex-col items-end">
+                                 <span class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Prioridad:</span>
+                                 <div class="flex items-center gap-1.5 text-xs text-gray-700 font-bold bg-white px-2 py-1.5 rounded-md shadow-sm border border-gray-100">
+                                    <div class="w-2.5 h-2.5 rounded-full" :class="{
+                                        'bg-red-500': selectedTask.priority === 'Alta',
+                                        'bg-amber-500': selectedTask.priority === 'Media',
+                                        'bg-blue-400': selectedTask.priority === 'Baja'
+                                    }"></div>
+                                    {{ selectedTask.priority }}
+                                 </div>
+                             </div>
+                        </div>
+                       
                         <!-- Descripción -->
                         <div>
-                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Descripción</h4>
-                            <div class="text-sm text-gray-700 bg-gray-50 p-4 rounded-xl leading-relaxed whitespace-pre-wrap">
-                                {{ selectedTask.description || 'No se agregaron instrucciones adicionales para esta tarea.' }}
+                            <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1.5 flex items-center">
+                                <n-icon class="mr-1 text-sm"><CreateOutline/></n-icon>Descripción
+                            </div>
+                            <p class="text-gray-700 text-sm mt-1 bg-gray-50 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap leading-relaxed">{{ selectedTask.description || 'Sin descripción detallada.' }}</p>
+                        </div>
+
+                        <!-- Evidencias Requeridas -->
+                        <div class="mt-4 border-t border-gray-100 pt-4">
+                            <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 flex items-center">
+                                <n-icon class="mr-1 text-sm"><CameraOutline/></n-icon>Evidencias Requeridas
+                            </div>
+                            
+                            <div v-if="selectedTask.required_evidences?.length" class="space-y-2">
+                                <div v-for="ev in selectedTask.required_evidences" :key="ev.id" class="flex items-center justify-between bg-blue-50/50 p-2.5 rounded-lg border border-blue-100/50">
+                                    <div class="flex flex-col flex-1 min-w-0 pr-3">
+                                        <span class="text-xs font-bold text-blue-900 truncate" :title="ev.title">{{ ev.title }}</span>
+                                    </div>
+                                    <n-tag :type="ev.media?.length ? 'success' : 'warning'" size="small" round :bordered="false" class="flex-shrink-0 font-bold shadow-sm">
+                                        {{ ev.media?.length ? 'Completada' : 'Pendiente' }}
+                                    </n-tag>
+                                </div>
+                                <div class="mt-2 text-[10px] text-gray-500 italic">
+                                    * Las evidencias se suben directamente desde el perfil de la Orden de Servicio vinculada.
+                                </div>
+                            </div>
+                            
+                            <!-- Mensaje claro si no requiere evidencias -->
+                            <div v-else class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100 flex items-center gap-2">
+                                <n-icon size="16" class="text-gray-400"><CheckmarkCircleOutline/></n-icon>
+                                <span>Esta tarea <strong>no requiere</strong> adjuntar evidencias fotográficas.</span>
                             </div>
                         </div>
 
-                        <!-- Fechas -->
-                        <div>
-                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Tiempos</h4>
-                            <n-descriptions label-placement="left" :column="1" size="small" bordered class="bg-white rounded-xl overflow-hidden">
-                                <n-descriptions-item label="Inicio">
-                                    <span class="font-medium text-gray-800">{{ (selectedTask.start_date || selectedTask.start) ? format(parseISO(selectedTask.start_date || selectedTask.start), 'dd MMM yyyy, HH:mm') : 'Sin definir' }}</span>
-                                </n-descriptions-item>
-                                <n-descriptions-item label="Vencimiento">
-                                    <span class="font-medium text-gray-800">{{ (selectedTask.due_date || selectedTask.end) ? format(parseISO(selectedTask.due_date || selectedTask.end), 'dd MMM yyyy, HH:mm') : 'Sin definir' }}</span>
-                                </n-descriptions-item>
-                                <n-descriptions-item label="Fin Real">
-                                    <span class="font-bold" :class="selectedTask.finish_date ? 'text-green-600' : 'text-gray-400'">
-                                        {{ selectedTask.finish_date ? format(parseISO(selectedTask.finish_date), 'dd MMM yyyy, HH:mm') : 'Pendiente' }}
-                                    </span>
-                                </n-descriptions-item>
-                            </n-descriptions>
-                        </div>
-
-                         <!-- Responsables -->
-                         <div>
-                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Responsables Asignados</h4>
-                            <div class="flex flex-col gap-2">
-                                <div v-for="u in selectedTask.assignees" :key="u.id" class="flex items-center gap-3 bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
-                                    <n-avatar :src="u.avatar" round size="medium" />
+                        <!-- Datos de la Tarea/Orden Relacionada (Si existe) -->
+                        <div v-if="selectedTask.taskable_type === 'App\\Models\\ServiceOrder' && selectedTask.taskable" class="mt-4 border-t border-gray-100 pt-4">
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider flex items-center">
+                                    <n-icon class="mr-1 text-sm"><ConstructOutline/></n-icon>Detalles de Operación
+                                </div>
+                            </div>
+                            
+                            <div class="bg-blue-50/30 rounded-xl p-4 border border-blue-100/50 space-y-3">
+                                <!-- Cliente -->
+                                <div class="flex items-start gap-2" v-if="selectedTask.taskable.client">
+                                    <n-icon class="mt-0.5 text-gray-400"><PersonOutline/></n-icon>
                                     <div>
-                                        <div class="text-sm font-bold text-gray-800">{{ u.name }}</div>
-                                        <div class="text-xs text-gray-500 flex items-center gap-1"><n-icon><LogoWhatsapp/></n-icon> {{ u.phone || 'Sin número' }}</div>
+                                        <div class="text-xs text-gray-500 font-medium">Cliente</div>
+                                        <div class="text-sm font-semibold text-gray-800">{{ selectedTask.taskable.client.name }}</div>
                                     </div>
                                 </div>
-                                <div v-if="!selectedTask.assignees?.length" class="text-sm text-gray-400 italic py-2">Ningún responsable asignado.</div>
+
+                                <!-- Sistema & Medidor -->
+                                <div class="grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-gray-100 shadow-sm" v-if="selectedTask.taskable.system_type || selectedTask.taskable.meter_number">
+                                    <div v-if="selectedTask.taskable.system_type">
+                                        <div class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><n-icon><HardwareChipOutline/></n-icon> Sistema</div>
+                                        <div class="text-xs font-semibold text-gray-700">{{ selectedTask.taskable.system_type }}</div>
+                                    </div>
+                                    <div v-if="selectedTask.taskable.meter_number">
+                                        <div class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><n-icon><SpeedometerOutline/></n-icon> Medidor</div>
+                                        <div class="text-xs font-semibold text-gray-700">{{ selectedTask.taskable.meter_number }}</div>
+                                    </div>
+                                </div>
+
+                                <!-- Ubicación y Coordenadas -->
+                                <div class="flex items-start gap-2 pt-2 border-t border-gray-200/50" v-if="selectedTask.taskable.installation_street">
+                                    <n-icon class="mt-0.5 text-gray-400"><LocationOutline/></n-icon>
+                                    <div class="flex-1">
+                                        <div class="text-xs text-gray-500 font-medium">Ubicación de Instalación</div>
+                                        <div class="text-sm text-gray-700 leading-snug">
+                                            {{ selectedTask.taskable.installation_street }} {{ selectedTask.taskable.installation_exterior_number }} {{ selectedTask.taskable.installation_interior_number ? 'Int. ' + selectedTask.taskable.installation_interior_number : '' }}, 
+                                            {{ selectedTask.taskable.installation_neighborhood }}, {{ selectedTask.taskable.installation_municipality }}, {{ selectedTask.taskable.installation_state }}
+                                        </div>
+                                        <div class="mt-2">
+                                            <a :href="getGoogleMapsUrl(selectedTask.taskable.installation_lat, selectedTask.taskable.installation_lng, `${selectedTask.taskable.installation_street} ${selectedTask.taskable.installation_exterior_number}, ${selectedTask.taskable.installation_municipality}, ${selectedTask.taskable.installation_state}`)" target="_blank" class="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-2 py-1 rounded">
+                                                <n-icon><MapOutline/></n-icon> Abrir en Google Maps
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resumen de Tiempos -->
+                        <div class="grid grid-cols-1 gap-3 bg-gray-50 p-4 rounded-xl text-xs border border-gray-100 shadow-sm">
+                            <div class="flex justify-between border-b border-gray-200 pb-2">
+                                <span class="text-gray-500 font-medium">Fecha Inicio:</span>
+                                <span class="font-bold text-gray-700">{{ (selectedTask.start_date || selectedTask.start) ? format(parseISO(selectedTask.start_date || selectedTask.start), 'dd MMM yyyy, HH:mm') : 'No definida' }}</span>
+                            </div>
+                            <div class="flex justify-between border-b border-gray-200 pb-2">
+                                <span class="text-gray-500 font-medium">Límite Estimado:</span>
+                                <span class="font-bold text-gray-700">{{ (selectedTask.due_date || selectedTask.end) ? format(parseISO(selectedTask.due_date || selectedTask.end), 'dd MMM yyyy, HH:mm') : 'No definida' }}</span>
+                            </div>
+                            <div class="flex justify-between pt-1">
+                                <span class="text-gray-500 font-medium">Fin Real:</span>
+                                <span class="font-bold" :class="selectedTask.finish_date ? 'text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100' : 'text-gray-500'">
+                                    {{ selectedTask.finish_date ? format(parseISO(selectedTask.finish_date), 'dd MMM yyyy, HH:mm') : 'Pendiente' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Responsables -->
+                        <div>
+                            <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2">Personal Asignado</div>
+                            <div class="flex flex-wrap gap-2">
+                                <n-tag size="medium" round v-for="u in selectedTask.assignees" :key="u.id" class="px-1 pr-3 bg-white border border-gray-200 shadow-sm" :bordered="false">
+                                    <template #avatar>
+                                        <n-avatar :src="getAvatarSrc(u)" />
+                                    </template>
+                                    <span class="font-medium text-gray-700">{{ u.name }}</span>
+                                </n-tag>
+                                <span v-if="!selectedTask.assignees?.length" class="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 font-medium shadow-sm">Sin personal asignado</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- COLUMNA DERECHA: Chat / Comentarios -->
-                    <div class="w-full md:w-[55%] flex flex-col bg-slate-50/50">
-                        <div class="p-4 border-b border-gray-100 bg-white flex justify-between items-center shadow-sm z-10">
-                            <span class="font-bold text-gray-700 flex items-center gap-2">
-                                <n-icon class="text-indigo-500"><ChatbubbleOutline /></n-icon>
-                                Actividad y Comentarios
-                            </span>
-                            <n-badge :value="selectedTask.comments?.length || 0" type="info" show-zero />
+                    <!-- Columna Derecha: Chat y Notas -->
+                    <div class="w-full md:w-1/2 flex-col bg-gray-50/50 flex-1 md:h-auto h-full"
+                         :class="showMobileComments ? 'flex' : 'hidden md:flex'">
+                        <div class="p-4 border-b border-gray-100 bg-white text-xs font-bold text-gray-500 flex justify-between items-center shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] z-10 flex-shrink-0">
+                            <span class="flex items-center gap-1.5"><n-icon size="16"><ChatbubbleOutline/></n-icon> COMENTARIOS Y NOTAS</span>
+                            <n-badge :value="selectedTask.comments?.length || 0" type="info" />
                         </div>
                         
-                        <!-- Lista de Mensajes -->
-                        <div class="flex-1 p-5 overflow-y-auto space-y-5">
-                             <div v-if="!selectedTask.comments?.length" class="h-full flex flex-col items-center justify-center text-gray-400">
-                                <n-icon size="48" class="mb-3 opacity-20"><ChatbubbleOutline/></n-icon>
-                                <p class="text-sm">No hay comentarios aún.</p>
-                                <p class="text-xs mt-1">Sé el primero en escribir una nota.</p>
+                        <!-- Listado de Comentarios -->
+                        <div class="flex-1 p-5 overflow-y-auto space-y-5 custom-scrollbar min-h-0">
+                             <div v-if="!selectedTask.comments?.length" class="h-full flex flex-col items-center justify-center text-gray-400 py-8 opacity-70">
+                                <n-icon size="48" class="mb-3 text-gray-300"><ChatbubbleOutline /></n-icon>
+                                <span class="text-sm font-medium">No hay comentarios aún</span>
+                                <span class="text-xs mt-1">Sé el primero en agregar una nota a la tarea.</span>
                              </div>
                              
-                             <div v-for="comment in selectedTask.comments" :key="comment.id" class="flex gap-3 group">
-                                <n-avatar :src="comment.user_avatar" round size="medium" class="flex-shrink-0 mt-1 shadow-sm" />
-                                <div class="bg-white p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 flex-1 relative transition-shadow hover:shadow-md">
-                                    <div class="flex justify-between items-baseline mb-1.5">
-                                        <span class="font-bold text-gray-800 text-sm">{{ comment.user }}</span>
-                                        <span class="text-[10px] text-gray-400 font-medium">{{ comment.created_at }}</span>
+                             <div v-for="comment in selectedTask.comments" :key="comment.id" class="flex gap-3 text-xs group">
+                                <n-avatar :src="comment.user_avatar || getAvatarSrc(comment.user)" round size="medium" class="mt-1 shadow-sm ring-2 ring-white flex-shrink-0" />
+                                <div class="bg-white p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 flex-1 relative hover:shadow-md transition-shadow">
+                                    <div class="absolute -left-1.5 top-3 w-3 h-3 bg-white border-l border-b border-gray-100 rotate-45"></div>
+                                    <div class="flex justify-between items-center mb-1.5 relative z-10">
+                                        <span class="font-bold text-gray-800 text-sm">{{ comment.user?.name || comment.user }}</span>
+                                        <span class="text-[10px] text-gray-400 font-medium bg-gray-50 px-1.5 py-0.5 rounded">{{ comment.created_at }}</span>
                                     </div>
-                                    <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{{ comment.body }}</p>
+                                    <p class="text-gray-600 relative z-10 text-[13px] leading-relaxed whitespace-pre-wrap">{{ comment.body }}</p>
                                 </div>
                              </div>
                         </div>
 
-                        <!-- Input de Mensaje Fijo Abajo -->
-                        <div class="p-4 bg-white border-t border-gray-200">
+                        <!-- Input para Comentarios -->
+                        <div class="p-4 bg-white border-t border-gray-100 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.03)] z-10 flex-shrink-0">
                              <n-input 
                                 v-model:value="commentForm.body" 
                                 type="textarea" 
-                                placeholder="Escribe un mensaje o nota..." 
-                                :autosize="{ minRows: 2, maxRows: 4 }"
-                                class="bg-gray-50"
-                                @keyup.ctrl.enter="submitComment"
+                                placeholder="Escribe una actualización o nota..." 
+                                :autosize="{ minRows: 2, maxRows: 5 }"
+                                class="text-sm !bg-gray-50/50 hover:!bg-white focus:!bg-white transition-colors"
+                                @keyup.enter.ctrl="submitComment"
                              />
                              <div class="flex justify-between items-center mt-3">
-                                 <span class="text-[10px] text-gray-400 ml-1">Ctrl + Enter para enviar</span>
-                                 <n-button type="primary" :disabled="!commentForm.body.trim()" :loading="commentForm.processing" @click="submitComment">
-                                    <template #icon><n-icon><SendOutline /></n-icon></template>
-                                    Enviar Mensaje
+                                 <span class="text-[10px] text-gray-400 flex items-center gap-1 font-medium hidden sm:flex"><n-icon><SendOutline/></n-icon> Ctrl + Enter para enviar</span>
+                                 <n-button size="small" type="primary" :disabled="!commentForm.body.trim()" :loading="commentForm.processing" @click="submitComment" class="px-5 font-bold shadow-sm ml-auto">
+                                    Enviar Nota
                                  </n-button>
                              </div>
                         </div>
                     </div>
                 </div>
+                
+                <template #footer v-if="selectedTask">
+                    <div class="flex justify-end items-center px-4 py-3 bg-gray-50/50 border-t border-gray-100 gap-3">
+                        <n-button v-if="hasPermission('tasks.delete')" @click="confirmDeleteFromModal" type="error" secondary>
+                            <template #icon><n-icon><TrashOutline/></n-icon></template>
+                            Eliminar
+                        </n-button>
+                        <n-button @click="openEdit(selectedTask)" type="primary" secondary>
+                            <template #icon><n-icon><CreateOutline/></n-icon></template>
+                            Editar Tarea Completa
+                        </n-button>
+                    </div>
+                </template>
             </n-card>
         </n-modal>
     </div>
 </template>
+
+<style scoped>
+:deep(.ghost-card) {
+    opacity: 0.5 !important;
+    border: 2px dashed #818cf8 !important;
+    background-color: #eef2ff !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1; 
+    border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8; 
+}
+</style>

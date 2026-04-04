@@ -23,6 +23,7 @@ use Inertia\Inertia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
+use App\Http\Controllers\SystemTypeProductController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -80,6 +81,7 @@ Route::middleware([
     Route::delete('/system-types/{systemType}', [SystemTypeController::class, 'destroy'])->name('system-types.destroy');
     Route::post('/system-type-products', [SystemTypeProductController::class, 'store'])->name('system-type-products.store');
     Route::delete('/system-type-products/{system_type}/{product}', [SystemTypeProductController::class, 'destroy'])->name('system-type-products.destroy');
+    Route::put('/system-type-products/{system_type}/{product}', [SystemTypeProductController::class, 'update'])->name('system-type-products.update');
 
     // NUEVO: Ruta segura para ejecutar la sincronización manualmente una sola vez desde el navegador
     Route::get('/ejecutar-sincronizacion', function (\Illuminate\Http\Request $request) {
@@ -96,6 +98,8 @@ Route::post('/products/{product}/adjust-stock', [ProductController::class, 'adju
 Route::get('/products/{product}/history', [ProductController::class, 'getHistory'])->name('products.history');
 Route::resource('productos', ProductController::class)->names('products')
     ->parameters(['productos' => 'product'])->middleware('auth');
+// ... dentro de tu middleware de autenticación:
+Route::get('/products/search', [ProductController::class, 'search'])->name('products.search');
 
 
 // ---------------------------------- RUTAS DE ÓRDENES DE SERVICIO ----------------------------------

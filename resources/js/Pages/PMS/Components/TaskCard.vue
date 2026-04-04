@@ -10,7 +10,8 @@ import {
     ArrowDown,
     TimeOutline,
     PlayCircleOutline,
-    PauseCircleOutline
+    PauseCircleOutline,
+    CameraOutline // <-- NUEVO ÍCONO
 } from '@vicons/ionicons5';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -92,12 +93,18 @@ const getAvatarSrc = (user) => {
             </div>
 
             <!-- Información adicional sutil -->
-            <div class="text-[10px] text-gray-500 mt-2 flex items-center gap-2 mb-3">
+            <div class="text-[10px] text-gray-500 mt-2 flex flex-wrap items-center gap-2 mb-3">
                 <span class="flex items-center" v-if="task.due_date">
                     <n-icon class="mr-1"><TimeOutline/></n-icon>
                     Límite: {{ format(parseISO(task.due_date), 'dd MMM') }}
                 </span>
                 
+                <!-- NUEVO: INDICADOR DE EVIDENCIAS REQUERIDAS -->
+                <span v-if="task.required_evidences?.length" class="flex items-center font-semibold" :class="task.required_evidences.every(e => e.media?.length > 0) ? 'text-emerald-600' : 'text-amber-600'">
+                    <n-icon class="mr-1"><CameraOutline/></n-icon>
+                    {{ task.required_evidences.filter(e => e.media?.length > 0).length }}/{{ task.required_evidences.length }}
+                </span>
+
                 <span v-if="task.status !== 'Pendiente'" class="flex items-center font-semibold" :class="statusColor.split(' ')[1]">
                     <n-icon class="mr-1" v-if="task.status === 'En Proceso'"><PlayCircleOutline/></n-icon>
                     <n-icon class="mr-1" v-if="task.status === 'Detenido'"><PauseCircleOutline/></n-icon>
