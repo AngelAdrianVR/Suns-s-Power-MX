@@ -102,7 +102,7 @@ const submit = () => {
     formRef.value?.validate((errors) => {
         if (!errors) {
              if (form.contacts.some(c => !c.name)) {
-                notification.error({ title: 'Faltan datos', content: 'Todos los contactos deben tener un nombre.' });
+                notification.error({ title: 'Faltan datos', content: 'Todos los contactos deben tener un nombre.', duration: 3000 });
                 return;
             }
 
@@ -127,9 +127,7 @@ const submit = () => {
             });
         } else {
             notification.warning({
-                title: 'Formulario Incompleto',
-                content: 'Completa los campos requeridos.',
-                duration: 3000
+                title: 'Formulario Incompleto', content: 'Completa los campos requeridos.', duration: 3000
             });
         }
     });

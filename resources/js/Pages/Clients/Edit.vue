@@ -153,7 +153,7 @@ const submit = () => {
             if (form.contacts.some(c => !c.name)) {
                 notification.error({ 
                     title: 'Faltan datos', 
-                    content: 'Todos los contactos deben tener un nombre.' 
+                    content: 'Todos los contactos deben tener un nombre.', duration: 3000 
                 });
                 return;
             }
