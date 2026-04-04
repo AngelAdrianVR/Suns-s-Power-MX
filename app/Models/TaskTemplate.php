@@ -17,6 +17,9 @@ class TaskTemplate extends Model
         'priority',
         'start_days',      // <-- NUEVO CAMPO: Días para iniciar
         'duration_days',   // <-- NUEVO CAMPO: Duración en días
+        'is_recurring',
+        'recurring_interval',
+        'recurring_unit',
     ];
 
     public function branch()
@@ -28,5 +31,11 @@ class TaskTemplate extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'task_template_user');
+    }
+
+    // Relación para saber qué evidencias requiere esta tarea
+    public function evidenceTemplates()
+    {
+        return $this->belongsToMany(EvidenceTemplate::class, 'evidence_template_task_template');
     }
 }

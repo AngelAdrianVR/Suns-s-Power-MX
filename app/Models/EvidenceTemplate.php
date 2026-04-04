@@ -22,4 +22,10 @@ class EvidenceTemplate extends Model
     {
         return $this->belongsTo(Branch::class);
     }
+
+    // Relación para saber a qué tareas está ligada esta evidencia
+    public function taskTemplates()
+    {
+        return $this->belongsToMany(TaskTemplate::class, 'evidence_template_task_template');
+    }
 }
