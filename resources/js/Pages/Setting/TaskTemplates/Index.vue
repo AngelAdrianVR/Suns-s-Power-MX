@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
+import axios from 'axios'; 
 import { 
     NButton, NCard, NTabs, NTabPane, NIcon, NTag, NAvatar, 
     NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, createDiscreteApi, NPopconfirm, NEmpty, NSwitch
@@ -20,6 +21,14 @@ const props = defineProps({
 
 const { hasPermission } = usePermissions();
 const { notification } = createDiscreteApi(['notification']);
+
+// ================= SINCRONIZACIÓN AUTOMÁTICA =================
+const triggerSync = () => {
+    router.post(route('service-orders.sync-evidences'), {}, {
+        preserveScroll: true,
+        preserveState: true
+    });
+};
 
 // ================= ESTADO TIPOS DE SISTEMA =================
 const normalizedSystemTypes = computed(() => {
@@ -109,6 +118,7 @@ const taskForm = useForm({
     is_recurring: false,
     recurring_interval: 1,
     recurring_unit: 'months',
+    recurring_count: 1, // Nuevo Campo
     users: [],
     evidences: [] 
 });
@@ -147,6 +157,7 @@ const openAddTaskModal = (sysType) => {
     taskForm.is_recurring = false;
     taskForm.recurring_interval = 1;
     taskForm.recurring_unit = 'months';
+    taskForm.recurring_count = 1;
     taskForm.evidences = [];
     showTaskModal.value = true;
 };
@@ -163,6 +174,7 @@ const openEditTaskModal = (template) => {
     taskForm.is_recurring = Boolean(template.is_recurring);
     taskForm.recurring_interval = template.recurring_interval ?? 1;
     taskForm.recurring_unit = template.recurring_unit || 'months';
+    taskForm.recurring_count = template.recurring_count ?? 1;
     taskForm.users = template.users?.map(u => u.id) || [];
     taskForm.evidences = template.evidence_templates?.map(e => e.id) || []; 
     showTaskModal.value = true;
@@ -171,17 +183,31 @@ const openEditTaskModal = (template) => {
 const handleTaskSubmit = () => {
     if (isEditingTask.value) {
         taskForm.put(route('task-templates.update', taskForm.id), {
-            onSuccess: () => { showTaskModal.value = false; notification.success({ title: 'Actualizado', content: 'Plantilla de tarea actualizada.' }); }
+            onSuccess: () => { 
+                showTaskModal.value = false; 
+                notification.success({ title: 'Actualizado', content: 'Plantilla de tarea actualizada.' }); 
+                triggerSync(); 
+            }
         });
     } else {
         taskForm.post(route('task-templates.store'), {
-            onSuccess: () => { showTaskModal.value = false; notification.success({ title: 'Creado', content: 'Plantilla de tarea guardada.' }); }
+            onSuccess: () => { 
+                showTaskModal.value = false; 
+                notification.success({ title: 'Creado', content: 'Plantilla de tarea guardada.' }); 
+                triggerSync(); 
+            }
         });
     }
 };
 
 const handleDeleteTask = (id) => {
-    router.delete(route('task-templates.destroy', id));
+    router.delete(route('task-templates.destroy', id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ title: 'Eliminado', content: 'Plantilla de tarea eliminada.' });
+            triggerSync();
+        }
+    });
 };
 
 // ================= ESTADO MODAL EVIDENCIAS =================
@@ -219,17 +245,31 @@ const openEditEvidenceModal = (evidence) => {
 const handleEvidenceSubmit = () => {
     if (isEditingEvidence.value) {
         evidenceForm.put(route('evidence-templates.update', evidenceForm.id), {
-            onSuccess: () => { showEvidenceModal.value = false; notification.success({ title: 'Actualizado', content: 'Evidencia actualizada.' }); }
+            onSuccess: () => { 
+                showEvidenceModal.value = false; 
+                notification.success({ title: 'Actualizado', content: 'Evidencia actualizada.' }); 
+                triggerSync();
+            }
         });
     } else {
         evidenceForm.post(route('evidence-templates.store'), {
-            onSuccess: () => { showEvidenceModal.value = false; notification.success({ title: 'Creado', content: 'Evidencia guardada.' }); }
+            onSuccess: () => { 
+                showEvidenceModal.value = false; 
+                notification.success({ title: 'Creado', content: 'Evidencia guardada.' }); 
+                triggerSync();
+            }
         });
     }
 };
 
 const handleDeleteEvidence = (id) => {
-    router.delete(route('evidence-templates.destroy', id));
+    router.delete(route('evidence-templates.destroy', id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ title: 'Eliminado', content: 'Evidencia eliminada.' });
+            triggerSync();
+        }
+    });
 };
 
 const draggedEvidenceIndex = ref(null);
@@ -245,7 +285,10 @@ const onDropEvidence = (dropIndex) => {
 
     router.post(route('evidence-templates.reorder'), { items: updatedItems }, {
         preserveScroll: true,
-        onSuccess: () => { notification.success({ title: 'Orden actualizado', content: 'Se guardó el nuevo orden de las evidencias.' }); }
+        onSuccess: () => { 
+            notification.success({ title: 'Orden actualizado', content: 'Se guardó el nuevo orden de las evidencias.' }); 
+            triggerSync();
+        }
     });
 
     draggedEvidenceIndex.value = null;
@@ -256,10 +299,11 @@ const getPriorityColor = (priority) => {
     return map[priority] || 'default';
 };
 
-// ================= ESTADO MODAL PRODUCTOS PREDETERMINADOS (NUEVO) =================
+// ================= ESTADO MODAL PRODUCTOS PREDETERMINADOS =================
 const showProductModal = ref(false);
 const searchingProducts = ref(false);
 const productSearchOptions = ref([]);
+const isEditingProduct = ref(false);
 
 const productForm = useForm({
     system_type_id: null,
@@ -272,46 +316,82 @@ const openAddProductModal = (sys) => {
         notification.warning({ title: 'Atención', content: 'Aún no migraste a base de datos. Completa el backend primero.' });
         return;
     }
+    isEditingProduct.value = false;
     productForm.reset();
     productForm.system_type_id = sys.id;
     productForm.quantity = 1;
     productSearchOptions.value = [];
     showProductModal.value = true;
+    
+    handleSearchProduct('');
 };
 
-const handleSearchProduct = async (query) => {
-    if (!query) return;
+const openEditProductModal = (sys, prod) => {
+    isEditingProduct.value = true;
+    productForm.reset();
+    productForm.system_type_id = sys.id;
+    productForm.product_id = prod.id;
+    productForm.quantity = Number(prod.pivot.quantity);
+    
+    productSearchOptions.value = [{
+        label: `${prod.sku} - ${prod.name}`,
+        value: prod.id
+    }];
+
+    showProductModal.value = true;
+};
+
+const handleSearchProduct = async (query = '') => {
     searchingProducts.value = true;
     try {
-        // Usa el endpoint que ya tienes en ProductController@search
-        const response = await fetch(`/products/search?query=${encodeURIComponent(query)}`);
-        const data = await response.json();
-        // formatea si es necesario para naive-ui
-        productSearchOptions.value = data.map(p => ({
+        const response = await axios.get('/products/search', {
+            params: { query: query }
+        });
+        
+        productSearchOptions.value = response.data.map(p => ({
             label: `${p.sku} - ${p.name}`,
-            value: p.value // El controller actual devuelve 'value' como ID
+            value: p.value
         }));
     } catch (error) {
         console.error("Error buscando productos:", error);
+        notification.error({ 
+            title: 'Error de búsqueda', 
+            content: 'No se pudieron cargar los productos. Verifica que la ruta exista en web.php.' 
+        });
     } finally {
         searchingProducts.value = false;
     }
 };
 
 const handleProductSubmit = () => {
-    productForm.post(route('system-type-products.store'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            showProductModal.value = false;
-            notification.success({ title: 'Agregado', content: 'Producto predeterminado asignado.' });
-        }
-    });
+    if (isEditingProduct.value) {
+        productForm.put(route('system-type-products.update', { system_type: productForm.system_type_id, product: productForm.product_id }), {
+            preserveScroll: true,
+            onSuccess: () => {
+                showProductModal.value = false;
+                notification.success({ title: 'Actualizado', content: 'Cantidad de material actualizada.' });
+                triggerSync();
+            }
+        });
+    } else {
+        productForm.post(route('system-type-products.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                showProductModal.value = false;
+                notification.success({ title: 'Agregado', content: 'Producto predeterminado asignado.' });
+                triggerSync();
+            }
+        });
+    }
 };
 
 const handleDeleteProduct = (sysId, productId) => {
     router.delete(route('system-type-products.destroy', { system_type: sysId, product: productId }), {
         preserveScroll: true,
-        onSuccess: () => { notification.success({ title: 'Removido', content: 'Producto predeterminado quitado.' }); }
+        onSuccess: () => { 
+            notification.success({ title: 'Removido', content: 'Producto predeterminado quitado.' }); 
+            triggerSync();
+        }
     });
 };
 
@@ -341,7 +421,6 @@ const handleDeleteProduct = (sysId, productId) => {
                     <n-tabs type="line" size="large" animated class="px-6 pt-4" v-model:value="activeSystemType">
                         <n-tab-pane v-for="sys in normalizedSystemTypes" :key="sys.name" :name="sys.name" :tab="sys.name">
                             
-                            <!-- AHORA USAMOS 3 COLUMNAS (lg:grid-cols-3) -->
                             <div class="py-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 
                                 <!-- COLUMNA 1: TAREAS PROGRAMADAS -->
@@ -372,6 +451,7 @@ const handleDeleteProduct = (sysId, productId) => {
                                                     <div v-if="item.is_recurring" class="mt-1 text-[11px] text-blue-500 font-medium flex items-center gap-1">
                                                         <n-icon><SyncOutline/></n-icon> 
                                                         {{ getRecurringText(item.recurring_interval, item.recurring_unit) }}
+                                                        <span class="ml-1 text-purple-500 font-bold">({{ item.recurring_count || 1 }} veces)</span>
                                                     </div>
 
                                                     <div v-if="item.evidence_templates?.length > 0" class="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-1 items-center">
@@ -458,7 +538,7 @@ const handleDeleteProduct = (sysId, productId) => {
                                     <n-empty v-else description="Sin evidencias fotográficas." class="py-8" />
                                 </div>
 
-                                <!-- COLUMNA 3: PRODUCTOS PREDETERMINADOS (NUEVO) -->
+                                <!-- COLUMNA 3: PRODUCTOS PREDETERMINADOS -->
                                 <div>
                                     <div class="flex justify-between items-center mb-4">
                                         <h3 class="text-lg font-bold text-gray-700 flex items-center gap-2">
@@ -481,6 +561,9 @@ const handleDeleteProduct = (sysId, productId) => {
                                                 </div>
 
                                                 <div class="flex gap-1">
+                                                    <n-button circle quaternary size="small" type="warning" @click="openEditProductModal(sys, prod)">
+                                                        <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                                    </n-button>
                                                     <n-popconfirm @positive-click="handleDeleteProduct(sys.id, prod.id)" positive-text="Sí, quitar" negative-text="No">
                                                         <template #trigger>
                                                             <n-button circle quaternary size="small" type="error">
@@ -505,7 +588,7 @@ const handleDeleteProduct = (sysId, productId) => {
         </div>
 
         <!-- MODAL PRODUCTOS PREDETERMINADOS -->
-        <n-modal v-model:show="showProductModal" preset="card" class="max-w-md" title="Agregar Material Predeterminado">
+        <n-modal v-model:show="showProductModal" preset="card" class="max-w-md" :title="isEditingProduct ? 'Editar Cantidad de Material' : 'Agregar Material Predeterminado'">
             <n-form :model="productForm" @submit.prevent="handleProductSubmit">
                 <n-form-item label="Producto / Material" path="product_id">
                     <n-select
@@ -517,6 +600,7 @@ const handleDeleteProduct = (sysId, productId) => {
                         @search="handleSearchProduct"
                         placeholder="Escribe el nombre o SKU..."
                         clearable
+                        :disabled="isEditingProduct"
                     />
                 </n-form-item>
                 
@@ -526,7 +610,9 @@ const handleDeleteProduct = (sysId, productId) => {
                 
                 <div class="flex justify-end gap-3 mt-4">
                     <n-button @click="showProductModal = false">Cancelar</n-button>
-                    <n-button type="primary" attr-type="submit" :loading="productForm.processing" :disabled="!productForm.product_id" class="bg-blue-600">Guardar Material</n-button>
+                    <n-button type="primary" attr-type="submit" :loading="productForm.processing" :disabled="!productForm.product_id" class="bg-blue-600">
+                        {{ isEditingProduct ? 'Guardar Cambios' : 'Guardar Material' }}
+                    </n-button>
                 </div>
             </n-form>
         </n-modal>
@@ -557,10 +643,13 @@ const handleDeleteProduct = (sysId, productId) => {
                         <span class="font-medium text-gray-700">Tarea Cíclica / Recurrente</span>
                     </div>
                     
-                    <div v-if="taskForm.is_recurring" class="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 transition-all">
+                    <div v-if="taskForm.is_recurring" class="flex flex-wrap items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 transition-all">
                         <span class="text-sm text-gray-600 font-medium">Repetir cada:</span>
-                        <n-input-number v-model:value="taskForm.recurring_interval" :min="1" class="w-24" />
-                        <n-select v-model:value="taskForm.recurring_unit" :options="recurringUnitOptions" class="w-36" />
+                        <n-input-number v-model:value="taskForm.recurring_interval" :min="1" class="w-20" />
+                        <n-select v-model:value="taskForm.recurring_unit" :options="recurringUnitOptions" class="w-32" />
+                        
+                        <span class="text-sm text-gray-600 font-medium ml-2 border-l border-gray-300 pl-4 w-full sm:w-auto mt-2 sm:mt-0">¿Cuántas veces?:</span>
+                        <n-input-number v-model:value="taskForm.recurring_count" :min="1" class="w-24 mt-2 sm:mt-0" />
                     </div>
                 </div>
 

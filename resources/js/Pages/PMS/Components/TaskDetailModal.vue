@@ -10,7 +10,7 @@ import {
     TrashOutline, ChevronDownOutline, ConstructOutline,
     LocationOutline, MapOutline, PersonOutline, CashOutline,
     FlashOutline, HardwareChipOutline, SpeedometerOutline,
-    TicketOutline, WarningOutline, LinkOutline
+    TicketOutline, WarningOutline, LinkOutline, CameraOutline, SyncOutline
 } from '@vicons/ionicons5';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -42,18 +42,10 @@ const commentForm = useForm({
     commentable_id: null
 });
 
-// Sincronizar el ID de la tarea y reiniciar estado móvil cuando se abre
-watch(() => props.task, (newTask) => {
-    if (newTask) {
-        commentForm.commentable_id = newTask.id;
-    }
-}, { immediate: true });
-
-watch(isOpen, (val) => {
-    if (val) showMobileComments.value = false;
-});
-
-// --- MÉTODOS DE LA TAREA ---
+const translateUnit = (unit) => {
+    const units = { days: 'día(s)', weeks: 'semana(s)', months: 'mes(es)', years: 'año(s)' };
+    return units[unit] || unit;
+};
 
 const submitComment = () => {
     if(!commentForm.body.trim()) return;
@@ -87,11 +79,29 @@ const handleStatusChange = (newStatus) => {
         return; 
     }
     
+    // <-- NUEVA VALIDACIÓN FRONTEND DE EVIDENCIAS -->
+    if (newStatus === 'Completado') {
+        const pendingEvidences = props.task.required_evidences?.filter(e => !e.media?.length).length || 0;
+        if (pendingEvidences > 0) {
+            notification.error({
+                title: 'Evidencias Pendientes',
+                content: `No puedes completar la tarea. Faltan ${pendingEvidences} evidencias por subir en la Orden de Servicio vinculada.`,
+                duration: 6000
+            });
+            return;
+        }
+    }
+
     router.put(route('tasks.update', props.task.id), { status: newStatus }, {
         preserveScroll: true,
         preserveState: true, 
         onSuccess: () => {
             notification.success({ title: 'Estatus Actualizado', content: `La tarea ahora está: ${newStatus}`, duration: 3000 });
+        },
+        onError: (errors) => {
+            if (errors.status) {
+                notification.error({ title: 'Error', content: errors.status, duration: 5000 });
+            }
         }
     });
 };
@@ -213,8 +223,44 @@ const formatCurrency = (value) => {
                         <p class="text-gray-700 text-sm mt-1 bg-gray-50 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap leading-relaxed">{{ task.description || 'Sin descripción detallada.' }}</p>
                     </div>
 
-                    <!-- SECCIÓN DINÁMICA: DEPENDIENDO DEL TASKABLE -->
+                    <!-- NUEVA SECCIÓN: EVIDENCIAS REQUERIDAS -->
+                    <div v-if="task.required_evidences?.length" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-2 flex items-center">
+                            <n-icon class="mr-1 text-sm"><CameraOutline/></n-icon>Evidencias Requeridas
+                        </div>
+                        <div class="space-y-2">
+                            <div v-for="ev in task.required_evidences" :key="ev.id" class="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                <div class="flex flex-col flex-1 min-w-0 pr-3">
+                                    <span class="text-xs font-semibold text-gray-700 truncate" :title="ev.title">{{ ev.title }}</span>
+                                </div>
+                                <n-tag :type="ev.media?.length ? 'success' : 'warning'" size="small" round :bordered="false" class="flex-shrink-0">
+                                    {{ ev.media?.length ? 'Completada' : 'Pendiente' }}
+                                </n-tag>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-[10px] text-gray-500 italic">
+                            * Las evidencias se suben directamente desde el perfil de la Orden de Servicio vinculada.
+                        </div>
+                    </div>
+                    
+                    <!-- Tarea Cíclica -->
+                    <div v-if="task.is_recurring" class="mt-4 border-t border-gray-100 pt-4">
+                        <div class="bg-purple-50/50 rounded-xl p-3 border border-purple-100 flex items-center gap-3">
+                            <div class="bg-purple-100 p-2 rounded-lg text-purple-600">
+                                <n-icon size="20"><SyncOutline/></n-icon>
+                            </div>
+                            <div>
+                                <div class="text-xs text-purple-700 font-bold uppercase tracking-wider">Tarea Cíclica</div>
+                                <div class="text-sm text-gray-700 font-medium">
+                                    Se repite cada {{ task.recurring_interval }} {{ translateUnit(task.recurring_unit) }}.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Datos de la Tarea/Orden Relacionada (Si existe) -->
                     <div v-if="task.taskable_type === 'App\\Models\\ServiceOrder' && task.taskable" class="mt-4 border-t border-gray-100 pt-4">
+
                         <div class="flex justify-between items-center mb-3">
                             <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider flex items-center">
                                 <n-icon class="mr-1 text-sm"><ConstructOutline/></n-icon>Orden de Servicio #{{ task.taskable.id }}

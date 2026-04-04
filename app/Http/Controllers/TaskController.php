@@ -46,6 +46,7 @@ class TaskController extends Controller
         $assignedTasksQuery = Task::with([
             'assignees', 
             'comments.user',
+            'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
             'taskable' => function (MorphTo $morphTo) {
                 $morphTo->morphWith([
                     ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -96,6 +97,7 @@ class TaskController extends Controller
             $unassignedTasks = Task::with([
                 'assignees', 
                 'comments.user',
+                'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
                 'taskable' => function (MorphTo $morphTo) {
                     $morphTo->morphWith([
                         ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -117,6 +119,7 @@ class TaskController extends Controller
         $allTasksQuery = Task::with([
             'assignees', 
             'comments.user',
+            'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
             'taskable' => function (MorphTo $morphTo) {
                 $morphTo->morphWith([
                     ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -247,7 +250,7 @@ class TaskController extends Controller
         return back()->with('success', 'Tarea creada correctamente.');
     }
 
-    public function update(Request $request, Task $task)
+     public function update(Request $request, Task $task)
     {
         $user = Auth::user();
         
@@ -288,6 +291,18 @@ class TaskController extends Controller
                 $validated['start_date'] = now();
             }
             if ($newStatus === 'Completado') {
+                // <-- NUEVA VALIDACIÓN DE EVIDENCIAS: Verificar que todas tengan archivos adjuntos -->
+                $task->loadMissing('requiredEvidences.media');
+                $pendingEvidences = $task->requiredEvidences->filter(function($ev) {
+                    return $ev->media->isEmpty();
+                })->count();
+
+                if ($pendingEvidences > 0) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'status' => "No se puede completar la tarea. Faltan {$pendingEvidences} evidencias fotográficas requeridas en la Orden."
+                    ]);
+                }
+
                 $validated['finish_date'] = now();
             } else {
                 $validated['finish_date'] = null;
