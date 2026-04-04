@@ -10,12 +10,15 @@ import {
 import { 
     CloudUploadOutline, DocumentOutline, 
     CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline, AddOutline,
-    DocumentTextOutline // <-- NUEVO ICONO
+    DocumentTextOutline 
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     order: Object
 });
+
+// NUEVO: Definimos los eventos que este componente puede emitir hacia el padre
+const emit = defineEmits(['upload-success']);
 
 const { hasPermission } = usePermissions();
 const { isOpeningFile, openFileWithRetry } = useSecureFile();
@@ -25,7 +28,6 @@ const { notification } = createDiscreteApi(['notification']);
 const localComments = ref({});
 const isSavingComment = ref(null);
 
-// Mantiene sincronizado el estado local con la BD al cargar la página
 watch(() => props.order.evidences, (newEvidences) => {
     if (newEvidences) {
         newEvidences.forEach(e => {
@@ -43,11 +45,11 @@ const saveComment = (evidenceId) => {
     form.post(route('service-orders.evidences.upload', evidenceId), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Comentario Guardado', content: 'Nota de evidencia actualizada.' });
+            notification.success({ title: 'Comentario Guardado', content: 'Nota de evidencia actualizada.', duration: 3000 });
             isSavingComment.value = null;
         },
         onError: () => {
-            notification.error({ title: 'Error', content: 'No se pudo guardar la nota.' });
+            notification.error({ title: 'Error', content: 'No se pudo guardar la nota.', duration: 3000 });
             isSavingComment.value = null;
         }
     });
@@ -57,7 +59,6 @@ const saveComment = (evidenceId) => {
 const sortedEvidences = computed(() => {
     if (!props.order.evidences) return [];
     
-    // Clonamos para no mutar el prop y ordenamos
     return [...props.order.evidences].sort((a, b) => {
         const orderA = a.order !== undefined && a.order !== null ? a.order : 0;
         const orderB = b.order !== undefined && b.order !== null ? b.order : 0;
@@ -78,7 +79,6 @@ const handleEvidenceFileChange = (event, evidenceId) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    // Incluimos el comentario actual al subir fotos por si estaban escribiendo
     const form = useForm({ 
         files: Array.from(files),
         comment: localComments.value[evidenceId] || '' 
@@ -87,12 +87,15 @@ const handleEvidenceFileChange = (event, evidenceId) => {
     form.post(route('service-orders.evidences.upload', evidenceId), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Evidencia Completada', content: 'Archivo(s) adjuntado(s) correctamente.' });
+            notification.success({ title: 'Evidencia Completada', content: 'Archivo(s) adjuntado(s) correctamente.', duration: 3000 });
             const input = document.getElementById(`file-evidence-${evidenceId}`);
             if (input) input.value = '';
+            
+            // NUEVO: Avisar al componente padre que haga el "rebote" de pestañas
+            emit('upload-success');
         },
         onError: () => {
-            notification.error({ title: 'Error', content: 'No se pudo subir la evidencia.' });
+            notification.error({ title: 'Error', content: 'No se pudo subir la evidencia.', duration: 3000 });
         }
     });
 };
@@ -113,10 +116,13 @@ const handleFileChange = (event) => {
     form.post(route('service-orders.upload-media', props.order.id), {
         preserveScroll: true,
         onSuccess: () => {
-            notification.success({ title: 'Archivo Extra', content: 'Evidencia extra guardada.' });
+            notification.success({ title: 'Archivo Extra', content: 'Evidencia extra guardada.', duration: 3000 });
             if (fileInput.value) fileInput.value.value = '';
+            
+            // NUEVO: Avisar al componente padre que haga el "rebote" de pestañas
+            emit('upload-success');
         },
-        onError: () => notification.error({ title: 'Error', content: 'No se pudo subir.' })
+        onError: () => notification.error({ title: 'Error', content: 'No se pudo subir.', duration: 3000 })
     });
 };
 
@@ -129,7 +135,6 @@ const isImage = (file) => {
 <template>
     <div class="p-4 space-y-8">
         
-        <!-- SECCIÓN 1: EVIDENCIAS REQUERIDAS (GENERADAS POR EL SISTEMA) -->
         <div v-if="order.evidences?.length">
             <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                 <n-icon class="text-emerald-500"><CheckmarkCircleOutline/></n-icon> Evidencias Requeridas (Checklist)
@@ -140,7 +145,6 @@ const isImage = (file) => {
                      class="border rounded-2xl overflow-hidden shadow-sm hover:shadow transition-shadow flex flex-col justify-between"
                      :class="evidence.media?.length ? 'bg-emerald-50/30 border-emerald-100' : 'bg-white border-gray-200'">
                     
-                    <!-- Header Evidencia -->
                     <div class="p-4 border-b border-gray-100">
                         <div class="flex justify-between items-start mb-2">
                             <h4 class="font-bold text-gray-800">{{ evidence.title }}</h4>
@@ -150,10 +154,8 @@ const isImage = (file) => {
                         <p class="text-xs text-gray-500">{{ evidence.description }}</p>
                     </div>
 
-                    <!-- Visualizador o Botón de Carga -->
                     <div class="p-4 bg-gray-50/50 flex-1 flex flex-col justify-between">
                         <div>
-                            <!-- Si ya se subieron archivos -->
                             <div v-if="evidence.media?.length" class="space-y-3">
                                 <div class="grid grid-cols-2 gap-2">
                                     <div v-for="media in evidence.media" :key="media.id" class="relative group">
@@ -191,7 +193,6 @@ const isImage = (file) => {
                                 </div>
                             </div>
 
-                            <!-- Si no se ha subido NADA, mostrar input principal -->
                             <div v-else>
                                 <input type="file" :id="'file-evidence-'+evidence.id" class="hidden" multiple @change="e => handleEvidenceFileChange(e, evidence.id)" accept="image/*,application/pdf" />
                                 <n-button dashed type="primary" class="w-full h-16 bg-white" @click="triggerEvidenceFileInput(evidence.id)">
@@ -203,7 +204,6 @@ const isImage = (file) => {
                             </div>
                         </div>
 
-                        <!-- SECCIÓN NUEVA: COMENTARIOS INDIVIDUALES -->
                         <div class="mt-4 border-t border-gray-200 pt-3">
                             <span class="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
                                 <n-icon><DocumentTextOutline /></n-icon> Notas / Comentarios
@@ -216,7 +216,6 @@ const isImage = (file) => {
                                     size="small"
                                     :autosize="{ minRows: 1, maxRows: 3 }"
                                 />
-                                <!-- Botón que solo aparece si el comentario cambió y no se ha guardado -->
                                 <div class="flex justify-end min-h-[24px]">
                                     <n-button
                                         v-if="localComments[evidence.id] !== (evidence.comment || '')"
@@ -237,7 +236,6 @@ const isImage = (file) => {
             <n-divider />
         </div>
 
-        <!-- SECCIÓN 2: ARCHIVOS Y FOTOS EXTRAS (GENERALES) -->
         <div>
             <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                 <n-icon class="text-indigo-500"><CloudUploadOutline/></n-icon> Archivos y Fotos Adicionales

@@ -221,40 +221,63 @@ class ServiceOrderController extends Controller
                     ->get();
 
                 foreach ($templates as $template) {
-                    $startDays = $template->start_days ?? 0;
-                    $durationDays = $template->duration_days ?? 1;
+                    // Obtenemos configuración cíclica
+                    $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
+                    $interval = $template->recurring_interval ?? 1;
+                    $unit = $template->recurring_unit ?? 'months';
 
-                    $startDate = now()->addDays($startDays)->startOfDay();
-                    $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
-
-                    $task = $serviceOrder->tasks()->create([
-                        'branch_id' => $branchId,
-                        'title' => $template->title,
-                        'description' => $template->description,
-                        'priority' => $template->priority,
-                        'status' => 'Pendiente',
-                        'created_by' => $userId,
-                        'start_date' => $startDate,  
-                        'due_date' => $dueDate,
-                        'is_recurring' => $template->is_recurring ?? false,
-                        'recurring_interval' => $template->recurring_interval ?? 1,
-                        'recurring_unit' => $template->recurring_unit ?? 'months',      
-                    ]);
-
-                    $userIds = $template->users->pluck('id')->toArray();
-                    if (!empty($userIds)) {
-                        $task->assignees()->sync($userIds);
-                    }
-
-                    // Ligar Evidencias a la Tarea usando nuestro mapa
-                    $requiredEvidenceIds = [];
-                    foreach ($template->evidenceTemplates as $reqEvTpl) {
-                        if (isset($evidenceMap[$reqEvTpl->id])) {
-                            $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                    for ($i = 1; $i <= $recurringCount; $i++) {
+                        $taskTitle = $template->title;
+                        if ($recurringCount > 1) {
+                            $taskTitle .= " ($i/$recurringCount)";
                         }
-                    }
-                    if (!empty($requiredEvidenceIds)) {
-                        $task->requiredEvidences()->sync($requiredEvidenceIds);
+
+                        $startDays = $template->start_days ?? 0;
+                        $durationDays = $template->duration_days ?? 1;
+
+                        // Fecha de inicio base
+                        $startDate = now()->addDays($startDays)->startOfDay();
+
+                        // Si es la iteración 2 en adelante, sumamos el tiempo cíclico
+                        if ($i > 1 && $template->is_recurring) {
+                            $multiplier = $i - 1;
+                            if ($unit === 'days') $startDate->addDays($interval * $multiplier);
+                            elseif ($unit === 'weeks') $startDate->addWeeks($interval * $multiplier);
+                            elseif ($unit === 'months') $startDate->addMonths($interval * $multiplier);
+                            elseif ($unit === 'years') $startDate->addYears($interval * $multiplier);
+                        }
+
+                        $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                        $task = $serviceOrder->tasks()->create([
+                            'branch_id' => $branchId,
+                            'title' => $taskTitle,
+                            'description' => $template->description,
+                            'priority' => $template->priority,
+                            'status' => 'Pendiente',
+                            'created_by' => $userId,
+                            'start_date' => $startDate,  
+                            'due_date' => $dueDate,
+                            'is_recurring' => $template->is_recurring ?? false,
+                            'recurring_interval' => $interval,
+                            'recurring_unit' => $unit,
+                        ]);
+
+                        $userIds = $template->users->pluck('id')->toArray();
+                        if (!empty($userIds)) {
+                            $task->assignees()->sync($userIds);
+                        }
+
+                        // Ligar Evidencias a la Tarea usando nuestro mapa
+                        $requiredEvidenceIds = [];
+                        foreach ($template->evidenceTemplates as $reqEvTpl) {
+                            if (isset($evidenceMap[$reqEvTpl->id])) {
+                                $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                            }
+                        }
+                        if (!empty($requiredEvidenceIds)) {
+                            $task->requiredEvidences()->sync($requiredEvidenceIds);
+                        }
                     }
                 }
 
@@ -498,39 +521,59 @@ class ServiceOrderController extends Controller
                     $userId = Auth::id();
 
                     foreach ($templates as $template) {
-                        $startDays = $template->start_days ?? 0;
-                        $durationDays = $template->duration_days ?? 1;
+                        $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
+                        $interval = $template->recurring_interval ?? 1;
+                        $unit = $template->recurring_unit ?? 'months';
 
-                        $startDate = now()->addDays($startDays)->startOfDay();
-                        $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
-
-                        $task = $serviceOrder->tasks()->create([
-                            'branch_id' => $branchId,
-                            'title' => $template->title,
-                            'description' => $template->description,
-                            'priority' => $template->priority,
-                            'status' => 'Pendiente',
-                            'created_by' => $userId,
-                            'start_date' => $startDate,  
-                            'due_date' => $dueDate,
-                            'is_recurring' => $template->is_recurring ?? false,
-                            'recurring_interval' => $template->recurring_interval ?? 1,
-                            'recurring_unit' => $template->recurring_unit ?? 'months',    
-                        ]);
-
-                        $userIds = $template->users->pluck('id')->toArray();
-                        if (!empty($userIds)) {
-                            $task->assignees()->sync($userIds);
-                        }
-
-                        $requiredEvidenceIds = [];
-                        foreach ($template->evidenceTemplates as $reqEvTpl) {
-                            if (isset($evidenceMap[$reqEvTpl->id])) {
-                                $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                        for ($i = 1; $i <= $recurringCount; $i++) {
+                            $taskTitle = $template->title;
+                            if ($recurringCount > 1) {
+                                $taskTitle .= " ($i/$recurringCount)";
                             }
-                        }
-                        if (!empty($requiredEvidenceIds)) {
-                            $task->requiredEvidences()->sync($requiredEvidenceIds);
+
+                            $startDays = $template->start_days ?? 0;
+                            $durationDays = $template->duration_days ?? 1;
+
+                            $startDate = now()->addDays($startDays)->startOfDay();
+
+                            if ($i > 1 && $template->is_recurring) {
+                                $multiplier = $i - 1;
+                                if ($unit === 'days') $startDate->addDays($interval * $multiplier);
+                                elseif ($unit === 'weeks') $startDate->addWeeks($interval * $multiplier);
+                                elseif ($unit === 'months') $startDate->addMonths($interval * $multiplier);
+                                elseif ($unit === 'years') $startDate->addYears($interval * $multiplier);
+                            }
+
+                            $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+
+                            $task = $serviceOrder->tasks()->create([
+                                'branch_id' => $branchId,
+                                'title' => $taskTitle,
+                                'description' => $template->description,
+                                'priority' => $template->priority,
+                                'status' => 'Pendiente',
+                                'created_by' => $userId,
+                                'start_date' => $startDate,  
+                                'due_date' => $dueDate,
+                                'is_recurring' => $template->is_recurring ?? false,
+                                'recurring_interval' => $interval,
+                                'recurring_unit' => $unit,    
+                            ]);
+
+                            $userIds = $template->users->pluck('id')->toArray();
+                            if (!empty($userIds)) {
+                                $task->assignees()->sync($userIds);
+                            }
+
+                            $requiredEvidenceIds = [];
+                            foreach ($template->evidenceTemplates as $reqEvTpl) {
+                                if (isset($evidenceMap[$reqEvTpl->id])) {
+                                    $requiredEvidenceIds[] = $evidenceMap[$reqEvTpl->id];
+                                }
+                            }
+                            if (!empty($requiredEvidenceIds)) {
+                                $task->requiredEvidences()->sync($requiredEvidenceIds);
+                            }
                         }
                     }
 

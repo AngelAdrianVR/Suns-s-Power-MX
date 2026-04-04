@@ -102,7 +102,7 @@ watch([statusFilter, priorityFilter, municipalityFilter, stateFilter, tab], () =
 const confirmDelete = (ticket) => {
     dialog.warning({
         title: 'Eliminar Ticket',
-        content: `¿Estás seguro de que deseas eliminar el ticket #${ticket.id}? Esta acción no se puede deshacer.`,
+        content: `¿Estás seguro de que deseas eliminar el ticket #${ticket.id}? Esta acción borrará el ticket y TODAS las tareas operativas asociadas de forma permanente.`,
         positiveText: 'Eliminar',
         negativeText: 'Cancelar',
         onPositiveClick: () => {
@@ -110,7 +110,7 @@ const confirmDelete = (ticket) => {
                 onSuccess: () => {
                     notification.success({
                         title: 'Éxito',
-                        content: 'Ticket eliminado correctamente',
+                        content: 'Ticket y tareas eliminados correctamente',
                         duration: 3000
                     });
                 }
