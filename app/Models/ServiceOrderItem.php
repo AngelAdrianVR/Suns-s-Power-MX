@@ -13,6 +13,7 @@ class ServiceOrderItem extends Model
         'product_id',
         'quantity',
         'price', // Precio histórico al momento de la venta
+        'order', // <-- NUEVO CAMPO
     ];
 
     protected $casts = [

@@ -6,7 +6,7 @@ import {
     NButton, NCard, NIcon, NTag, NModal, NForm, NFormItem, NInputNumber, NSelect, createDiscreteApi, NPopconfirm, NEmpty
 } from 'naive-ui';
 import { 
-    AddOutline, CreateOutline, TrashOutline, CubeOutline
+    AddOutline, CreateOutline, TrashOutline, CubeOutline, MenuOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -110,6 +110,29 @@ const handleDeleteProduct = (productId) => {
         }
     });
 };
+
+// ================= DRAG & DROP PRODUCTOS =================
+const draggedProductIndex = ref(null);
+const onDragStartProduct = (index) => { draggedProductIndex.value = index; };
+const onDropProduct = (dropIndex) => {
+    if (draggedProductIndex.value === null || draggedProductIndex.value === dropIndex) return;
+    
+    let currentProducts = [...props.sys.products];
+    const draggedItem = currentProducts.splice(draggedProductIndex.value, 1)[0];
+    currentProducts.splice(dropIndex, 0, draggedItem);
+    
+    const updatedItems = currentProducts.map((item, i) => ({ id: item.id, order: i + 1 }));
+
+    router.post(route('system-type-products.reorder', { system_type: props.sys.id }), { items: updatedItems }, {
+        preserveScroll: true,
+        onSuccess: () => { 
+            notification.success({ title: 'Orden actualizado', content: 'Se guardó el nuevo orden del material.', duration: 3000 }); 
+            emit('sync');
+        }
+    });
+
+    draggedProductIndex.value = null;
+};
 </script>
 
 <template>
@@ -124,31 +147,37 @@ const handleDeleteProduct = (productId) => {
         </div>
 
         <div v-if="sys.products?.length > 0" class="space-y-3">
-            <n-card v-for="prod in sys.products" :key="prod.id" size="small" class="rounded-xl shadow-sm border border-blue-100 bg-blue-50/20 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start gap-3">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-1">
-                            <h4 class="font-bold text-blue-800 text-sm">{{ prod.name }}</h4>
-                            <n-tag type="info" size="tiny" round>Cant: {{ prod.pivot.quantity }}</n-tag>
+            <div v-for="(prod, index) in sys.products" :key="prod.id" draggable="true" @dragstart="onDragStartProduct(index)" @dragover.prevent @drop="onDropProduct(index)">
+                <n-card size="small" class="rounded-xl shadow-sm border border-blue-100 bg-blue-50/20 hover:shadow-md transition-shadow cursor-move">
+                    <div class="flex justify-between items-center gap-3">
+                        <div class="text-gray-400 flex items-center">
+                            <n-icon size="20"><MenuOutline /></n-icon>
                         </div>
-                        <p class="text-xs text-gray-600">SKU: {{ prod.sku }}</p>
-                    </div>
+                        
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="font-bold text-blue-800 text-sm">{{ prod.name }}</h4>
+                                <n-tag type="info" size="tiny" round>Cant: {{ prod.pivot.quantity }}</n-tag>
+                            </div>
+                            <p class="text-xs text-gray-600">SKU: {{ prod.sku }}</p>
+                        </div>
 
-                    <div class="flex gap-1">
-                        <n-button circle quaternary size="small" type="warning" @click="openEditProductModal(prod)">
-                            <template #icon><n-icon><CreateOutline /></n-icon></template>
-                        </n-button>
-                        <n-popconfirm @positive-click="handleDeleteProduct(prod.id)" positive-text="Sí, quitar" negative-text="No">
-                            <template #trigger>
-                                <n-button circle quaternary size="small" type="error">
-                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                </n-button>
-                            </template>
-                            ¿Quitar producto de este tipo de sistema?
-                        </n-popconfirm>
+                        <div class="flex gap-1">
+                            <n-button circle quaternary size="small" type="warning" @click="openEditProductModal(prod)">
+                                <template #icon><n-icon><CreateOutline /></n-icon></template>
+                            </n-button>
+                            <n-popconfirm @positive-click="handleDeleteProduct(prod.id)" positive-text="Sí, quitar" negative-text="No">
+                                <template #trigger>
+                                    <n-button circle quaternary size="small" type="error">
+                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                    </n-button>
+                                </template>
+                                ¿Quitar producto de este tipo de sistema?
+                            </n-popconfirm>
+                        </div>
                     </div>
-                </div>
-            </n-card>
+                </n-card>
+            </div>
         </div>
         <n-empty v-else description="Sin material predeterminado." class="py-8" />
 

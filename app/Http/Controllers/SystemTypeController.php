@@ -94,4 +94,6 @@ class SystemTypeController extends Controller
 
         return back()->with('success', 'Tipo de sistema eliminado correctamente.');
     }
+
+    
 }

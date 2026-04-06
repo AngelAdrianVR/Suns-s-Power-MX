@@ -74,6 +74,8 @@ Route::middleware([
     Route::resource('task-templates', TaskTemplateController::class)->except(['create', 'show', 'edit']);
     Route::resource('evidence-templates', EvidenceTemplateController::class)->only(['store', 'update', 'destroy']);
     Route::post('/evidence-templates/reorder', [EvidenceTemplateController::class, 'reorder'])->name('evidence-templates.reorder');
+    Route::post('/task-templates/reorder', [TaskTemplateController::class, 'reorder'])->name('task-templates.reorder');
+
 
     // Gestión de Tipos de Sistema
     Route::post('/system-types', [SystemTypeController::class, 'store'])->name('system-types.store');
@@ -82,6 +84,7 @@ Route::middleware([
     Route::post('/system-type-products', [SystemTypeProductController::class, 'store'])->name('system-type-products.store');
     Route::delete('/system-type-products/{system_type}/{product}', [SystemTypeProductController::class, 'destroy'])->name('system-type-products.destroy');
     Route::put('/system-type-products/{system_type}/{product}', [SystemTypeProductController::class, 'update'])->name('system-type-products.update');
+    Route::post('/system-types/{system_type}/products/reorder', [SystemTypeProductController::class, 'reorder'])->name('system-type-products.reorder');
 
     // NUEVO: Ruta segura para ejecutar la sincronización manualmente una sola vez desde el navegador
     Route::get('/ejecutar-sincronizacion', function (\Illuminate\Http\Request $request) {

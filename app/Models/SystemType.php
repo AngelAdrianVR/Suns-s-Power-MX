@@ -28,9 +28,9 @@ class SystemType extends Model
 
     public function products()
     {
-        // Carga los productos y el campo pivot de cantidad
         return $this->belongsToMany(Product::class, 'product_system_type')
-                    ->withPivot('quantity')
-                    ->withTimestamps();
+                    ->withPivot('quantity', 'order') // Agregar order aquí
+                    ->withTimestamps()
+                    ->orderByPivot('order', 'asc');  // Hace que se ordenen automáticamente
     }
 }

@@ -50,4 +50,24 @@ class SystemTypeProductController extends Controller
 
         return back()->with('success', 'Producto removido del tipo de sistema.');
     }
+
+    // NUEVO: Método para reordenar los productos con Drag & Drop
+    public function reorder(Request $request, $systemTypeId)
+    {
+        $validated = $request->validate([
+            'items' => 'required|array',
+            'items.*.id' => 'required|exists:products,id',
+            'items.*.order' => 'required|integer'
+        ]);
+
+        $systemType = \App\Models\SystemType::findOrFail($systemTypeId);
+
+        foreach ($validated['items'] as $item) {
+            $systemType->products()->updateExistingPivot($item['id'], [
+                'order' => $item['order']
+            ]);
+        }
+        
+        return back()->with('success', 'Orden de materiales actualizado.');
+    }
 }
