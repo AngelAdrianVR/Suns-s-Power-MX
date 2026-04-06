@@ -6,7 +6,7 @@ import {
     NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, createDiscreteApi, NPopconfirm, NEmpty, NSwitch
 } from 'naive-ui';
 import { 
-    AddOutline, CreateOutline, TrashOutline, CheckmarkCircleOutline, CameraOutline, InformationCircleOutline, SyncOutline
+    AddOutline, CreateOutline, TrashOutline, CheckmarkCircleOutline, CameraOutline, InformationCircleOutline, SyncOutline, MenuOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -129,6 +129,29 @@ const handleDeleteTask = (id) => {
         }
     });
 };
+
+// ================= DRAG & DROP TAREAS =================
+const draggedTaskIndex = ref(null);
+const onDragStartTask = (index) => { draggedTaskIndex.value = index; };
+const onDropTask = (dropIndex) => {
+    if (draggedTaskIndex.value === null || draggedTaskIndex.value === dropIndex) return;
+    
+    let currentTasks = [...props.tasks];
+    const draggedItem = currentTasks.splice(draggedTaskIndex.value, 1)[0];
+    currentTasks.splice(dropIndex, 0, draggedItem);
+    
+    const updatedItems = currentTasks.map((item, i) => ({ id: item.id, order: i + 1 }));
+
+    router.post(route('task-templates.reorder'), { items: updatedItems }, {
+        preserveScroll: true,
+        onSuccess: () => { 
+            notification.success({ title: 'Orden actualizado', content: 'Se guardó el nuevo orden de las tareas.', duration: 3000 }); 
+            emit('sync');
+        }
+    });
+
+    draggedTaskIndex.value = null;
+};
 </script>
 
 <template>
@@ -143,53 +166,59 @@ const handleDeleteTask = (id) => {
         </div>
 
         <div v-if="tasks.length > 0" class="space-y-3">
-            <n-card v-for="item in tasks" :key="item.id" size="small" class="rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div class="flex justify-between items-start gap-3">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-1">
-                            <h4 class="font-semibold text-gray-800 text-sm">{{ item.title }}</h4>
-                            <n-tag :type="getPriorityColor(item.priority)" size="tiny" round>{{ item.priority }}</n-tag>
+            <div v-for="(item, index) in tasks" :key="item.id" draggable="true" @dragstart="onDragStartTask(index)" @dragover.prevent @drop="onDropTask(index)">
+                <n-card size="small" class="rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-move bg-indigo-50/10">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="text-gray-400 flex items-center mt-1">
+                            <n-icon size="20"><MenuOutline /></n-icon>
                         </div>
-                        <p class="text-xs text-gray-600" v-if="item.description">{{ item.description }}</p>
                         
-                        <div class="mt-2 text-[11px] text-indigo-500 font-medium">
-                            ⏱️ Inicia en {{ item.start_days }} días - Dura {{ item.duration_days }} días
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="font-semibold text-gray-800 text-sm">{{ item.title }}</h4>
+                                <n-tag :type="getPriorityColor(item.priority)" size="tiny" round>{{ item.priority }}</n-tag>
+                            </div>
+                            <p class="text-xs text-gray-600" v-if="item.description">{{ item.description }}</p>
+                            
+                            <div class="mt-2 text-[11px] text-indigo-500 font-medium">
+                                ⏱️ Inicia en {{ item.start_days }} días - Dura {{ item.duration_days }} días
+                            </div>
+
+                            <div v-if="item.is_recurring" class="mt-1 text-[11px] text-blue-500 font-medium flex items-center gap-1">
+                                <n-icon><SyncOutline/></n-icon> 
+                                {{ getRecurringText(item.recurring_interval, item.recurring_unit) }}
+                                <span class="ml-1 text-purple-500 font-bold">({{ item.recurring_count || 1 }} veces)</span>
+                            </div>
+
+                            <div v-if="item.evidence_templates?.length > 0" class="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-1 items-center">
+                                <n-icon class="text-emerald-500"><CameraOutline/></n-icon> Evidencias requeridas:
+                                <n-tag v-for="ev in item.evidence_templates" :key="ev.id" size="tiny" type="info" round>{{ ev.title }}</n-tag>
+                            </div>
+
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                <template v-if="item.users?.length">
+                                    <n-avatar v-for="u in item.users" :key="u.id" round size="small" :src="u.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+u.name"/>
+                                </template>
+                                <span v-else class="text-[10px] italic text-gray-400">Sin asignar</span>
+                            </div>
                         </div>
 
-                        <div v-if="item.is_recurring" class="mt-1 text-[11px] text-blue-500 font-medium flex items-center gap-1">
-                            <n-icon><SyncOutline/></n-icon> 
-                            {{ getRecurringText(item.recurring_interval, item.recurring_unit) }}
-                            <span class="ml-1 text-purple-500 font-bold">({{ item.recurring_count || 1 }} veces)</span>
-                        </div>
-
-                        <div v-if="item.evidence_templates?.length > 0" class="mt-2 text-[11px] text-gray-500 flex flex-wrap gap-1 items-center">
-                            <n-icon class="text-emerald-500"><CameraOutline/></n-icon> Evidencias requeridas:
-                            <n-tag v-for="ev in item.evidence_templates" :key="ev.id" size="tiny" type="info" round>{{ ev.title }}</n-tag>
-                        </div>
-
-                        <div class="mt-2 flex flex-wrap gap-1">
-                            <template v-if="item.users?.length">
-                                <n-avatar v-for="u in item.users" :key="u.id" round size="small" :src="u.profile_photo_url" :fallback-src="'https://ui-avatars.com/api/?name='+u.name"/>
-                            </template>
-                            <span v-else class="text-[10px] italic text-gray-400">Sin asignar</span>
+                        <div class="flex gap-1">
+                            <n-button circle quaternary size="small" type="info" @click="openEditTaskModal(item)">
+                                <template #icon><n-icon><CreateOutline /></n-icon></template>
+                            </n-button>
+                            <n-popconfirm @positive-click="handleDeleteTask(item.id)" positive-text="Sí" negative-text="No">
+                                <template #trigger>
+                                    <n-button circle quaternary size="small" type="error">
+                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                    </n-button>
+                                </template>
+                                ¿Eliminar?
+                            </n-popconfirm>
                         </div>
                     </div>
-
-                    <div class="flex gap-1">
-                        <n-button circle quaternary size="small" type="info" @click="openEditTaskModal(item)">
-                            <template #icon><n-icon><CreateOutline /></n-icon></template>
-                        </n-button>
-                        <n-popconfirm @positive-click="handleDeleteTask(item.id)" positive-text="Sí" negative-text="No">
-                            <template #trigger>
-                                <n-button circle quaternary size="small" type="error">
-                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                </n-button>
-                            </template>
-                            ¿Eliminar?
-                        </n-popconfirm>
-                    </div>
-                </div>
-            </n-card>
+                </n-card>
+            </div>
         </div>
         <n-empty v-else description="Sin tareas automáticas." class="py-8" />
 

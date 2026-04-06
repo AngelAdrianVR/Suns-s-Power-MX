@@ -89,7 +89,6 @@ class ServiceOrderController extends Controller
             ->when($dateRange, function ($query, $dateRange) {
                 if (is_array($dateRange) && count($dateRange) === 2) {
                     try {
-                        // Naive UI envía timestamps en milisegundos desde Vue
                         $start = is_numeric($dateRange[0]) 
                             ? Carbon::createFromTimestampMs($dateRange[0])->startOfDay()
                             : Carbon::parse($dateRange[0])->startOfDay();
@@ -171,11 +170,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
-            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
-            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
-            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
-            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
-            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
+            'voltage' => 'nullable|in:110V,220V,440V',           
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    
+            'number_of_units' => 'nullable|integer|min:0',       
+            'unit_capacity' => 'nullable|numeric|min:0',         
+            'total_capacity' => 'nullable|numeric|min:0',        
             'meter_number' => 'nullable|string|max:255',
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -196,14 +195,13 @@ class ServiceOrderController extends Controller
             $serviceOrder = ServiceOrder::create($validated);
 
             if (!empty($validated['system_type'])) {
-                // 1. Evidencias Requeridas (Se crean primero para obtener sus IDs)
+                // 1. Evidencias Requeridas
                 $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
                     ->orderBy('order', 'asc')
                     ->get();
 
-                $evidenceMap = []; // Guardaremos [Template_ID => Evidencia_Real_ID]
-
+                $evidenceMap = []; 
                 foreach ($evidenceTemplates as $evTemplate) {
                     $ev = $serviceOrder->evidences()->create([
                         'title' => $evTemplate->title,
@@ -218,10 +216,11 @@ class ServiceOrderController extends Controller
                 $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                     ->where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
+                    ->orderBy('order', 'asc') // Aseguramos el orden de las plantillas
                     ->get();
 
+                $taskOrderIndex = 1;
                 foreach ($templates as $template) {
-                    // Obtenemos configuración cíclica
                     $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
                     $interval = $template->recurring_interval ?? 1;
                     $unit = $template->recurring_unit ?? 'months';
@@ -235,10 +234,8 @@ class ServiceOrderController extends Controller
                         $startDays = $template->start_days ?? 0;
                         $durationDays = $template->duration_days ?? 1;
 
-                        // Fecha de inicio base
                         $startDate = now()->addDays($startDays)->startOfDay();
 
-                        // Si es la iteración 2 en adelante, sumamos el tiempo cíclico
                         if ($i > 1 && $template->is_recurring) {
                             $multiplier = $i - 1;
                             if ($unit === 'days') $startDate->addDays($interval * $multiplier);
@@ -261,14 +258,16 @@ class ServiceOrderController extends Controller
                             'is_recurring' => $template->is_recurring ?? false,
                             'recurring_interval' => $interval,
                             'recurring_unit' => $unit,
+                            'order' => $taskOrderIndex, // Agregado: Guardamos el orden
                         ]);
+
+                        $taskOrderIndex++;
 
                         $userIds = $template->users->pluck('id')->toArray();
                         if (!empty($userIds)) {
                             $task->assignees()->sync($userIds);
                         }
 
-                        // Ligar Evidencias a la Tarea usando nuestro mapa
                         $requiredEvidenceIds = [];
                         foreach ($template->evidenceTemplates as $reqEvTpl) {
                             if (isset($evidenceMap[$reqEvTpl->id])) {
@@ -288,12 +287,18 @@ class ServiceOrderController extends Controller
                     ->first();
 
                 if ($systemTypeModel) {
-                    foreach ($systemTypeModel->products as $product) {
+                    // Ordenar productos según el pivote (si existe el orden) o alfabéticamente
+                    $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
+                    $productOrderIndex = 1;
+
+                    foreach ($products as $product) {
                         $serviceOrder->items()->create([
                             'product_id' => $product->id,
                             'quantity' => $product->pivot->quantity,
                             'price' => $product->sale_price,
+                            'order' => $productOrderIndex, // Agregado: Guardamos el orden
                         ]);
+                        $productOrderIndex++;
 
                         InventoryService::removeStock(
                             product: $product,
@@ -319,7 +324,6 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $canViewFinancials = $user->hasAnyRole(['Admin']);
 
-        // NUEVO: Agregamos el callback para ordenar las evidencias
         $serviceOrder->load([
             'client',
             'technician',
@@ -327,7 +331,7 @@ class ServiceOrderController extends Controller
             'items.product.category', 
             'tasks.assignees', 
             'tasks.comments.user', 
-            'tasks.requiredEvidences.media', // <-- AÑADIDO PARA ENVIAR EVIDENCIAS AL GANTT Y MODAL
+            'tasks.requiredEvidences.media',
             'media',
             'evidences' => function ($query) {
                 $query->orderBy('order', 'asc')->orderBy('id', 'asc');
@@ -377,6 +381,7 @@ class ServiceOrderController extends Controller
                 'is_recurring' => $task->is_recurring,
                 'recurring_interval' => $task->recurring_interval,
                 'recurring_unit' => $task->recurring_unit,
+                'order' => $task->order ?? 0, // Agregado: Retornamos el orden para Vue
                 'comments' => $task->comments->map(fn($c) => [
                     'id' => $c->id,
                     'body' => $c->body,
@@ -390,7 +395,6 @@ class ServiceOrderController extends Controller
                     'phone' => $user->phone, 
                     'avatar' => $user->profile_photo_url 
                 ]),
-                // <-- AÑADIDO PARA QUE LLEGUE A VUE
                 'required_evidences' => $task->requiredEvidences->map(fn($ev) => [
                     'id' => $ev->id,
                     'title' => $ev->title,
@@ -461,11 +465,11 @@ class ServiceOrderController extends Controller
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
             'system_type' => 'nullable|string|max:255',
-            'voltage' => 'nullable|in:110V,220V,440V',           // <-- NUEVO
-            'number_of_wires' => 'nullable|integer|in:1,2,3',    // <-- NUEVO
-            'number_of_units' => 'nullable|integer|min:0',       // <-- NUEVO
-            'unit_capacity' => 'nullable|numeric|min:0',         // <-- NUEVO
-            'total_capacity' => 'nullable|numeric|min:0',        // <-- NUEVO
+            'voltage' => 'nullable|in:110V,220V,440V',           
+            'number_of_wires' => 'nullable|integer|in:1,2,3',    
+            'number_of_units' => 'nullable|integer|min:0',       
+            'unit_capacity' => 'nullable|numeric|min:0',         
+            'total_capacity' => 'nullable|numeric|min:0',        
             'meter_number' => 'nullable|string|max:255', 
             'installation_street' => 'required|string|max:255',
             'installation_exterior_number' => 'nullable|string|max:50',
@@ -485,14 +489,10 @@ class ServiceOrderController extends Controller
         DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
             $serviceOrder->update($validated);
 
-            // Si se cambió el tipo de sistema al editar la orden, actualizamos tareas y evidencias
             if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
-                
-                // 1. Limpiar las tareas pendientes y evidencias vacías del sistema anterior
                 $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
                 $serviceOrder->evidences()->doesntHave('media')->delete();
 
-                // 2. Generar las nuevas
                 if (!empty($validated['system_type'])) {
                     
                     // Evidencias
@@ -516,9 +516,11 @@ class ServiceOrderController extends Controller
                     $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                         ->where('branch_id', $branchId)
                         ->where('system_type', $validated['system_type'])
+                        ->orderBy('order', 'asc') // Aseguramos el orden
                         ->get();
 
                     $userId = Auth::id();
+                    $taskOrderIndex = 1;
 
                     foreach ($templates as $template) {
                         $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
@@ -557,8 +559,10 @@ class ServiceOrderController extends Controller
                                 'due_date' => $dueDate,
                                 'is_recurring' => $template->is_recurring ?? false,
                                 'recurring_interval' => $interval,
-                                'recurring_unit' => $unit,    
+                                'recurring_unit' => $unit,
+                                'order' => $taskOrderIndex, // Agregado: Guardamos el orden
                             ]);
+                            $taskOrderIndex++;
 
                             $userIds = $template->users->pluck('id')->toArray();
                             if (!empty($userIds)) {
@@ -584,12 +588,17 @@ class ServiceOrderController extends Controller
                         ->first();
 
                     if ($systemTypeModel) {
-                        foreach ($systemTypeModel->products as $product) {
+                        $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
+                        $productOrderIndex = 1;
+
+                        foreach ($products as $product) {
                             $serviceOrder->items()->create([
                                 'product_id' => $product->id,
                                 'quantity' => $product->pivot->quantity,
                                 'price' => $product->sale_price,
+                                'order' => $productOrderIndex, // Agregado: Guardamos el orden
                             ]);
+                            $productOrderIndex++;
 
                             InventoryService::removeStock(
                                 product: $product,
@@ -693,10 +702,14 @@ class ServiceOrderController extends Controller
         $product = Product::findOrFail($validated['product_id']);
 
         DB::transaction(function () use ($serviceOrder, $product, $validated) {
+            // Asignar el último orden
+            $lastOrder = $serviceOrder->items()->max('order') ?? 0;
+
             $serviceOrder->items()->create([
                 'product_id' => $product->id,
                 'quantity' => $validated['quantity'],
                 'price' => $product->sale_price,
+                'order' => $lastOrder + 1,
             ]);
 
             InventoryService::removeStock(
@@ -745,7 +758,6 @@ class ServiceOrderController extends Controller
 
         try {
             DB::transaction(function () use ($serviceOrder) {
-                // 1. Restaurar stock de materiales
                 foreach ($serviceOrder->items as $item) {
                     if ($item->product) {
                         InventoryService::addStock(
@@ -759,16 +771,13 @@ class ServiceOrderController extends Controller
                     }
                 }
 
-                // 2. Eliminar evidencias individuales y forzar el borrado de sus fotos del disco (Spatie)
                 foreach ($serviceOrder->evidences as $evidence) {
                     $evidence->clearMediaCollection('specific_evidences');
                     $evidence->delete();
                 }
 
-                // 3. Eliminar archivos generales de la orden del disco (Spatie)
                 $serviceOrder->clearMediaCollection('evidences');
 
-                // 4. Eliminar dependencias basadas en el modelo ServiceOrder
                 $serviceOrder->tasks()->delete();
                 $serviceOrder->payments()->delete(); 
                 $serviceOrder->items()->delete();
@@ -778,19 +787,15 @@ class ServiceOrderController extends Controller
                     $serviceOrder->contract()->delete();
                 }
 
-                // 5. Eliminar tickets de soporte relacionados a esta orden y sus dependencias (tareas)
                 $ticketIds = Ticket::where('related_service_order_id', $serviceOrder->id)->pluck('id');
                 if ($ticketIds->isNotEmpty()) {
-                    // Eliminar tareas asociadas a los tickets (relación polimórfica)
                     \App\Models\Task::where('taskable_type', Ticket::class)
                         ->whereIn('taskable_id', $ticketIds)
                         ->delete();
                         
-                    // Finalmente eliminar los tickets
                     Ticket::whereIn('id', $ticketIds)->delete();
                 }
 
-                // 6. Finalmente, eliminar la Orden
                 $serviceOrder->delete(); 
             });
             return redirect()->route('service-orders.index')->with('success', 'Orden eliminada y stock restaurado correctamente.');
@@ -811,7 +816,7 @@ class ServiceOrderController extends Controller
         $request->validate([
             'file' => 'nullable|file|max:10240',
             'files.*' => 'nullable|file|max:10240',
-            'comment' => 'nullable|string' // <-- Permitir recibir el comentario
+            'comment' => 'nullable|string' 
         ]);
 
         if ($request->hasFile('files')) {
@@ -822,7 +827,6 @@ class ServiceOrderController extends Controller
             $evidence->addMediaFromRequest('file')->toMediaCollection('specific_evidences');
         }
 
-        // <-- NUEVO: Guardar el comentario si viene en la petición
         if ($request->has('comment')) {
             $evidence->update(['comment' => $request->comment]);
         }
@@ -831,7 +835,7 @@ class ServiceOrderController extends Controller
     }
 
     /**
-     * Sincroniza y genera las evidencias, tareas y productos faltantes
+     * Sincroniza y genera las evidencias, tareas y productos faltantes/ordenados
      */
     public static function syncSystemTypeData($branchId = null)
     {
@@ -847,15 +851,20 @@ class ServiceOrderController extends Controller
         foreach ($orders as $order) {
             $systemTypeModel = SystemType::with('products')->where('branch_id', $order->branch_id)->where('name', $order->system_type)->first();
             
-            // 1. Sync Products (Items)
+            // 1. Sync Products (Items) + Update Order
             if ($systemTypeModel) {
                 $existingProducts = $order->items()->get()->keyBy('product_id');
-                foreach ($systemTypeModel->products as $product) {
+                // Ordenamos basado en lo que mandó el pivote
+                $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
+                $productOrderIndex = 1;
+
+                foreach ($products as $product) {
                     if (!$existingProducts->has($product->id)) {
                         $order->items()->create([
                             'product_id' => $product->id,
                             'quantity' => $product->pivot->quantity,
                             'price' => $product->sale_price,
+                            'order' => $productOrderIndex, // Se le asigna el nuevo orden
                         ]);
                         InventoryService::removeStock(
                             product: $product,
@@ -866,11 +875,13 @@ class ServiceOrderController extends Controller
                             notes: "Material auto-asignado por sincronización de Tipo de Sistema a Orden #{$order->id}"
                         );
                     } else {
-                        // Sincronizar cantidades si se actualizó el número en la plantilla y el material aún no se concilia
+                        // Sincronizar orden y cantidades
                         $existingItem = $existingProducts->get($product->id);
+                        $updateData = ['order' => $productOrderIndex]; // Forzamos el update del orden
+                        
                         if ($existingItem->used_quantity === null && $existingItem->quantity != $product->pivot->quantity) {
                             $diff = $product->pivot->quantity - $existingItem->quantity;
-                            $existingItem->update(['quantity' => $product->pivot->quantity]);
+                            $updateData['quantity'] = $product->pivot->quantity;
                             
                             if ($diff > 0) {
                                 InventoryService::removeStock($product, $order->branch_id, $diff, 'Instalación (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
@@ -878,7 +889,9 @@ class ServiceOrderController extends Controller
                                 InventoryService::addStock($product, $order->branch_id, abs($diff), 'Devolución (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
                             }
                         }
+                        $existingItem->update($updateData);
                     }
+                    $productOrderIndex++;
                 }
             }
 
@@ -900,7 +913,6 @@ class ServiceOrderController extends Controller
                         'order' => $evTemplate->order ?? 0,
                     ]);
                 } else {
-                    // Actualizar en caso de que se haya modificado la descripción, el orden o si es múltiple
                     $ev->update([
                         'description' => $evTemplate->description,
                         'allows_multiple' => $evTemplate->allows_multiple ?? false,
@@ -910,19 +922,20 @@ class ServiceOrderController extends Controller
                 $evidenceMap[$evTemplate->id] = $ev->id;
             }
             
-            // 3. Sync Tasks
+            // 3. Sync Tasks + Update Order
             $taskTemplates = TaskTemplate::with(['users', 'evidenceTemplates'])
                 ->where('branch_id', $order->branch_id)
                 ->where('system_type', $order->system_type)
+                ->orderBy('order', 'asc') // Aseguramos el orden
                 ->get();
                 
+            $taskOrderIndex = 1;
+            
             foreach ($taskTemplates as $template) {
-                // Obtenemos cuántas veces se va a repetir y la unidad de tiempo
                 $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
                 $interval = $template->recurring_interval ?? 1;
                 $unit = $template->recurring_unit ?? 'months';
 
-                // Iteramos la cantidad de veces solicitada para crear/sincronizar las tareas cíclicas
                 for ($i = 1; $i <= $recurringCount; $i++) {
                     $taskTitle = $template->title;
                     if ($recurringCount > 1) {
@@ -935,10 +948,8 @@ class ServiceOrderController extends Controller
                         $startDays = $template->start_days ?? 0;
                         $durationDays = $template->duration_days ?? 1;
 
-                        // Fecha de inicio base (creación de la orden + días para iniciar)
                         $startDate = $order->created_at->copy()->addDays($startDays);
 
-                        // Si es la iteración 2 en adelante, sumamos el tiempo cíclico
                         if ($i > 1 && $template->is_recurring) {
                             $multiplier = $i - 1;
                             if ($unit === 'days') $startDate->addDays($interval * $multiplier);
@@ -962,6 +973,7 @@ class ServiceOrderController extends Controller
                             'is_recurring' => $template->is_recurring ?? false,
                             'recurring_interval' => $interval,
                             'recurring_unit' => $unit,
+                            'order' => $taskOrderIndex, // Guardamos el nuevo orden sincronizado
                         ]);
 
                         $userIds = $template->users->pluck('id')->toArray();
@@ -969,12 +981,15 @@ class ServiceOrderController extends Controller
                             $task->assignees()->sync($userIds);
                         }
                     } else {
-                        // Actualizar descripciones y prioridad por si se editaron en la plantilla base
+                        // Actualizamos el orden general que viene de la plantilla
                         $task->update([
                             'description' => $template->description,
                             'priority' => $template->priority,
+                            'order' => $taskOrderIndex, // Actualizamos el orden
                         ]);
                     }
+                    
+                    $taskOrderIndex++;
                     
                     // Siempre sincronizar las evidencias por si fueron movidas/añadidas/quitadas
                     $requiredEvidenceIds = [];

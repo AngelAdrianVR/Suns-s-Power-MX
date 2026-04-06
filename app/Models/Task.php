@@ -20,6 +20,7 @@ class Task extends Model
         'finish_date',
         'due_date',
         'status', // Pendiente, En Proceso, Completada, Detenido
+        'order',
         'priority',
         'taskable_id',  
         'taskable_type',
