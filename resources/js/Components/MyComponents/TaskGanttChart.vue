@@ -1,11 +1,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
-import { usePermissions } from '@/Composables/usePermissions'; // Importación de permisos
+import { usePermissions } from '@/Composables/usePermissions';
 import { 
     NAvatar, NTooltip, NTag, NEmpty, NButton, NIcon, NModal, NCard, NForm, 
     NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing, NBadge,
-    NScrollbar, NDropdown, NDescriptions, NDescriptionsItem
+    NScrollbar, NDropdown, NDescriptions, NDescriptionsItem, NDivider
 } from 'naive-ui';
 import { 
     format, parseISO, differenceInHours, addDays, startOfDay, endOfDay 
@@ -39,32 +39,42 @@ const props = defineProps({
 });
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
-const { hasPermission } = usePermissions(); // Extrayendo permisos
+const { hasPermission } = usePermissions();
+
+// Computeds para separar y ordenar las tareas basadas en el backend
+const sortedNormalTasks = computed(() => {
+    if (!props.tasks) return [];
+    return props.tasks
+        .filter(t => !t.is_recurring)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+});
+
+const sortedRecurringTasks = computed(() => {
+    if (!props.tasks) return [];
+    return props.tasks
+        .filter(t => t.is_recurring)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+});
+
 const page = usePage();
-const currentUserId = computed(() => page.props.auth?.user?.id); // ID del usuario logueado
+const currentUserId = computed(() => page.props.auth?.user?.id);
 
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedTask = ref(null);
 const isEditing = ref(false); 
 
-// Estado para controlar la vista de comentarios en Móvil
 const showMobileComments = ref(false);
 
 watch(showDetailModal, (val) => {
     if (val) showMobileComments.value = false;
 });
 
-// --- REGLA DE NEGOCIO PARA CAMBIO DE STATUS ---
 const canEditTaskStatus = (task) => {
-    // Si es admin o planeador y tiene el permiso maestro
     if (hasPermission('pms.schedule')) return true;
-    
-    // Si no, verificamos que el usuario logueado esté dentro del array de asignados de ESTA tarea
     if (!currentUserId.value || !task.assignees) return false;
     return task.assignees.some(u => u.id === currentUserId.value);
 };
-// ----------------------------------------------
 
 watch(() => props.tasks, (newTasks) => {
     if (selectedTask.value) {
@@ -75,7 +85,6 @@ watch(() => props.tasks, (newTasks) => {
     }
 }, { deep: true });
 
-// Formulario de Tarea
 const form = useForm({
     id: null, 
     taskable_id: props.orderId,
@@ -89,7 +98,6 @@ const form = useForm({
     user_ids: []
 });
 
-// Formulario de Comentario
 const commentForm = useForm({
     body: '',
     commentable_type: 'task',
@@ -109,8 +117,6 @@ const userOptions = computed(() => {
     }));
 });
 
-// --- Lógica CRUD Tareas ---
-
 const openCreate = () => {
     isEditing.value = false;
     form.reset();
@@ -124,15 +130,13 @@ const openCreate = () => {
 };
 
 const openEdit = (task) => {
-    showDetailModal.value = false; // Cierra modal de detalles si estaba abierto
+    showDetailModal.value = false; 
     isEditing.value = true;
     form.id = task.id;
-    // Soporte hacia atrás por si viene como name o title
     form.title = task.title || task.name; 
     form.description = task.description;
     form.priority = task.priority;
     
-    // Parseo seguro de fechas a timestamp para los DatePickers
     const startDateRaw = task.start_date || task.start;
     const dueDateRaw = task.due_date || task.end;
     
@@ -148,7 +152,6 @@ const openEdit = (task) => {
 };
 
 const submitTask = () => {
-    // Transformamos la información inyectando de manera estricta el módulo y el ID
     const transformedForm = form.transform((data) => ({
         ...data,
         taskable_id: Number(props.orderId),
@@ -177,7 +180,6 @@ const submitTask = () => {
 };
 
 const updateTaskStatus = (task, newStatus) => {
-    // Validación estricta de responsables antes de permitir el cambio de estatus
     if (!task.assignees || task.assignees.length === 0) {
         notification.warning({ 
             title: 'Responsable Requerido', 
@@ -187,7 +189,6 @@ const updateTaskStatus = (task, newStatus) => {
         return; 
     }
     
-    // Validación de evidencias
     if (newStatus === 'Completado') {
         const pendingEvidences = task.required_evidences?.filter(e => !e.media?.length).length || 0;
         if (pendingEvidences > 0) {
@@ -233,7 +234,6 @@ const confirmDeleteFromModal = () => {
     });
 };
 
-// --- Comentarios y Modal de Detalle ---
 const openDetail = (task) => {
     selectedTask.value = task;
     commentForm.commentable_id = task.id;
@@ -251,8 +251,6 @@ const submitComment = () => {
         }
     });
 };
-
-// --- UTILIDADES UI ---
 
 const getStatusTagType = (status) => {
     const map = { 'Pendiente': 'default', 'En Proceso': 'info', 'Completado': 'success', 'Detenido': 'error' };
@@ -275,7 +273,6 @@ const getGoogleMapsUrl = (lat, lng, fullAddress) => {
     return '#';
 }
 
-// --- WHATSAPP LOGIC ---
 const whatsappOptions = [
     { label: '🔔 Nueva Tarea + Link', key: 'new_task' },
     { label: '⏰ Recordatorio', key: 'reminder' },
@@ -309,7 +306,6 @@ const handleWhatsappSelect = (key, task) => {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
 };
 
-// --- LÓGICA GANTT ---
 const statusColors = {
     'Pendiente': 'bg-gray-200 border-gray-300 text-gray-700',
     'En Proceso': 'bg-blue-200 border-blue-400 text-blue-900',
@@ -437,163 +433,176 @@ const translateUnit = (unit) => {
                          <div v-for="day in timelineDays" :key="'grid-'+day" class="flex-1 border-l border-dashed border-gray-200/70"></div>
                     </div>
 
-                    <!-- Iteración de Tareas -->
-                    <div v-for="task in tasks" :key="task.id" class="flex relative z-10 group border-b border-gray-100 min-h-[72px] hover:bg-slate-50 transition-colors">
-                        
-                        <!-- Columna Izquierda Fija: Detalles y Fechas -->
-                        <div class="w-[480px] flex-shrink-0 flex items-stretch border-r border-gray-200 bg-white group-hover:bg-slate-50 transition-colors">
-                            
-                            <!-- Indicador de Prioridad -->
-                            <div class="w-1.5 flex-shrink-0" 
-                                :class="{
-                                    'bg-red-500': task.priority === 'Alta',
-                                    'bg-amber-400': task.priority === 'Media',
-                                    'bg-blue-400': task.priority === 'Baja'
-                                }">
-                            </div>
+                    <!-- Iteración Unificada y Limpia para Tareas Normales y Cíclicas -->
+                    <template v-for="(taskList, listIndex) in [
+                        { tasks: sortedNormalTasks, isRecurring: false }, 
+                        { tasks: sortedRecurringTasks, isRecurring: true }
+                    ]" :key="listIndex">
 
-                            <!-- Información de la Tarea -->
-                            <div class="flex-1 p-3 flex flex-col justify-center" @click="openDetail(task)">
-                                <div class="flex justify-between items-start gap-3">
-                                    <span class="font-bold text-gray-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 leading-tight" @click="openDetail(task)">
-                                        {{ task.title || task.name }}
-                                    </span>
-                                    
-                                    <!-- Selector Activo de Estatus (SÓLO PARA AUTORIZADOS) -->
-                                    <n-popselect 
-                                        v-if="canEditTaskStatus(task)"
-                                        :options="[
-                                            {label: 'Pendiente', value: 'Pendiente'},
-                                            {label: 'En Proceso', value: 'En Proceso'},
-                                            {label: 'Completado', value: 'Completado'},
-                                            {label: 'Detenido', value: 'Detenido'}
-                                        ]"
-                                        :value="task.status"
-                                        @update:value="(val) => updateTaskStatus(task, val)"
-                                        trigger="click"
-                                    >
-                                        <n-tag size="small" :bordered="false" class="cursor-pointer font-semibold whitespace-nowrap hover:opacity-80" 
-                                            :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
-                                            {{ task.status }}
-                                        </n-tag>
-                                    </n-popselect>
-
-                                    <!-- Etiqueta Visual (CUANDO NO TIENEN PERMISO) -->
-                                    <n-tag 
-                                        v-else 
-                                        size="small" 
-                                        :bordered="false" 
-                                        class="font-semibold whitespace-nowrap cursor-not-allowed opacity-90" 
-                                        title="No tienes permiso para modificar el estatus de esta tarea"
-                                        :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
-                                        {{ task.status }}
-                                    </n-tag>
-
+                        <!-- SEPARADOR DE MANTENIMIENTOS -->
+                        <div v-if="taskList.isRecurring && taskList.tasks.length > 0" class="mt-8 mb-4">
+                            <n-divider dashed>
+                                <div class="text-purple-600 font-bold flex items-center gap-2">
+                                    <n-icon size="18"><SyncOutline /></n-icon>
+                                    Mantenimientos y Tareas Cíclicas
                                 </div>
-
-                                <div class="flex items-center justify-between mt-2 h-7">
-                                    <!-- Avatares -->
-                                    <div class="flex -space-x-1.5">
-                                        <n-tooltip v-for="user in task.assignees" :key="user.id" placement="bottom">
-                                            <template #trigger>
-                                                <n-avatar round size="small" :src="getAvatarSrc(user)" class="border-2 border-white shadow-sm hover:z-10 relative"/>
-                                            </template>
-                                            {{ user.name }}
-                                        </n-tooltip>
-                                        <div v-if="!task.assignees?.length" class="text-xs text-gray-400 italic">Sin asignar</div>
-                                    </div>
-                                    
-                                    <!-- Botones de Acción (Visibles en Hover) -->
-                                    <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
-                                        <n-button size="tiny" circle secondary type="default" @click="openDetail(task)">
-                                            <template #icon>
-                                                <n-badge :value="task.comments?.length || 0" :max="99" :show-zero="false">
-                                                    <n-icon><ChatbubbleOutline /></n-icon>
-                                                </n-badge>
-                                            </template>
-                                        </n-button>
-                                        
-                                        <!-- Menú WhatsApp -->
-                                        <n-dropdown 
-                                            v-if="task.assignees?.length" 
-                                            trigger="click" 
-                                            :options="whatsappOptions" 
-                                            @select="(key) => handleWhatsappSelect(key, task)"
-                                        >
-                                            <n-button size="tiny" circle type="success" ghost>
-                                                <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
-                                            </n-button>
-                                        </n-dropdown>
-                                        
-                                        <n-button size="tiny" circle secondary type="warning" @click="openEdit(task)">
-                                            <template #icon><n-icon><PencilOutline /></n-icon></template>
-                                        </n-button>
-                                        <n-popconfirm @positive-click="deleteTask(task.id)">
-                                            <template #trigger>
-                                                <n-button size="tiny" circle type="error" quaternary>
-                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
-                                                </n-button>
-                                            </template>
-                                            ¿Borrar tarea?
-                                        </n-popconfirm>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Columna Fecha Inicio -->
-                            <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30">
-                                <span class="font-medium text-gray-700">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM') : '-' }}</span>
-                                <span class="text-[10px]">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'HH:mm') : '' }}</span>
-                            </div>
-
-                            <!-- Columna Fecha Fin -->
-                            <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30" :class="task.finish_date ? 'bg-green-50/50' : ''">
-                                <span class="font-bold" :class="task.finish_date ? 'text-green-600' : 'text-gray-700'">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}</span>
-                                <span class="text-[10px]" :class="task.finish_date ? 'text-green-500' : ''">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'HH:mm') : '' }}</span>
-                            </div>
-
+                            </n-divider>
                         </div>
 
-                        <!-- Columna Derecha: Renderizado del Gantt -->
-                        <div class="flex-1 relative pr-4" @click="openDetail(task)">
-                            <n-tooltip trigger="hover" placement="top" :style="{ maxWidth: '250px' }">
-                                <template #trigger>
-                                    <!-- Píldora de la tarea -->
-                                    <div 
-                                        class="absolute top-1/2 -translate-y-1/2 h-8 rounded-md shadow-sm border transition-all hover:brightness-95 hover:shadow-md cursor-pointer flex items-center px-2 overflow-hidden"
-                                        :class="statusColors[task.status] || 'bg-gray-200 border-gray-300'"
-                                        :style="getTaskStyle(task)"
-                                    >
-                                        <!-- Texto opcional dentro de la barra si hay espacio -->
-                                        <span class="truncate text-[10px] font-bold opacity-80 mix-blend-color-burn pointer-events-none">
+                        <!-- FILAS DE TAREAS -->
+                        <div v-for="task in taskList.tasks" :key="(taskList.isRecurring ? 'rec-' : 'norm-') + task.id" class="flex items-stretch border-b border-gray-100 group relative hover:bg-slate-50 transition-colors h-[72px]">
+                            
+                            <!-- Columna Izquierda Fija: Detalles y Fechas -->
+                            <div class="w-[480px] flex-shrink-0 flex items-stretch border-r border-gray-200 bg-white group-hover:bg-slate-50 transition-colors">
+                                
+                                <!-- Indicador de Prioridad -->
+                                <div class="w-1.5 flex-shrink-0" 
+                                    :class="{
+                                        'bg-red-500': task.priority === 'Alta',
+                                        'bg-amber-400': task.priority === 'Media',
+                                        'bg-blue-400': task.priority === 'Baja'
+                                    }">
+                                </div>
+
+                                <!-- Información de la Tarea -->
+                                <div class="flex-1 p-3 flex flex-col justify-center cursor-pointer" @click="openDetail(task)">
+                                    <div class="flex justify-between items-start gap-3">
+                                        <span class="font-bold text-gray-800 text-sm line-clamp-2 hover:text-indigo-600 leading-tight">
                                             {{ task.title || task.name }}
                                         </span>
+                                        
+                                        <!-- Selector Activo de Estatus (SÓLO PARA AUTORIZADOS) -->
+                                        <div @click.stop>
+                                            <n-popselect 
+                                                v-if="canEditTaskStatus(task)"
+                                                :options="[
+                                                    {label: 'Pendiente', value: 'Pendiente'},
+                                                    {label: 'En Proceso', value: 'En Proceso'},
+                                                    {label: 'Completado', value: 'Completado'},
+                                                    {label: 'Detenido', value: 'Detenido'}
+                                                ]"
+                                                :value="task.status"
+                                                @update:value="(val) => updateTaskStatus(task, val)"
+                                                trigger="click"
+                                            >
+                                                <n-tag size="small" :bordered="false" class="cursor-pointer font-semibold whitespace-nowrap hover:opacity-80" 
+                                                    :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
+                                                    {{ task.status }}
+                                                </n-tag>
+                                            </n-popselect>
+
+                                            <!-- Etiqueta Visual (CUANDO NO TIENEN PERMISO) -->
+                                            <n-tag 
+                                                v-else 
+                                                size="small" 
+                                                :bordered="false" 
+                                                class="font-semibold whitespace-nowrap cursor-not-allowed opacity-90" 
+                                                title="No tienes permiso para modificar el estatus de esta tarea"
+                                                :type="task.status === 'Completado' ? 'success' : (task.status === 'En Proceso' ? 'info' : (task.status === 'Detenido' ? 'error' : 'default'))">
+                                                {{ task.status }}
+                                            </n-tag>
+                                        </div>
                                     </div>
-                                </template>
-                                <!-- Contenido del Tooltip -->
-                                <div class="text-xs space-y-1">
-                                    <div class="font-bold text-sm mb-1">{{ task.title || task.name }}</div>
-                                    <div class="flex items-center gap-1"><n-icon><FlagOutline/></n-icon> Estatus: <strong>{{ task.status }}</strong></div>
-                                    <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Inicio: {{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM, HH:mm') : 'N/A' }}</div>
-                                    <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Fin: {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM, HH:mm') : 'N/A' }}</div>
-                                    <div v-if="task.is_recurring" class="flex items-center gap-1 text-purple-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
-                                        <n-icon><SyncOutline/></n-icon> Tarea Cíclica (Cada {{ task.recurring_interval }} {{ translateUnit(task.recurring_unit) }})
-                                    </div>
-                                    <div v-if="task.required_evidences?.length" class="flex items-center gap-1 text-blue-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
-                                        <n-icon><CameraOutline/></n-icon> Requiere {{ task.required_evidences.length }} evidencia(s)
+
+                                    <div class="flex items-center justify-between mt-2 h-7">
+                                        <!-- Avatares -->
+                                        <div class="flex -space-x-1.5">
+                                            <n-tooltip v-for="user in task.assignees" :key="user.id" placement="bottom">
+                                                <template #trigger>
+                                                    <n-avatar round size="small" :src="getAvatarSrc(user)" class="border-2 border-white shadow-sm hover:z-10 relative"/>
+                                                </template>
+                                                {{ user.name }}
+                                            </n-tooltip>
+                                            <div v-if="!task.assignees?.length" class="text-xs text-gray-400 italic">Sin asignar</div>
+                                        </div>
+                                        
+                                        <!-- Botones de Acción (Visibles en Hover) -->
+                                        <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+                                            <n-button size="tiny" circle secondary type="default" @click="openDetail(task)">
+                                                <template #icon>
+                                                    <n-badge :value="task.comments?.length || 0" :max="99" :show-zero="false">
+                                                        <n-icon><ChatbubbleOutline /></n-icon>
+                                                    </n-badge>
+                                                </template>
+                                            </n-button>
+                                            
+                                            <!-- Menú WhatsApp -->
+                                            <n-dropdown 
+                                                v-if="task.assignees?.length" 
+                                                trigger="click" 
+                                                :options="whatsappOptions" 
+                                                @select="(key) => handleWhatsappSelect(key, task)"
+                                            >
+                                                <n-button size="tiny" circle type="success" ghost>
+                                                    <template #icon><n-icon><LogoWhatsapp /></n-icon></template>
+                                                </n-button>
+                                            </n-dropdown>
+                                            
+                                            <n-button size="tiny" circle secondary type="warning" @click="openEdit(task)">
+                                                <template #icon><n-icon><PencilOutline /></n-icon></template>
+                                            </n-button>
+                                            <n-popconfirm @positive-click="deleteTask(task.id)">
+                                                <template #trigger>
+                                                    <n-button size="tiny" circle type="error" quaternary>
+                                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                    </n-button>
+                                                </template>
+                                                ¿Borrar tarea?
+                                            </n-popconfirm>
+                                        </div>
                                     </div>
                                 </div>
-                            </n-tooltip>
-                        </div>
-                    </div>
-                </div>
+                                
+                                <!-- Columna Fecha Inicio -->
+                                <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30">
+                                    <span class="font-medium text-gray-700">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM') : '-' }}</span>
+                                    <span class="text-[10px]">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'HH:mm') : '' }}</span>
+                                </div>
 
+                                <!-- Columna Fecha Fin -->
+                                <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30" :class="task.finish_date ? 'bg-green-50/50' : ''">
+                                    <span class="font-bold" :class="task.finish_date ? 'text-green-600' : 'text-gray-700'">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}</span>
+                                    <span class="text-[10px]" :class="task.finish_date ? 'text-green-500' : ''">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'HH:mm') : '' }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Columna Derecha: Renderizado del Gantt -->
+                            <div class="flex-1 relative pr-4 cursor-pointer" @click="openDetail(task)">
+                                <n-tooltip trigger="hover" placement="top" :style="{ maxWidth: '250px' }">
+                                    <template #trigger>
+                                        <!-- Píldora de la tarea -->
+                                        <div 
+                                            class="absolute top-1/2 -translate-y-1/2 h-8 rounded-md shadow-sm border transition-all hover:brightness-95 hover:shadow-md flex items-center px-2 overflow-hidden"
+                                            :class="statusColors[task.status] || 'bg-gray-200 border-gray-300'"
+                                            :style="getTaskStyle(task)"
+                                        >
+                                            <span class="truncate text-[10px] font-bold opacity-80 mix-blend-color-burn pointer-events-none">
+                                                {{ task.title || task.name }}
+                                            </span>
+                                        </div>
+                                    </template>
+                                    <!-- Contenido del Tooltip -->
+                                    <div class="text-xs space-y-1">
+                                        <div class="font-bold text-sm mb-1">{{ task.title || task.name }}</div>
+                                        <div class="flex items-center gap-1"><n-icon><FlagOutline/></n-icon> Estatus: <strong>{{ task.status }}</strong></div>
+                                        <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Inicio: {{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM, HH:mm') : 'N/A' }}</div>
+                                        <div class="flex items-center gap-1"><n-icon><TimeOutline/></n-icon> Fin: {{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM, HH:mm') : 'N/A' }}</div>
+                                        <div v-if="task.is_recurring" class="flex items-center gap-1 text-purple-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
+                                            <n-icon><SyncOutline/></n-icon> Tarea Cíclica (Cada {{ task.recurring_interval }} {{ translateUnit(task.recurring_unit) }})
+                                        </div>
+                                        <div v-if="task.required_evidences?.length" class="flex items-center gap-1 text-blue-500 font-semibold border-t border-gray-200/30 pt-1 mt-1">
+                                            <n-icon><CameraOutline/></n-icon> Requiere {{ task.required_evidences.length }} evidencia(s)
+                                        </div>
+                                    </div>
+                                </n-tooltip>
+                            </div>
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
 
-        <!-- ============================================== -->
-        <!-- MODAL CREACIÓN / EDICIÓN                       -->
-        <!-- ============================================== -->
+        <!-- MODAL CREACIÓN / EDICIÓN -->
         <n-modal v-model:show="showCreateModal">
             <n-card style="width: 700px; max-width: 95vw;" :title="isEditing ? '✏️ Editar Tarea' : '✨ Nueva Tarea'" :bordered="false" size="huge" role="dialog" aria-modal="true" class="rounded-2xl shadow-xl">
                 <template #header-extra><n-icon size="24" class="cursor-pointer text-gray-400 hover:text-gray-700 transition-colors" @click="showCreateModal=false"><CloseOutline /></n-icon></template>
@@ -636,9 +645,7 @@ const translateUnit = (unit) => {
             </n-card>
         </n-modal>
 
-        <!-- ============================================== -->
-        <!-- MODAL DETALLE Y CHAT COMPLETO                  -->
-        <!-- ============================================== -->
+        <!-- MODAL DETALLE Y CHAT COMPLETO -->
         <n-modal v-model:show="showDetailModal">
             <n-card style="width: 900px; max-width: 95vw;" :bordered="false" size="small" closable @close="showDetailModal = false" content-style="padding: 0;">
                 <template #header>
@@ -729,14 +736,13 @@ const translateUnit = (unit) => {
                                 </div>
                             </div>
                             
-                            <!-- Mensaje claro si no requiere evidencias -->
                             <div v-else class="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100 flex items-center gap-2">
                                 <n-icon size="16" class="text-gray-400"><CheckmarkCircleOutline/></n-icon>
                                 <span>Esta tarea <strong>no requiere</strong> adjuntar evidencias fotográficas.</span>
                             </div>
                         </div>
 
-                        <!-- Datos de la Tarea/Orden Relacionada (Si existe) -->
+                        <!-- Datos de la Tarea/Orden Relacionada -->
                         <div v-if="selectedTask.taskable_type === 'App\\Models\\ServiceOrder' && selectedTask.taskable" class="mt-4 border-t border-gray-100 pt-4">
                             <div class="flex justify-between items-center mb-3">
                                 <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider flex items-center">
@@ -745,7 +751,6 @@ const translateUnit = (unit) => {
                             </div>
                             
                             <div class="bg-blue-50/30 rounded-xl p-4 border border-blue-100/50 space-y-3">
-                                <!-- Cliente -->
                                 <div class="flex items-start gap-2" v-if="selectedTask.taskable.client">
                                     <n-icon class="mt-0.5 text-gray-400"><PersonOutline/></n-icon>
                                     <div>
@@ -754,7 +759,6 @@ const translateUnit = (unit) => {
                                     </div>
                                 </div>
 
-                                <!-- Sistema & Medidor -->
                                 <div class="grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-gray-100 shadow-sm" v-if="selectedTask.taskable.system_type || selectedTask.taskable.meter_number">
                                     <div v-if="selectedTask.taskable.system_type">
                                         <div class="text-[10px] text-gray-400 font-medium flex items-center gap-1"><n-icon><HardwareChipOutline/></n-icon> Sistema</div>
@@ -766,7 +770,6 @@ const translateUnit = (unit) => {
                                     </div>
                                 </div>
 
-                                <!-- Ubicación y Coordenadas -->
                                 <div class="flex items-start gap-2 pt-2 border-t border-gray-200/50" v-if="selectedTask.taskable.installation_street">
                                     <n-icon class="mt-0.5 text-gray-400"><LocationOutline/></n-icon>
                                     <div class="flex-1">
@@ -826,7 +829,6 @@ const translateUnit = (unit) => {
                             <n-badge :value="selectedTask.comments?.length || 0" type="info" />
                         </div>
                         
-                        <!-- Listado de Comentarios -->
                         <div class="flex-1 p-5 overflow-y-auto space-y-5 custom-scrollbar min-h-0">
                              <div v-if="!selectedTask.comments?.length" class="h-full flex flex-col items-center justify-center text-gray-400 py-8 opacity-70">
                                 <n-icon size="48" class="mb-3 text-gray-300"><ChatbubbleOutline /></n-icon>
@@ -847,7 +849,6 @@ const translateUnit = (unit) => {
                              </div>
                         </div>
 
-                        <!-- Input para Comentarios -->
                         <div class="p-4 bg-white border-t border-gray-100 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.03)] z-10 flex-shrink-0">
                              <n-input 
                                 v-model:value="commentForm.body" 

@@ -26,6 +26,7 @@ class TaskTemplateController extends Controller
         // Cargar plantillas de tareas con sus relaciones necesarias (usuarios y evidencias)
         $taskTemplates = TaskTemplate::where('branch_id', $branchId)
             ->with(['users', 'evidenceTemplates'])
+            ->orderBy('order', 'asc') 
             ->get();
 
         // Cargar plantillas de evidencias con sus relaciones (tareas que las requieren)
@@ -146,5 +147,22 @@ class TaskTemplateController extends Controller
         $taskTemplate->delete();
 
         return back()->with('success', 'Plantilla de tarea eliminada.');
+    }
+
+    public function reorder(Request $request)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        $validated = $request->validate([
+            'items' => 'required|array',
+            'items.*.id' => 'required|exists:task_templates,id',
+            'items.*.order' => 'required|integer'
+        ]);
+
+        foreach ($validated['items'] as $item) {
+            TaskTemplate::where('id', $item['id'])
+                ->where('branch_id', $branchId)
+                ->update(['order' => $item['order']]);
+        }
+        return back()->with('success', 'Orden de tareas actualizado.');
     }
 }
