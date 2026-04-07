@@ -99,7 +99,7 @@ class ServiceOrderController extends Controller
 
                         $query->whereBetween('created_at', [$start, $end]);
                     } catch (\Exception $e) {
-                        // Ignorar filtro si hay error en el parseo de fechas
+                        // Ignorar filtro
                     }
                 }
             })
@@ -195,7 +195,7 @@ class ServiceOrderController extends Controller
             $serviceOrder = ServiceOrder::create($validated);
 
             if (!empty($validated['system_type'])) {
-                // 1. Evidencias Requeridas
+                // 1. Evidencias
                 $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
                     ->orderBy('order', 'asc')
@@ -212,11 +212,11 @@ class ServiceOrderController extends Controller
                     $evidenceMap[$evTemplate->id] = $ev->id;
                 }
 
-                // 2. Programar Tareas
+                // 2. Tareas
                 $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                     ->where('branch_id', $branchId)
                     ->where('system_type', $validated['system_type'])
-                    ->orderBy('order', 'asc') // Aseguramos el orden de las plantillas
+                    ->orderBy('order', 'asc')
                     ->get();
 
                 $taskOrderIndex = 1;
@@ -230,6 +230,9 @@ class ServiceOrderController extends Controller
                         if ($recurringCount > 1) {
                             $taskTitle .= " ($i/$recurringCount)";
                         }
+
+                        // Tarea Base (1era) es Normal, las subsecuentes son cíclicas
+                        $isRecurringInstance = ($i > 1 && $template->is_recurring);
 
                         $startDays = $template->start_days ?? 0;
                         $durationDays = $template->duration_days ?? 1;
@@ -255,13 +258,11 @@ class ServiceOrderController extends Controller
                             'created_by' => $userId,
                             'start_date' => $startDate,  
                             'due_date' => $dueDate,
-                            'is_recurring' => $template->is_recurring ?? false,
+                            'is_recurring' => $isRecurringInstance,
                             'recurring_interval' => $interval,
                             'recurring_unit' => $unit,
-                            'order' => $taskOrderIndex, // Agregado: Guardamos el orden
+                            'order' => $taskOrderIndex++,
                         ]);
-
-                        $taskOrderIndex++;
 
                         $userIds = $template->users->pluck('id')->toArray();
                         if (!empty($userIds)) {
@@ -281,14 +282,12 @@ class ServiceOrderController extends Controller
                 }
 
                 // 3. Material Predeterminado
-                $systemTypeModel = SystemType::with('products')
-                    ->where('branch_id', $branchId)
+                $systemTypeModel = SystemType::where('branch_id', $branchId)
                     ->where('name', $validated['system_type'])
                     ->first();
 
                 if ($systemTypeModel) {
-                    // Ordenar productos según el pivote (si existe el orden) o alfabéticamente
-                    $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
+                    $products = $systemTypeModel->products()->withPivot(['quantity', 'order'])->orderByPivot('order', 'asc')->get();
                     $productOrderIndex = 1;
 
                     foreach ($products as $product) {
@@ -296,9 +295,8 @@ class ServiceOrderController extends Controller
                             'product_id' => $product->id,
                             'quantity' => $product->pivot->quantity,
                             'price' => $product->sale_price,
-                            'order' => $productOrderIndex, // Agregado: Guardamos el orden
+                            'order' => $productOrderIndex++,
                         ]);
-                        $productOrderIndex++;
 
                         InventoryService::removeStock(
                             product: $product,
@@ -328,15 +326,10 @@ class ServiceOrderController extends Controller
             'client',
             'technician',
             'salesRep',
-            'items.product.category', 
-            'tasks.assignees', 
-            'tasks.comments.user', 
-            'tasks.requiredEvidences.media',
-            'media',
-            'evidences' => function ($query) {
-                $query->orderBy('order', 'asc')->orderBy('id', 'asc');
-            },
-            'evidences.media'
+            'items' => fn($q) => $q->with('product.category')->orderBy('order', 'asc'), 
+            'tasks' => fn($q) => $q->with(['assignees', 'comments.user', 'requiredEvidences.media'])->orderBy('order', 'asc'),
+            'evidences' => fn($q) => $q->with('media')->orderBy('order', 'asc'),
+            'media'
         ]);
 
         $serviceOrder->secure_url = URL::signedRoute('service-orders.show', ['serviceOrder' => $serviceOrder->id]);
@@ -381,7 +374,7 @@ class ServiceOrderController extends Controller
                 'is_recurring' => $task->is_recurring,
                 'recurring_interval' => $task->recurring_interval,
                 'recurring_unit' => $task->recurring_unit,
-                'order' => $task->order ?? 0, // Agregado: Retornamos el orden para Vue
+                'order' => $task->order ?? 0,
                 'comments' => $task->comments->map(fn($c) => [
                     'id' => $c->id,
                     'body' => $c->body,
@@ -495,7 +488,6 @@ class ServiceOrderController extends Controller
 
                 if (!empty($validated['system_type'])) {
                     
-                    // Evidencias
                     $evidenceTemplates = EvidenceTemplate::where('branch_id', $branchId)
                         ->where('system_type', $validated['system_type'])
                         ->orderBy('order', 'asc')
@@ -512,11 +504,10 @@ class ServiceOrderController extends Controller
                         $evidenceMap[$evTemplate->id] = $ev->id;
                     }
 
-                    // Tareas
                     $templates = TaskTemplate::with(['users', 'evidenceTemplates'])
                         ->where('branch_id', $branchId)
                         ->where('system_type', $validated['system_type'])
-                        ->orderBy('order', 'asc') // Aseguramos el orden
+                        ->orderBy('order', 'asc')
                         ->get();
 
                     $userId = Auth::id();
@@ -533,10 +524,10 @@ class ServiceOrderController extends Controller
                                 $taskTitle .= " ($i/$recurringCount)";
                             }
 
-                            $startDays = $template->start_days ?? 0;
-                            $durationDays = $template->duration_days ?? 1;
+                            // Tarea Base (1era) es Normal, las subsecuentes son cíclicas
+                            $isRecurringInstance = ($i > 1 && $template->is_recurring);
 
-                            $startDate = now()->addDays($startDays)->startOfDay();
+                            $startDate = now()->addDays($template->start_days ?? 0)->startOfDay();
 
                             if ($i > 1 && $template->is_recurring) {
                                 $multiplier = $i - 1;
@@ -546,7 +537,7 @@ class ServiceOrderController extends Controller
                                 elseif ($unit === 'years') $startDate->addYears($interval * $multiplier);
                             }
 
-                            $dueDate = $startDate->copy()->addDays(max(0, $durationDays - 1))->endOfDay();
+                            $dueDate = $startDate->copy()->addDays(max(0, ($template->duration_days ?? 1) - 1))->endOfDay();
 
                             $task = $serviceOrder->tasks()->create([
                                 'branch_id' => $branchId,
@@ -557,12 +548,11 @@ class ServiceOrderController extends Controller
                                 'created_by' => $userId,
                                 'start_date' => $startDate,  
                                 'due_date' => $dueDate,
-                                'is_recurring' => $template->is_recurring ?? false,
+                                'is_recurring' => $isRecurringInstance,
                                 'recurring_interval' => $interval,
                                 'recurring_unit' => $unit,
-                                'order' => $taskOrderIndex, // Agregado: Guardamos el orden
+                                'order' => $taskOrderIndex++,
                             ]);
-                            $taskOrderIndex++;
 
                             $userIds = $template->users->pluck('id')->toArray();
                             if (!empty($userIds)) {
@@ -582,13 +572,12 @@ class ServiceOrderController extends Controller
                     }
 
                     // Productos / Material Predeterminado
-                    $systemTypeModel = SystemType::with('products')
-                        ->where('branch_id', $branchId)
+                    $systemTypeModel = SystemType::where('branch_id', $branchId)
                         ->where('name', $validated['system_type'])
                         ->first();
 
                     if ($systemTypeModel) {
-                        $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
+                        $products = $systemTypeModel->products()->withPivot(['quantity', 'order'])->orderByPivot('order', 'asc')->get();
                         $productOrderIndex = 1;
 
                         foreach ($products as $product) {
@@ -596,9 +585,8 @@ class ServiceOrderController extends Controller
                                 'product_id' => $product->id,
                                 'quantity' => $product->pivot->quantity,
                                 'price' => $product->sale_price,
-                                'order' => $productOrderIndex, // Agregado: Guardamos el orden
+                                'order' => $productOrderIndex++,
                             ]);
-                            $productOrderIndex++;
 
                             InventoryService::removeStock(
                                 product: $product,
@@ -702,7 +690,6 @@ class ServiceOrderController extends Controller
         $product = Product::findOrFail($validated['product_id']);
 
         DB::transaction(function () use ($serviceOrder, $product, $validated) {
-            // Asignar el último orden
             $lastOrder = $serviceOrder->items()->max('order') ?? 0;
 
             $serviceOrder->items()->create([
@@ -834,12 +821,13 @@ class ServiceOrderController extends Controller
         return back()->with('success', 'Evidencia actualizada correctamente.');
     }
 
-    /**
-     * Sincroniza y genera las evidencias, tareas y productos faltantes/ordenados
-     */
+    // ---------------------------------------------------------------------------------
+    // SINCRONIZADOR DEFINITIVO DE TAREAS, PRODUCTOS Y EVIDENCIAS
+    // ---------------------------------------------------------------------------------
     public static function syncSystemTypeData($branchId = null)
     {
-        $query = ServiceOrder::whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
+        // Se añade with('tasks') para que podamos manipular eficientemente las tareas existentes de la orden.
+        $query = ServiceOrder::with('tasks')->whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
             ->whereNotNull('system_type');
             
         if ($branchId) {
@@ -849,105 +837,154 @@ class ServiceOrderController extends Controller
         $orders = $query->get();
 
         foreach ($orders as $order) {
-            $systemTypeModel = SystemType::with('products')->where('branch_id', $order->branch_id)->where('name', $order->system_type)->first();
+            $systemTypeModel = SystemType::where('branch_id', $order->branch_id)->where('name', $order->system_type)->first();
             
-            // 1. Sync Products (Items) + Update Order
-            if ($systemTypeModel) {
-                $existingProducts = $order->items()->get()->keyBy('product_id');
-                // Ordenamos basado en lo que mandó el pivote
-                $products = $systemTypeModel->products->sortBy(fn($p) => $p->pivot->order ?? 0);
-                $productOrderIndex = 1;
+            if (!$systemTypeModel) continue;
 
-                foreach ($products as $product) {
-                    if (!$existingProducts->has($product->id)) {
-                        $order->items()->create([
-                            'product_id' => $product->id,
-                            'quantity' => $product->pivot->quantity,
-                            'price' => $product->sale_price,
-                            'order' => $productOrderIndex, // Se le asigna el nuevo orden
-                        ]);
-                        InventoryService::removeStock(
-                            product: $product,
-                            branchId: $order->branch_id,
-                            quantity: $product->pivot->quantity,
-                            reason: 'Instalación (Auto-Sync)',
-                            reference: $order,
-                            notes: "Material auto-asignado por sincronización de Tipo de Sistema a Orden #{$order->id}"
-                        );
-                    } else {
-                        // Sincronizar orden y cantidades
-                        $existingItem = $existingProducts->get($product->id);
-                        $updateData = ['order' => $productOrderIndex]; // Forzamos el update del orden
-                        
-                        if ($existingItem->used_quantity === null && $existingItem->quantity != $product->pivot->quantity) {
-                            $diff = $product->pivot->quantity - $existingItem->quantity;
-                            $updateData['quantity'] = $product->pivot->quantity;
-                            
-                            if ($diff > 0) {
-                                InventoryService::removeStock($product, $order->branch_id, $diff, 'Instalación (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
-                            } else {
-                                InventoryService::addStock($product, $order->branch_id, abs($diff), 'Devolución (Auto-Sync)', $order, "Ajuste de material por actualización en plantilla");
-                            }
-                        }
-                        $existingItem->update($updateData);
-                    }
-                    $productOrderIndex++;
-                }
-            }
-
-            // 2. Sync Evidences
+            // =========================================================
+            // 1. SINCRONIZAR EVIDENCIAS (Agregar faltantes, reordenar y eliminar sobrantes)
+            // =========================================================
             $evidenceTemplates = EvidenceTemplate::where('branch_id', $order->branch_id)
                 ->where('system_type', $order->system_type)
                 ->orderBy('order', 'asc')
                 ->get();
                 
             $evidenceMap = []; 
+            $activeEvidenceTitles = [];
+            $evOrderIndex = 1;
             
             foreach ($evidenceTemplates as $evTemplate) {
+                $activeEvidenceTitles[] = $evTemplate->title;
                 $ev = $order->evidences()->where('title', $evTemplate->title)->first();
+                
                 if (!$ev) {
                     $ev = $order->evidences()->create([
                         'title' => $evTemplate->title,
                         'description' => $evTemplate->description,
                         'allows_multiple' => $evTemplate->allows_multiple ?? false,
-                        'order' => $evTemplate->order ?? 0,
+                        'order' => $evOrderIndex,
                     ]);
                 } else {
                     $ev->update([
                         'description' => $evTemplate->description,
                         'allows_multiple' => $evTemplate->allows_multiple ?? false,
-                        'order' => $evTemplate->order ?? 0,
+                        'order' => $evOrderIndex,
                     ]);
                 }
                 $evidenceMap[$evTemplate->id] = $ev->id;
+                $evOrderIndex++;
             }
             
-            // 3. Sync Tasks + Update Order
+            $order->evidences()->whereNotIn('title', $activeEvidenceTitles)->doesntHave('media')->delete();
+
+            // =========================================================
+            // 2. SINCRONIZAR PRODUCTOS (Agregar faltantes, reordenar y devolver sobrantes)
+            // =========================================================
+            $existingProducts = $order->items()->get()->keyBy('product_id');
+            $products = $systemTypeModel->products()->withPivot(['quantity', 'order'])->orderByPivot('order', 'asc')->get();
+            $productOrderIndex = 1;
+            $activeProductIds = [];
+
+            foreach ($products as $product) {
+                $activeProductIds[] = $product->id;
+                if (!$existingProducts->has($product->id)) {
+                    $order->items()->create([
+                        'product_id' => $product->id,
+                        'quantity' => $product->pivot->quantity,
+                        'price' => $product->sale_price,
+                        'order' => $productOrderIndex, 
+                    ]);
+                    InventoryService::removeStock(
+                        product: $product,
+                        branchId: $order->branch_id,
+                        quantity: $product->pivot->quantity,
+                        reason: 'Instalación (Auto-Sync)',
+                        reference: $order,
+                        notes: "Material auto-asignado por sincronización de plantilla a Orden #{$order->id}"
+                    );
+                } else {
+                    $existingItem = $existingProducts->get($product->id);
+                    $updateData = ['order' => $productOrderIndex]; 
+                    
+                    if ($existingItem->used_quantity === null && $existingItem->quantity != $product->pivot->quantity) {
+                        $diff = $product->pivot->quantity - $existingItem->quantity;
+                        $updateData['quantity'] = $product->pivot->quantity;
+                        
+                        if ($diff > 0) {
+                            InventoryService::removeStock($product, $order->branch_id, $diff, 'Instalación (Auto-Sync)', $order, "Ajuste de material (aumento) por plantilla");
+                        } else {
+                            InventoryService::addStock($product, $order->branch_id, abs($diff), 'Devolución (Auto-Sync)', $order, "Ajuste de material (resta) por plantilla");
+                        }
+                    }
+                    $existingItem->update($updateData);
+                }
+                $productOrderIndex++;
+            }
+            
+            foreach ($existingProducts as $item) {
+                if (!in_array($item->product_id, $activeProductIds) && $item->used_quantity === null) {
+                    InventoryService::addStock(
+                        product: $item->product, 
+                        branchId: $order->branch_id, 
+                        quantity: $item->quantity, 
+                        reason: 'Devolución (Auto-Sync)', 
+                        reference: $order, 
+                        notes: "Material retirado por eliminación en plantilla base."
+                    );
+                    $item->delete();
+                }
+            }
+
+
+            // =========================================================
+            // 3. SINCRONIZAR TAREAS (Agregar, Reordenar e Identificar Mantenimientos)
+            // =========================================================
             $taskTemplates = TaskTemplate::with(['users', 'evidenceTemplates'])
                 ->where('branch_id', $order->branch_id)
                 ->where('system_type', $order->system_type)
-                ->orderBy('order', 'asc') // Aseguramos el orden
+                ->orderBy('order', 'asc') 
                 ->get();
                 
             $taskOrderIndex = 1;
+            $activeTaskIds = [];
+            $existingTasks = $order->tasks; 
             
             foreach ($taskTemplates as $template) {
+                $baseTitle = $template->title;
                 $recurringCount = $template->is_recurring ? ($template->recurring_count ?? 1) : 1;
                 $interval = $template->recurring_interval ?? 1;
                 $unit = $template->recurring_unit ?? 'months';
 
+                // Buscar tareas existentes en esta orden cuyo título base coincida (ignorando el sufijo "(1/3)")
+                // Esto nos permite reconectar las tareas viejas al template incluso si el contador cambió.
+                $matchingExistingTasks = $existingTasks->filter(function($t) use ($baseTitle) {
+                    $tBase = preg_replace('/\s\(\d+\/\d+\)$/', '', $t->title);
+                    return $tBase === $baseTitle;
+                })->values();
+
                 for ($i = 1; $i <= $recurringCount; $i++) {
-                    $taskTitle = $template->title;
+                    $taskTitle = $baseTitle;
                     if ($recurringCount > 1) {
-                        $taskTitle .= " ($i/$recurringCount)"; 
+                        $taskTitle .= " ($i/$recurringCount)";
                     }
 
-                    $task = $order->tasks()->where('title', $taskTitle)->first();
+                    // Tarea Base (1era) es Normal, las subsecuentes son cíclicas (mantenimiento)
+                    $isRecurringInstance = ($i > 1 && $template->is_recurring);
+
+                    // 1. Buscar coincidencia exacta del título
+                    $task = $matchingExistingTasks->firstWhere('title', $taskTitle);
+                    
+                    // 2. Si no hay coincidencia exacta pero hay tareas que compartían la base, las reutilizamos
+                    if (!$task && $matchingExistingTasks->count() > 0) {
+                        $task = $matchingExistingTasks->shift(); 
+                    } else if ($task) {
+                        $matchingExistingTasks = $matchingExistingTasks->reject(fn($t) => $t->id === $task->id)->values();
+                    }
                     
                     if (!$task) {
+                        // Crear Tarea Nueva
                         $startDays = $template->start_days ?? 0;
                         $durationDays = $template->duration_days ?? 1;
-
                         $startDate = $order->created_at->copy()->addDays($startDays);
 
                         if ($i > 1 && $template->is_recurring) {
@@ -970,10 +1007,10 @@ class ServiceOrderController extends Controller
                             'created_by' => $order->sales_rep_id ?? 1, 
                             'start_date' => $startDate,  
                             'due_date' => $dueDate,
-                            'is_recurring' => $template->is_recurring ?? false,
+                            'is_recurring' => $isRecurringInstance,
                             'recurring_interval' => $interval,
                             'recurring_unit' => $unit,
-                            'order' => $taskOrderIndex, // Guardamos el nuevo orden sincronizado
+                            'order' => $taskOrderIndex, 
                         ]);
 
                         $userIds = $template->users->pluck('id')->toArray();
@@ -981,17 +1018,22 @@ class ServiceOrderController extends Controller
                             $task->assignees()->sync($userIds);
                         }
                     } else {
-                        // Actualizamos el orden general que viene de la plantilla
+                        // Actualizar Tarea Existente (asegura actualizar el orden dinámico)
                         $task->update([
+                            'title' => $taskTitle, 
                             'description' => $template->description,
                             'priority' => $template->priority,
-                            'order' => $taskOrderIndex, // Actualizamos el orden
+                            'is_recurring' => $isRecurringInstance,
+                            'recurring_interval' => $interval,
+                            'recurring_unit' => $unit,
+                            'order' => $taskOrderIndex, 
                         ]);
                     }
                     
+                    $activeTaskIds[] = $task->id;
                     $taskOrderIndex++;
                     
-                    // Siempre sincronizar las evidencias por si fueron movidas/añadidas/quitadas
+                    // Asegurar conexiones de Evidencias Requeridas
                     $requiredEvidenceIds = [];
                     foreach ($template->evidenceTemplates as $reqEvTpl) {
                         if (isset($evidenceMap[$reqEvTpl->id])) {
@@ -1005,6 +1047,22 @@ class ServiceOrderController extends Controller
                     }
                 }
             }
+            
+            // ELIMINACIÓN INTELIGENTE:
+            // Borrar únicamente las tareas "Pendientes" cuyo título base pertenezca a algún template activo,
+            // pero que no hayan sido usadas en la iteración actual (ej. si reduciste el contador de ciclos a 1, borra la 2 y 3).
+            // Esto asegura que tareas "manuales" que el personal crea, no sean eliminadas accidentalmente.
+            $allBaseTitles = $taskTemplates->pluck('title')->toArray();
+            
+            $order->tasks()->whereNotIn('id', $activeTaskIds)
+                  ->where('status', 'Pendiente')
+                  ->get()
+                  ->each(function($t) use ($allBaseTitles) {
+                       $tBase = preg_replace('/\s\(\d+\/\d+\)$/', '', $t->title);
+                       if (in_array($tBase, $allBaseTitles)) {
+                           $t->delete();
+                       }
+                  });
         }
     }
 
@@ -1014,6 +1072,6 @@ class ServiceOrderController extends Controller
         
         self::syncSystemTypeData($branchId);
 
-        return back()->with('success', "Sincronización de tareas, evidencias y productos completada.");
+        return back()->with('success', "Sincronización de tareas, evidencias y productos completada en base a las plantillas.");
     }
 }

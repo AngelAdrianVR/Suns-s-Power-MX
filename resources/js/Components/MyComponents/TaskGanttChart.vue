@@ -4,8 +4,8 @@ import { useForm, router, usePage } from '@inertiajs/vue3';
 import { usePermissions } from '@/Composables/usePermissions';
 import { 
     NAvatar, NTooltip, NTag, NEmpty, NButton, NIcon, NModal, NCard, NForm, 
-    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NThing, NBadge,
-    NScrollbar, NDropdown, NDescriptions, NDescriptionsItem, NDivider
+    NFormItem, NInput, NDatePicker, NSelect, createDiscreteApi, NPopselect, NPopconfirm, NBadge,
+    NDropdown, NDivider
 } from 'naive-ui';
 import { 
     format, parseISO, differenceInHours, addDays, startOfDay, endOfDay 
@@ -111,10 +111,10 @@ const priorityOptions = [
 ];
 
 const userOptions = computed(() => {
-    return props.assignableUsers.map(u => ({
+    return props.assignableUsers?.map(u => ({
         label: u.name || u.label,
         value: u.id || u.value
-    }));
+    })) || [];
 });
 
 const openCreate = () => {
@@ -314,7 +314,7 @@ const statusColors = {
 };
 
 const timeRange = computed(() => {
-    if (!props.tasks.length) return null;
+    if (!props.tasks?.length) return null;
     const starts = props.tasks.map(t => (t.start_date || t.start) ? parseISO(t.start_date || t.start) : null).filter(Boolean);
     const ends = props.tasks.map(t => (t.due_date || t.end) ? parseISO(t.due_date || t.end) : null).filter(Boolean);
     
@@ -398,7 +398,7 @@ const translateUnit = (unit) => {
         </div>
 
         <!-- Empty State -->
-        <div v-if="!tasks.length" class="p-12 flex flex-col items-center justify-center bg-gray-50/50">
+        <div v-if="!tasks?.length" class="p-12 flex flex-col items-center justify-center bg-gray-50/50">
             <n-empty description="No hay tareas asignadas a esta orden aún." class="mb-5"/>
             <n-button dashed type="primary" size="large" @click="openCreate">
                 Crear primera tarea
@@ -409,15 +409,13 @@ const translateUnit = (unit) => {
         <div v-else class="relative overflow-x-auto flex-1 bg-white">
             <div class="min-w-[1050px]">
                 
-                <!-- Encabezado de la Tabla (Pegajoso Superior) -->
+                <!-- Encabezado de la Tabla -->
                 <div class="flex sticky top-0 z-20 bg-gray-50/95 backdrop-blur shadow-sm border-b border-gray-200">
-                    <!-- Cabecera de Info Izquierda -->
                     <div class="w-[480px] flex-shrink-0 flex items-center text-xs font-bold text-gray-500 uppercase tracking-wider">
                         <div class="flex-1 px-4 py-3">Tarea / Detalles</div>
                         <div class="w-20 px-2 py-3 text-center border-l border-gray-200">Inicio</div>
                         <div class="w-20 px-2 py-3 text-center border-l border-gray-200">Fin</div>
                     </div>
-                    <!-- Cabecera de Días del Gantt -->
                     <div class="flex-1 flex">
                         <div v-for="day in timelineDays" :key="day" class="flex-1 px-1 py-2 text-center border-l border-gray-200 last:border-r">
                             <div class="text-sm font-bold text-gray-700">{{ format(day, 'dd') }}</div>
@@ -428,19 +426,16 @@ const translateUnit = (unit) => {
 
                 <!-- Contenedor de Filas -->
                 <div class="relative">
-                    <!-- Cuadrícula de Fondo (Días) -->
                     <div class="absolute top-0 bottom-0 left-[480px] right-0 flex pointer-events-none z-0">
                          <div v-for="day in timelineDays" :key="'grid-'+day" class="flex-1 border-l border-dashed border-gray-200/70"></div>
                     </div>
 
-                    <!-- Iteración Unificada y Limpia para Tareas Normales y Cíclicas -->
                     <template v-for="(taskList, listIndex) in [
                         { tasks: sortedNormalTasks, isRecurring: false }, 
                         { tasks: sortedRecurringTasks, isRecurring: true }
                     ]" :key="listIndex">
 
-                        <!-- SEPARADOR DE MANTENIMIENTOS -->
-                        <div v-if="taskList.isRecurring && taskList.tasks.length > 0" class="mt-8 mb-4">
+                        <div v-if="taskList.isRecurring && taskList.tasks.length > 0" class="mt-8 mb-4 px-4 relative z-10">
                             <n-divider dashed>
                                 <div class="text-purple-600 font-bold flex items-center gap-2">
                                     <n-icon size="18"><SyncOutline /></n-icon>
@@ -449,13 +444,11 @@ const translateUnit = (unit) => {
                             </n-divider>
                         </div>
 
-                        <!-- FILAS DE TAREAS -->
                         <div v-for="task in taskList.tasks" :key="(taskList.isRecurring ? 'rec-' : 'norm-') + task.id" class="flex items-stretch border-b border-gray-100 group relative hover:bg-slate-50 transition-colors h-[72px]">
                             
                             <!-- Columna Izquierda Fija: Detalles y Fechas -->
                             <div class="w-[480px] flex-shrink-0 flex items-stretch border-r border-gray-200 bg-white group-hover:bg-slate-50 transition-colors">
                                 
-                                <!-- Indicador de Prioridad -->
                                 <div class="w-1.5 flex-shrink-0" 
                                     :class="{
                                         'bg-red-500': task.priority === 'Alta',
@@ -464,14 +457,12 @@ const translateUnit = (unit) => {
                                     }">
                                 </div>
 
-                                <!-- Información de la Tarea -->
-                                <div class="flex-1 p-3 flex flex-col justify-center cursor-pointer" @click="openDetail(task)">
+                                <div class="flex-1 p-3 flex flex-col justify-center" @click="openDetail(task)">
                                     <div class="flex justify-between items-start gap-3">
-                                        <span class="font-bold text-gray-800 text-sm line-clamp-2 hover:text-indigo-600 leading-tight">
+                                        <span class="font-bold text-gray-800 text-sm line-clamp-2 cursor-pointer hover:text-indigo-600 leading-tight">
                                             {{ task.title || task.name }}
                                         </span>
                                         
-                                        <!-- Selector Activo de Estatus (SÓLO PARA AUTORIZADOS) -->
                                         <div @click.stop>
                                             <n-popselect 
                                                 v-if="canEditTaskStatus(task)"
@@ -491,7 +482,6 @@ const translateUnit = (unit) => {
                                                 </n-tag>
                                             </n-popselect>
 
-                                            <!-- Etiqueta Visual (CUANDO NO TIENEN PERMISO) -->
                                             <n-tag 
                                                 v-else 
                                                 size="small" 
@@ -505,7 +495,6 @@ const translateUnit = (unit) => {
                                     </div>
 
                                     <div class="flex items-center justify-between mt-2 h-7">
-                                        <!-- Avatares -->
                                         <div class="flex -space-x-1.5">
                                             <n-tooltip v-for="user in task.assignees" :key="user.id" placement="bottom">
                                                 <template #trigger>
@@ -516,7 +505,6 @@ const translateUnit = (unit) => {
                                             <div v-if="!task.assignees?.length" class="text-xs text-gray-400 italic">Sin asignar</div>
                                         </div>
                                         
-                                        <!-- Botones de Acción (Visibles en Hover) -->
                                         <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
                                             <n-button size="tiny" circle secondary type="default" @click="openDetail(task)">
                                                 <template #icon>
@@ -526,7 +514,6 @@ const translateUnit = (unit) => {
                                                 </template>
                                             </n-button>
                                             
-                                            <!-- Menú WhatsApp -->
                                             <n-dropdown 
                                                 v-if="task.assignees?.length" 
                                                 trigger="click" 
@@ -553,26 +540,24 @@ const translateUnit = (unit) => {
                                     </div>
                                 </div>
                                 
-                                <!-- Columna Fecha Inicio -->
                                 <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30">
                                     <span class="font-medium text-gray-700">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'dd MMM') : '-' }}</span>
                                     <span class="text-[10px]">{{ (task.start_date || task.start) ? format(parseISO(task.start_date || task.start), 'HH:mm') : '' }}</span>
                                 </div>
 
-                                <!-- Columna Fecha Fin -->
                                 <div class="w-20 flex flex-col items-center justify-center text-xs text-gray-500 border-l border-gray-100 bg-gray-50/30" :class="task.finish_date ? 'bg-green-50/50' : ''">
                                     <span class="font-bold" :class="task.finish_date ? 'text-green-600' : 'text-gray-700'">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'dd MMM') : '-' }}</span>
                                     <span class="text-[10px]" :class="task.finish_date ? 'text-green-500' : ''">{{ getDisplayEndDate(task) ? format(parseISO(getDisplayEndDate(task)), 'HH:mm') : '' }}</span>
                                 </div>
+
                             </div>
 
                             <!-- Columna Derecha: Renderizado del Gantt -->
-                            <div class="flex-1 relative pr-4 cursor-pointer" @click="openDetail(task)">
+                            <div class="flex-1 relative pr-4" @click="openDetail(task)">
                                 <n-tooltip trigger="hover" placement="top" :style="{ maxWidth: '250px' }">
                                     <template #trigger>
-                                        <!-- Píldora de la tarea -->
                                         <div 
-                                            class="absolute top-1/2 -translate-y-1/2 h-8 rounded-md shadow-sm border transition-all hover:brightness-95 hover:shadow-md flex items-center px-2 overflow-hidden"
+                                            class="absolute top-1/2 -translate-y-1/2 h-8 rounded-md shadow-sm border transition-all hover:brightness-95 hover:shadow-md cursor-pointer flex items-center px-2 overflow-hidden"
                                             :class="statusColors[task.status] || 'bg-gray-200 border-gray-300'"
                                             :style="getTaskStyle(task)"
                                         >
@@ -581,7 +566,6 @@ const translateUnit = (unit) => {
                                             </span>
                                         </div>
                                     </template>
-                                    <!-- Contenido del Tooltip -->
                                     <div class="text-xs space-y-1">
                                         <div class="font-bold text-sm mb-1">{{ task.title || task.name }}</div>
                                         <div class="flex items-center gap-1"><n-icon><FlagOutline/></n-icon> Estatus: <strong>{{ task.status }}</strong></div>
@@ -599,10 +583,13 @@ const translateUnit = (unit) => {
                         </div>
                     </template>
                 </div>
+
             </div>
         </div>
 
-        <!-- MODAL CREACIÓN / EDICIÓN -->
+        <!-- ============================================== -->
+        <!-- MODAL CREACIÓN / EDICIÓN                       -->
+        <!-- ============================================== -->
         <n-modal v-model:show="showCreateModal">
             <n-card style="width: 700px; max-width: 95vw;" :title="isEditing ? '✏️ Editar Tarea' : '✨ Nueva Tarea'" :bordered="false" size="huge" role="dialog" aria-modal="true" class="rounded-2xl shadow-xl">
                 <template #header-extra><n-icon size="24" class="cursor-pointer text-gray-400 hover:text-gray-700 transition-colors" @click="showCreateModal=false"><CloseOutline /></n-icon></template>
@@ -645,7 +632,9 @@ const translateUnit = (unit) => {
             </n-card>
         </n-modal>
 
-        <!-- MODAL DETALLE Y CHAT COMPLETO -->
+        <!-- ============================================== -->
+        <!-- MODAL DETALLE Y CHAT COMPLETO                  -->
+        <!-- ============================================== -->
         <n-modal v-model:show="showDetailModal">
             <n-card style="width: 900px; max-width: 95vw;" :bordered="false" size="small" closable @close="showDetailModal = false" content-style="padding: 0;">
                 <template #header>
