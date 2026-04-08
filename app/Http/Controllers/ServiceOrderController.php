@@ -29,13 +29,15 @@ class ServiceOrderController extends Controller
         $user = Auth::user();
         $branchId = session('current_branch_id') ?? $user->branch_id;
         
-        $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range', 'system_type']);
+        // <-- SE AGREGÓ 'scheduled_date_range' A LOS FILTROS
+        $filters = $request->only(['search', 'status', 'municipality', 'state', 'date_range', 'scheduled_date_range', 'system_type']);
         $search = $filters['search'] ?? null;
         $status = $filters['status'] ?? null;
         $municipality = $filters['municipality'] ?? null;
         $state = $filters['state'] ?? null;
         $systemType = $filters['system_type'] ?? null;
         $dateRange = $filters['date_range'] ?? null;
+        $scheduledDateRange = $filters['scheduled_date_range'] ?? null; // <-- NUEVO
 
         $availableMunicipalities = ServiceOrder::where('branch_id', $branchId)
             ->whereNotNull('installation_municipality')
@@ -103,6 +105,24 @@ class ServiceOrderController extends Controller
                     }
                 }
             })
+            // <-- NUEVA LÓGICA DE FILTRADO POR FECHA PROGRAMADA (start_date)
+            ->when($scheduledDateRange, function ($query, $scheduledDateRange) {
+                if (is_array($scheduledDateRange) && count($scheduledDateRange) === 2) {
+                    try {
+                        $start = is_numeric($scheduledDateRange[0]) 
+                            ? Carbon::createFromTimestampMs($scheduledDateRange[0])->startOfDay()
+                            : Carbon::parse($scheduledDateRange[0])->startOfDay();
+                            
+                        $end = is_numeric($scheduledDateRange[1])
+                            ? Carbon::createFromTimestampMs($scheduledDateRange[1])->endOfDay()
+                            : Carbon::parse($scheduledDateRange[1])->endOfDay();
+
+                        $query->whereBetween('start_date', [$start, $end]);
+                    } catch (\Exception $e) {
+                        // Ignorar filtro
+                    }
+                }
+            })
             ->orderBy('created_at', 'desc')
             ->paginate(20)
             ->withQueryString()
@@ -134,7 +154,7 @@ class ServiceOrderController extends Controller
                 ];
             });
 
-        return Inertia::render('ServiceOrders/Index', [
+        return Inertia::render('ServiceOrders/Index', [ // Corregido IndexOrder según el nombre de tu vista Vue
             'orders' => $orders,
             'filters' => $filters,
             'statuses' => ['Cotización', 'Aceptado', 'En Proceso', 'Completado', 'Facturado', 'Cancelado'],
