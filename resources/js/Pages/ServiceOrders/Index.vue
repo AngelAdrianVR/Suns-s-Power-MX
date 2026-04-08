@@ -41,7 +41,7 @@ const statusFilter = ref(props.filters.status || null);
 const municipalityFilter = ref(props.filters.municipality || null);
 const stateFilter = ref(props.filters.state || null);
 const systemTypeFilter = ref(props.filters.system_type || null);
-const dateRangeFilter = ref(parseDateRange(props.filters.date_range)); // NUEVO FILTRO DE FECHAS
+const scheduledDateRangeFilter = ref(parseDateRange(props.filters.scheduled_date_range)); // <-- FILTRO DE FECHA PROGRAMADA
 
 let searchTimeout;
 
@@ -52,7 +52,7 @@ const applyFilters = () => {
         municipality: municipalityFilter.value,
         state: stateFilter.value,
         system_type: systemTypeFilter.value,
-        date_range: dateRangeFilter.value // Enviamos el rango de fechas
+        scheduled_date_range: scheduledDateRangeFilter.value // <-- Enviamos el rango de fecha programada
     }, { preserveState: true, replace: true });
 };
 
@@ -61,8 +61,8 @@ watch(search, (value) => {
     searchTimeout = setTimeout(applyFilters, 300);
 });
 
-// Observamos todos los filtros, incluyendo el de fecha
-watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter, dateRangeFilter], applyFilters);
+// Observamos todos los filtros, incluyendo los de fecha
+watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter, scheduledDateRangeFilter], applyFilters);
 
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('service-orders.edit', id));
@@ -326,7 +326,7 @@ const handlePageChange = (page) => {
         municipality: municipalityFilter.value,
         state: stateFilter.value,
         system_type: systemTypeFilter.value,
-        date_range: dateRangeFilter.value // Incluir fecha en paginación
+        scheduled_date_range: scheduledDateRangeFilter.value // <-- Incluir solo fecha programada
     }, { preserveState: true });
 };
 
@@ -374,15 +374,15 @@ const rowProps = (row) => ({
                         <template #prefix><n-icon :component="SearchOutline" class="text-gray-400" /></template>
                     </n-input>
 
-                    <!-- Grupo de Selectores (Fecha, Municipo, Estado, Estatus, Sistema) -->
+                    <!-- Grupo de Selectores -->
                     <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto flex-wrap justify-end">
                         
-                        <!-- FILTRO FECHA (NUEVO) -->
+                        <!-- FILTRO FECHA PROGRAMADA -->
                         <n-date-picker 
-                            v-model:value="dateRangeFilter" 
+                            v-model:value="scheduledDateRangeFilter" 
                             type="daterange" 
                             clearable 
-                            placeholder="Rango de Fechas"
+                            placeholder="Fecha Programada"
                             class="w-full md:w-60 shadow-sm"
                         />
                         
