@@ -228,3 +228,38 @@ Route::get('/clear-cache', function () {
 
     return 'Cache, config, route y view limpiados correctamente ✔️';
 });
+
+// ----------------------------- RUTAS TEMPORALES DE MANTENIMIENTO -----------------------------
+
+// Ruta temporal para completar tareas de Órdenes del 2025 masivamente
+Route::get('/forzar-completar-tareas-2025', function () {
+    // 1. Buscamos Órdenes de Servicio cuyo inicio programado/real (start_date) sea del 2025
+    $ordenes2025 = \App\Models\ServiceOrder::whereYear('start_date', 2025)->get();
+
+    $contadorTareas = 0;
+    $contadorOrdenes = 0;
+
+    foreach ($ordenes2025 as $orden) {
+        // 2. Buscamos todas las tareas relacionadas a esta orden que no estén completadas
+        $tareas = $orden->tasks()->where('status', '!=', 'Completado')->get();
+
+        foreach ($tareas as $tarea) {
+            $tarea->status = 'Completado';
+            $tarea->finish_date = \Carbon\Carbon::now();
+            $tarea->save(); // Se guarda saltando validaciones de evidencias
+            $contadorTareas++;
+        }
+
+        // 3. Verificamos si la orden ya se puede dar por completada al no tener tareas pendientes
+        $tareasIncompletas = $orden->tasks()->where('status', '!=', 'Completado')->count();
+        if ($tareasIncompletas === 0 && !in_array($orden->status, ['Completado', 'Facturado', 'Cancelado'])) {
+            $orden->status = 'Completado';
+            $orden->completion_date = \Carbon\Carbon::now();
+            $orden->save();
+            $contadorOrdenes++;
+        }
+    }
+
+    return response("====================================\n        PROCESO TERMINADO           \n====================================\n\nTareas completadas: {$contadorTareas}\nÓrdenes cerradas automáticamente: {$contadorOrdenes}\n\n====================================", 200)
+           ->header('Content-Type', 'text/plain; charset=utf-8');
+});
