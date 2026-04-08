@@ -155,7 +155,7 @@ const formatCurrency = (value) => {
                     <n-grid-item>
                         <div class="flex flex-col gap-6">
                             <!-- Widget de Stock Bajo -->
-                            <LowStockWidget :products="lowStockProducts" />
+                            <LowStockWidget v-if="hasPermission('warehouse.alarms_stock')" :products="lowStockProducts"  />
                             
                             <!-- Widget de Compras Pendientes -->
                             <PurchaseOrdersWidget v-if="hasPermission('purchases.index')" :orders="pendingPurchaseOrders" />
