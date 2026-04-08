@@ -231,15 +231,15 @@ Route::get('/clear-cache', function () {
 
 // ----------------------------- RUTAS TEMPORALES DE MANTENIMIENTO -----------------------------
 
-// Ruta temporal para completar tareas de Órdenes del 2025 masivamente
-Route::get('/forzar-completar-tareas-2025', function () {
-    // 1. Buscamos Órdenes de Servicio cuyo inicio programado/real (start_date) sea del 2025
-    $ordenes2025 = \App\Models\ServiceOrder::whereYear('start_date', 2025)->get();
+// Ruta temporal para completar tareas de Órdenes del 2025 HACIA ATRÁS masivamente
+Route::get('/forzar-completar-tareas-antiguas', function () {
+    // 1. Buscamos Órdenes de Servicio cuyo inicio programado/real (start_date) sea del año 2025 o anterior
+    $ordenesAntiguas = \App\Models\ServiceOrder::whereYear('start_date', '<=', 2025)->get();
 
     $contadorTareas = 0;
     $contadorOrdenes = 0;
 
-    foreach ($ordenes2025 as $orden) {
+    foreach ($ordenesAntiguas as $orden) {
         // 2. Buscamos todas las tareas relacionadas a esta orden que no estén completadas
         $tareas = $orden->tasks()->where('status', '!=', 'Completado')->get();
 
