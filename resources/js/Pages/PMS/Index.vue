@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, h, reactive } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import draggable from 'vuedraggable';
 import TaskCard from './Components/TaskCard.vue';
@@ -15,7 +16,7 @@ import {
 import { 
     ArrowBackOutline, ArrowForwardOutline, AddOutline,
     GridOutline, ListOutline, StatsChartOutline, SearchOutline,
-    CalendarOutline
+    CalendarOutline, RefreshOutline
 } from '@vicons/ionicons5';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,6 +31,7 @@ const props = defineProps({
     days: Array,
     assigned_tasks: Object,
     unassigned_tasks: Array,
+    has_more_tasks: Object, // <- Nueva bandera que viene desde Backend
     all_tasks: Array,
     assignable_users: Array,
     service_orders: Array,
@@ -98,6 +100,100 @@ watch(() => props.unassigned_tasks, (newVal) => {
         if (found) selectedTask.value = found;
     }
 }, { immediate: true, deep: true });
+
+
+// ==========================================
+// SCROLL INFINITO (CARGA PEREZOSA DESDE BACKEND VÍA AJAX)
+// ==========================================
+const loadingMore = reactive({});
+const hasMoreState = reactive({ kanban: {}, backlog_unassigned: false, backlog_nodate: false });
+
+// Reflejamos el estado que nos manda el backend para saber si debemos hacer peticiones AJAX
+watch(() => props.has_more_tasks, (newVal) => {
+    if(newVal) {
+        hasMoreState.kanban = { ...newVal.kanban };
+        hasMoreState.backlog_unassigned = newVal.backlog_unassigned;
+        hasMoreState.backlog_nodate = newVal.backlog_nodate;
+    }
+}, { immediate: true, deep: true });
+
+// Controlador de scroll para Columnas (Días)
+const handleColumnScroll = async (e, date) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.target;
+    if (scrollTop + clientHeight >= scrollHeight - 30) {
+        if (hasMoreState.kanban[date] && !loadingMore[date]) {
+            loadingMore[date] = true;
+            try {
+                const currentCount = boardColumns.value[date].length;
+                const res = await axios.get(route('tasks.index'), {
+                    params: { lazy_load: 'kanban_day', date: date, offset: currentCount }
+                });
+                
+                if (res.data && res.data.length > 0) {
+                    // Prevenir duplicados en caso de que se haya alterado el arreglo 
+                    const existingIds = new Set(boardColumns.value[date].map(t => t.id));
+                    const newTasks = res.data.filter(t => !existingIds.has(t.id));
+                    boardColumns.value[date].push(...newTasks);
+                    
+                    if (res.data.length < 10) hasMoreState.kanban[date] = false;
+                } else {
+                    hasMoreState.kanban[date] = false;
+                }
+            } catch (error) {
+                console.error('Error al cargar más tareas:', error);
+            } finally {
+                loadingMore[date] = false;
+            }
+        }
+    }
+};
+
+// Controlador de scroll para el Backlog (Lado Izquierdo)
+const handleBacklogScroll = async (e) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.target;
+    if (scrollTop + clientHeight >= scrollHeight - 30) {
+        // Carga para Sin Asignar
+        if (hasMoreState.backlog_unassigned && !loadingMore['backlog_unassigned']) {
+            loadingMore['backlog_unassigned'] = true;
+            try {
+                const offset = unassignedBacklog.value.length;
+                const res = await axios.get(route('tasks.index'), { params: { lazy_load: 'backlog_unassigned', offset } });
+                if (res.data.length > 0) {
+                    const existingIds = new Set(unassignedBacklog.value.map(t => t.id));
+                    unassignedBacklog.value.push(...res.data.filter(t => !existingIds.has(t.id)));
+                    if (res.data.length < 10) hasMoreState.backlog_unassigned = false;
+                } else {
+                    hasMoreState.backlog_unassigned = false;
+                }
+            } finally { loadingMore['backlog_unassigned'] = false; }
+        }
+
+        // Carga para Sin Fecha
+        if (hasMoreState.backlog_nodate && !loadingMore['backlog_nodate']) {
+            loadingMore['backlog_nodate'] = true;
+            try {
+                const offset = noDateBacklog.value.length;
+                const res = await axios.get(route('tasks.index'), { params: { lazy_load: 'backlog_nodate', offset } });
+                if (res.data.length > 0) {
+                    const existingIds = new Set(noDateBacklog.value.map(t => t.id));
+                    noDateBacklog.value.push(...res.data.filter(t => !existingIds.has(t.id)));
+                    if (res.data.length < 10) hasMoreState.backlog_nodate = false;
+                } else {
+                    hasMoreState.backlog_nodate = false;
+                }
+            } finally { loadingMore['backlog_nodate'] = false; }
+        }
+    }
+};
+
+// Función para evaluar filtros UI
+const passesFilter = (task) => {
+    const passStatus = showCompletedTasks.value || (task.status !== 'Completado' && task.status !== 'Cancelado');
+    const passPriority = !kanbanPriorityFilter.value || task.priority === kanbanPriorityFilter.value;
+    return passStatus && passPriority;
+};
+// ==========================================
+
 
 // --- CÁLCULO PARA EL HEADER DEL BACKLOG ---
 const backlogUnassignedCount = computed(() => {
@@ -591,49 +687,49 @@ const metricsData = computed(() => {
                             </div>
                         </div>
                         
-                        <div class="flex-1 overflow-y-auto p-2 lg:p-3 bg-gray-50/30 custom-scrollbar min-h-0">
+                        <!-- Contenedor scrollable del Backlog con Scroll Asíncrono a BD -->
+                        <div class="flex-1 overflow-y-auto p-2 lg:p-3 bg-gray-50/30 custom-scrollbar relative" @scroll="handleBacklogScroll">
+                            
                             <draggable 
                                 v-model="unassignedBacklog" 
                                 group="tasks" 
                                 item-key="id"
-                                class="min-h-full space-y-2 lg:space-y-3"
+                                class="min-h-[20px] pb-2"
                                 ghost-class="ghost-card"
                                 :disabled="!hasPermission('pms.schedule')"
                                 @change="onBacklogChange" 
                             >
                                 <template #item="{ element }">
-                                    <TaskCard 
-                                        v-show="!kanbanPriorityFilter || element.priority === kanbanPriorityFilter"
-                                        :task="element" 
-                                        :is-backlog="true" 
-                                        @click="openDetail(element)" 
-                                    />
-                                </template>
-                                <template #empty>
-                                    <div v-if="!unassignedBacklog.length && !noDateBacklog.length" class="h-24 lg:h-32 flex flex-col items-center justify-center text-gray-400">
-                                        <n-empty description="Backlog vacío" size="small" />
+                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3">
+                                        <TaskCard :task="element" :is-backlog="true" @click="openDetail(element)" />
                                     </div>
                                 </template>
                             </draggable>
+
+                            <!-- Indicador de Carga (Posición fija en el flujo) -->
+                            <div v-if="loadingMore['backlog_unassigned']" class="py-2 mb-3 text-center text-[11px] font-bold text-orange-600 bg-orange-50/90 rounded-lg shadow-sm border border-orange-200">
+                                <n-icon class="animate-spin mr-1"><RefreshOutline/></n-icon> Cargando más...
+                            </div>
                             
                             <draggable 
                                 v-model="noDateBacklog" 
                                 group="tasks" 
                                 item-key="id"
-                                class="space-y-2 lg:space-y-3 mt-2 lg:mt-3 pb-8"
+                                class="mt-2 lg:mt-3 pb-2"
                                 ghost-class="ghost-card"
                                 :disabled="!hasPermission('pms.schedule')"
                                 @change="onBacklogChange" 
                             >
                                 <template #item="{ element }">
-                                    <TaskCard 
-                                        v-show="!kanbanPriorityFilter || element.priority === kanbanPriorityFilter"
-                                        :task="element" 
-                                        :is-backlog="true" 
-                                        @click="openDetail(element)" 
-                                    />
+                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3">
+                                        <TaskCard :task="element" :is-backlog="true" @click="openDetail(element)" />
+                                    </div>
                                 </template>
                             </draggable>
+
+                            <div v-if="loadingMore['backlog_nodate']" class="py-2 mb-6 text-center text-[11px] font-bold text-purple-600 bg-purple-50/90 rounded-lg shadow-sm border border-purple-200">
+                                <n-icon class="animate-spin mr-1"><RefreshOutline/></n-icon> Cargando más...
+                            </div>
                         </div>
                     </div>
 
@@ -643,30 +739,34 @@ const metricsData = computed(() => {
                             v-for="day in days" :key="day.date" 
                             class="snap-start shrink-0 w-[85vw] sm:w-[280px] md:w-[300px] xl:w-auto xl:flex-1 flex flex-col bg-gray-50/50 rounded-xl border border-gray-100 h-full max-h-full"
                         >
-                            <!-- El header del día siempre visible en el top -->
                             <div class="py-2 border-b border-gray-100 text-center flex flex-col items-center bg-white rounded-t-xl sticky top-0 z-10 flex-shrink-0">
                                 <span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider truncate w-full px-1">{{ day.day_name }}</span>
                                 <span class="text-xl font-black text-gray-700 leading-none mt-1">{{ day.day_number }}</span>
                             </div>
 
-                            <div class="flex-1 p-2 overflow-y-auto overflow-x-hidden custom-scrollbar min-h-0">
+                            <!-- Contenedor scrollable de cada Columna modificado con Virtual Scrolling a BD -->
+                            <div class="flex-1 p-2 overflow-y-auto overflow-x-hidden custom-scrollbar relative" @scroll="(e) => handleColumnScroll(e, day.date)">
                                 <draggable 
                                     v-model="boardColumns[day.date]" 
                                     group="tasks" 
                                     item-key="id"
-                                    class="min-h-full h-full space-y-2 pb-10"
+                                    class="min-h-[50px] pb-2"
                                     ghost-class="ghost-card"
                                     :disabled="!hasPermission('pms.schedule')"
                                     @change="(evt) => onBoardChange(evt, day.date)"
                                 >
                                     <template #item="{ element }">
-                                        <TaskCard 
-                                            v-show="(showCompletedTasks || (element.status !== 'Completado' && element.status !== 'Cancelado')) && (!kanbanPriorityFilter || element.priority === kanbanPriorityFilter)"
-                                            :task="element" 
-                                            @click="openDetail(element)" 
-                                        />
+                                        <div v-show="passesFilter(element)" class="mb-2">
+                                            <TaskCard :task="element" @click="openDetail(element)" />
+                                        </div>
                                     </template>
                                 </draggable>
+
+                                <!-- Indicador de carga ahora es un objeto en flujo y con un hermoso diseño UI que NO se empalma -->
+                                <div v-if="loadingMore[day.date]" class="py-2.5 mb-2 text-center text-xs font-bold text-blue-600 flex items-center justify-center bg-blue-50/90 rounded-lg border border-blue-200 shadow-sm transition-all mt-2">
+                                    <n-icon class="animate-spin mr-1.5" size="14"><RefreshOutline/></n-icon>
+                                    Cargando tareas...
+                                </div>
                             </div>
                         </div>
                     </div>
