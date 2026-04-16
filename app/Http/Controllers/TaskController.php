@@ -24,14 +24,79 @@ class TaskController extends Controller
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
-        // Determinar inicio de semana (Lunes)
+        // --- 1. ENDPOINTS AJAX PARA SCROLL (CARGA PEREZOSA DESDE BACKEND) ---
+        if ($request->wantsJson() && $request->has('lazy_load')) {
+            $type = $request->input('lazy_load');
+            $offset = (int) $request->input('offset', 0);
+            $limit = 10;
+
+            if ($type === 'kanban_day') {
+                $targetDate = Carbon::parse($request->input('date'))->startOfDay();
+                
+                $dayTasksQuery = Task::with([
+                    'assignees', 'comments.user', 'requiredEvidences.media',
+                    'taskable' => function (MorphTo $morphTo) {
+                        $morphTo->morphWith([
+                            ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
+                            Ticket::class => ['client', 'serviceOrder']
+                        ]);
+                    }
+                ])
+                ->where('branch_id', $branchId)
+                ->has('assignees')
+                ->whereNotNull('start_date') 
+                ->where(function ($query) use ($targetDate) {
+                    $query->where('start_date', '<=', $targetDate->copy()->endOfDay())
+                          ->where(function($q) use ($targetDate) {
+                              $q->where('due_date', '>=', $targetDate)
+                                ->orWhereNull('due_date')
+                                ->orWhere('start_date', '>=', $targetDate);
+                          });
+                });
+
+                if (!Auth::user()->can('pms.view_all')) {
+                    $dayTasksQuery->whereHas('assignees', function($q) { $q->where('users.id', Auth::id()); });
+                }
+
+                $tasks = $dayTasksQuery->orderBy('start_date', 'asc')->orderBy('id', 'asc')
+                                       ->skip($offset)->take($limit)->get();
+                
+                return response()->json($tasks);
+            }
+
+            if ($type === 'backlog_unassigned' || $type === 'backlog_nodate') {
+                $backlogQuery = Task::with([
+                    'assignees', 'comments.user', 'requiredEvidences.media',
+                    'taskable' => function (MorphTo $morphTo) {
+                        $morphTo->morphWith([
+                            ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
+                            Ticket::class => ['client', 'serviceOrder']
+                        ]);
+                    }
+                ])
+                ->where('branch_id', $branchId)
+                ->whereNotIn('status', ['Completado', 'Cancelado']);
+
+                if ($type === 'backlog_unassigned') {
+                    $backlogQuery->doesntHave('assignees');
+                } else {
+                    $backlogQuery->has('assignees')->whereNull('start_date');
+                }
+
+                if (!Auth::user()->can('pms.view_all')) {
+                    $backlogQuery->whereHas('assignees', function($q) { $q->where('users.id', Auth::id()); });
+                }
+
+                $tasks = $backlogQuery->orderBy('created_at', 'desc')->skip($offset)->take($limit)->get();
+                return response()->json($tasks);
+            }
+        }
+
+        // --- 2. CARGA INICIAL NORMAL DE INERTIA ---
         $dateParam = $request->input('week_start');
         $weekStart = $dateParam ? Carbon::parse($dateParam)->startOfWeek() : Carbon::now()->startOfWeek();
-        
-        // Termina el Sábado (5 días después del lunes) para mostrar la semana completa
         $weekEnd = $weekStart->copy()->addDays(5)->endOfDay(); 
 
-        // Generar estructura de días (Lunes a Sábado) para el frontend
         $days = [];
         for ($i = 0; $i <= 5; $i++) {
             $currentDay = $weekStart->copy()->addDays($i);
@@ -44,9 +109,7 @@ class TaskController extends Controller
 
         // --- QUERY 1: TAREAS ASIGNADAS (KANBAN) ---
         $assignedTasksQuery = Task::with([
-            'assignees', 
-            'comments.user',
-            'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
+            'assignees', 'comments.user', 'requiredEvidences.media',
             'taskable' => function (MorphTo $morphTo) {
                 $morphTo->morphWith([
                     ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -54,50 +117,67 @@ class TaskController extends Controller
                 ]);
             }
         ])
-            ->where('branch_id', $branchId)
-            ->has('assignees')
-            ->whereNotNull('start_date') 
-            ->where(function ($query) use ($weekStart, $weekEnd) {
-                $query->where('start_date', '<=', $weekEnd)
-                      ->where(function($q) use ($weekStart) {
-                          $q->where('due_date', '>=', $weekStart->startOfDay())
-                            ->orWhereNull('due_date');
-                      });
-            });
+        ->where('branch_id', $branchId)
+        ->has('assignees')
+        ->whereNotNull('start_date') 
+        ->where(function ($query) use ($weekStart, $weekEnd) {
+            $query->where('start_date', '<=', $weekEnd)
+                  ->where(function($q) use ($weekStart) {
+                      $q->where('due_date', '>=', $weekStart->startOfDay())
+                        ->orWhereNull('due_date')
+                        ->orWhere('start_date', '>=', $weekStart->startOfDay()); 
+                  });
+        })
+        ->orderBy('start_date', 'asc')->orderBy('id', 'asc'); // Consistencia para la paginación
 
         if (!Auth::user()->can('pms.view_all')) {
-            $assignedTasksQuery->whereHas('assignees', function($q) {
-                $q->where('users.id', Auth::id());
-            });
+            $assignedTasksQuery->whereHas('assignees', function($q) { $q->where('users.id', Auth::id()); });
         }
 
         $fetchedTasks = $assignedTasksQuery->get();
-
         $assignedTasks = [];
+
+        // Inicializar los días en el array
+        foreach ($days as $day) {
+            $assignedTasks[$day['date']] = [];
+        }
+
         foreach ($fetchedTasks as $task) {
             $taskStart = Carbon::parse($task->start_date)->startOfDay();
             $taskEnd = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : $taskStart->copy();
+
+            if ($taskEnd->lt($taskStart)) {
+                $taskEnd = $taskStart->copy();
+            }
 
             $currentDate = $taskStart->copy();
             while ($currentDate->lte($taskEnd)) {
                 $dateString = $currentDate->format('Y-m-d');
                 if ($currentDate->between($weekStart->startOfDay(), $weekEnd)) {
-                    if (!isset($assignedTasks[$dateString])) {
-                        $assignedTasks[$dateString] = [];
-                    }
                     $assignedTasks[$dateString][] = $task;
                 }
                 $currentDate->addDay();
             }
         }
 
+        // Cortar la información pesada: Solo enviar máximo 10 al frontend
+        $assignedTasksLimited = [];
+        $hasMoreTasks = ['kanban' => [], 'backlog_unassigned' => false, 'backlog_nodate' => false];
+
+        foreach ($days as $day) {
+            $dateStr = $day['date'];
+            $tasksForDay = $assignedTasks[$dateStr];
+            $hasMoreTasks['kanban'][$dateStr] = count($tasksForDay) > 10;
+            $assignedTasksLimited[$dateStr] = array_slice($tasksForDay, 0, 10);
+        }
+
         // --- QUERY 2: TAREAS SIN ASIGNAR (BACKLOG) ---
-        $unassignedTasks = [];
+        $unassignedBacklog = [];
+        $noDateBacklog = [];
+
         if (Auth::user()->can('pms.view_all')) {
-            $unassignedTasks = Task::with([
-                'assignees', 
-                'comments.user',
-                'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
+            $allUnassigned = Task::with([
+                'assignees', 'comments.user', 'requiredEvidences.media',
                 'taskable' => function (MorphTo $morphTo) {
                     $morphTo->morphWith([
                         ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -105,21 +185,34 @@ class TaskController extends Controller
                     ]);
                 }
             ])
-                ->where('branch_id', $branchId)
-                ->where(function ($query) {
-                    $query->doesntHave('assignees')
-                          ->orWhereNull('start_date'); 
-                })
-                ->whereNotIn('status', ['Completado', 'Cancelado'])
-                ->orderBy('created_at', 'desc')
-                ->get();
+            ->where('branch_id', $branchId)
+            ->where(function ($query) {
+                $query->doesntHave('assignees')->orWhereNull('start_date'); 
+            })
+            ->whereNotIn('status', ['Completado', 'Cancelado'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+            foreach ($allUnassigned as $task) {
+                if ($task->assignees->isEmpty()) {
+                    $unassignedBacklog[] = $task;
+                } else {
+                    $noDateBacklog[] = $task;
+                }
+            }
+
+            $hasMoreTasks['backlog_unassigned'] = count($unassignedBacklog) > 10;
+            $hasMoreTasks['backlog_nodate'] = count($noDateBacklog) > 10;
         }
+
+        $unassignedTasksLimited = array_merge(
+            array_slice($unassignedBacklog, 0, 10),
+            array_slice($noDateBacklog, 0, 10)
+        );
 
         // --- QUERY 3: TODAS LAS TAREAS (VISTA LISTA Y MÉTRICAS) ---
         $allTasksQuery = Task::with([
-            'assignees', 
-            'comments.user',
-            'requiredEvidences.media', // <-- NUEVO: Cargar evidencias y sus fotos
+            'assignees', 'comments.user', 'requiredEvidences.media',
             'taskable' => function (MorphTo $morphTo) {
                 $morphTo->morphWith([
                     ServiceOrder::class => ['client', 'technician', 'salesRep', 'items.product'],
@@ -129,47 +222,30 @@ class TaskController extends Controller
         ])->where('branch_id', $branchId);
 
         if (!Auth::user()->can('pms.view_all')) {
-            $allTasksQuery->whereHas('assignees', function($q) {
-                $q->where('users.id', Auth::id());
-            });
+            $allTasksQuery->whereHas('assignees', function($q) { $q->where('users.id', Auth::id()); });
         }
-        $allTasks = $allTasksQuery->orderBy('created_at', 'desc')->get();
+        
+        // LIMITAMOS A 300 PARA EVITAR QUE LA BASE DE DATOS COLAPSE CON EL HISTORIAL
+        $allTasks = $allTasksQuery->orderBy('created_at', 'desc')->limit(300)->get();
 
         // Usuarios disponibles
         $assignableUsers = User::where('branch_id', $branchId)
-            ->where('is_active', true)
-            ->where('id', '!=', 1) 
+            ->where('is_active', true)->where('id', '!=', 1) 
             ->get(['id', 'name', 'phone', 'profile_photo_path']);
 
-        // Data de Módulos para los SELECTS del formulario
-        $serviceOrders = ServiceOrder::with('client:id,name')
-            ->whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
-            ->where('branch_id', $branchId)
-            ->select('id', 'client_id', 'created_at', 'status')
-            ->orderBy('created_at', 'desc')
-            ->get()
+        // Data Selects
+        $serviceOrders = ServiceOrder::with('client:id,name')->whereNotIn('status', ['Completado', 'Facturado', 'Cancelado'])
+            ->where('branch_id', $branchId)->select('id', 'client_id', 'created_at', 'status')->orderBy('created_at', 'desc')->get()
             ->map(function ($order) {
                 $clientName = $order->client ? $order->client->name : 'Sin Cliente';
-                return [
-                    'id' => $order->id,
-                    'label' => "Orden #{$order->id} - {$clientName} ({$order->created_at->format('d/m/Y')})",
-                    'client' => $order->client 
-                ];
+                return [ 'id' => $order->id, 'label' => "Orden #{$order->id} - {$clientName} ({$order->created_at->format('d/m/Y')})", 'client' => $order->client ];
             });
             
-        $tickets = Ticket::with('client:id,name')
-            ->whereNotIn('status', ['Resuelto', 'Cerrado'])
-            ->where('branch_id', $branchId)
-            ->select('id', 'client_id', 'title', 'created_at')
-            ->orderBy('created_at', 'desc')
-            ->get()
+        $tickets = Ticket::with('client:id,name')->whereNotIn('status', ['Resuelto', 'Cerrado'])
+            ->where('branch_id', $branchId)->select('id', 'client_id', 'title', 'created_at')->orderBy('created_at', 'desc')->get()
             ->map(function ($ticket) {
                 $clientName = $ticket->client ? $ticket->client->name : 'Sin Cliente';
-                return [
-                    'id' => $ticket->id,
-                    'label' => "Ticket #{$ticket->id} - {$clientName} ({$ticket->title})",
-                    'client' => $ticket->client
-                ];
+                return [ 'id' => $ticket->id, 'label' => "Ticket #{$ticket->id} - {$clientName} ({$ticket->title})", 'client' => $ticket->client ];
             });
 
         return Inertia::render('PMS/Index', [
@@ -177,9 +253,10 @@ class TaskController extends Controller
             'prev_week' => $weekStart->copy()->subWeek()->format('Y-m-d'),
             'next_week' => $weekStart->copy()->addWeek()->format('Y-m-d'),
             'days' => $days,
-            'assigned_tasks' => $assignedTasks,
-            'unassigned_tasks' => $unassignedTasks,
-            'all_tasks' => $allTasks, // <- Nueva variable enviada
+            'assigned_tasks' => $assignedTasksLimited,
+            'unassigned_tasks' => $unassignedTasksLimited,
+            'has_more_tasks' => $hasMoreTasks, // <- Nueva bandera
+            'all_tasks' => $allTasks,
             'assignable_users' => $assignableUsers,
             'service_orders' => $serviceOrders,
             'tickets' => $tickets,
@@ -291,7 +368,6 @@ class TaskController extends Controller
                 $validated['start_date'] = now();
             }
             if ($newStatus === 'Completado') {
-                // <-- NUEVA VALIDACIÓN DE EVIDENCIAS: Verificar que todas tengan archivos adjuntos -->
                 $task->loadMissing('requiredEvidences.media');
                 $pendingEvidences = $task->requiredEvidences->filter(function($ev) {
                     return $ev->media->isEmpty();
@@ -315,7 +391,7 @@ class TaskController extends Controller
             $task->assignees()->sync($validated['user_ids'] ?? []);
         }
 
-        if ($task->taskable_type === 'App\\Models\\ServiceOrder') {
+        if ($task->taskable_type === 'App\\Models\\ServiceOrder' && $task->taskable) {
             $order = clone $task->taskable; 
             if ($order) {
                 if ($task->status === 'En Proceso' && is_null($order->start_date)) {
@@ -345,7 +421,7 @@ class TaskController extends Controller
                     }
                 }
             }
-        } elseif ($task->taskable_type === 'App\\Models\\Ticket') {
+        } elseif ($task->taskable_type === 'App\\Models\\Ticket' && $task->taskable) {
             $ticket = clone $task->taskable;
             if ($ticket) {
                 if ($task->status === 'En Proceso' && $ticket->status === 'Abierto') {
