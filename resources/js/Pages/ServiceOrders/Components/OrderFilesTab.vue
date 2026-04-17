@@ -173,7 +173,7 @@ const isImage = (file) => {
                                             <span class="text-[10px] text-emerald-600 font-bold">Ver Documento</span>
                                         </div>
                                         
-                                        <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', media.id), { preserveScroll: true })">
+                                        <n-popconfirm @positive-click="router.delete(route('media.delete-file', media.id), { preserveScroll: true })">
                                             <template #trigger>
                                                 <button class="absolute top-1 right-1 bg-white p-1 rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">
                                                     <n-icon size="14"><TrashOutline /></n-icon>
