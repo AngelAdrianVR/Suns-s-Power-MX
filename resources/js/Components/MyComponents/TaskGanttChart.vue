@@ -204,7 +204,8 @@ const updateTaskStatus = (task, newStatus) => {
     task.status = newStatus;
     router.put(route('tasks.update', task.id), { status: newStatus }, {
         preserveScroll: true,
-        preserveState: true, 
+        preserveState: true,
+        replace: true, 
         onSuccess: () => notification.success({ title: 'Actualizado', content: 'Estatus guardado.', duration: 3000 }),
         onError: (errors) => {
             if (errors.status) {
@@ -217,7 +218,9 @@ const updateTaskStatus = (task, newStatus) => {
 const deleteTask = (taskId) => {
     router.delete(route('tasks.destroy', taskId), {
         onSuccess: () => notification.success({title: 'Tarea eliminada', duration: 3000}),
-        preserveScroll: true
+        preserveScroll: true,
+        preserveState: true,
+        replace: true
     });
 };
 
@@ -245,6 +248,7 @@ const submitComment = () => {
     commentForm.post(route('comments.store'), {
         preserveScroll: true,
         preserveState: true,
+        replace: true,
         onSuccess: () => {
             commentForm.reset('body');
             notification.success({ title: 'Comentario agregado', duration: 3000 });

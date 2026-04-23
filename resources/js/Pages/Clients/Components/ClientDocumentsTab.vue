@@ -64,6 +64,8 @@ const docColumns = [
                                 onPositiveClick: () => {
                                     router.delete(route('media.delete-file', row.id), {
                                         preserveScroll: true,
+                                        preserveState: true,
+                                        replace: true,
                                         onSuccess: () => notification.success({ title: 'Éxito', content: 'Archivo eliminado correctamente.', duration: 3000 }),
                                     });
                                 }
@@ -105,6 +107,8 @@ const handleFileChange = (event) => {
     uploadForm.files = files;
     uploadForm.post(route('clients.documents.store', props.client.id), {
         preserveScroll: true,
+        preserveState: true,
+        replace: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Documentos subidos correctamente.', duration: 3000 });
             // Recargar página completamente tras subida exitosa

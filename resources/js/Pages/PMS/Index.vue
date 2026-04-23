@@ -36,6 +36,7 @@ const props = defineProps({
     assignable_users: Array,
     service_orders: Array,
     tickets: Array,
+    current_priority: String, // <- Guardamos la prioridad actual enviada por el back
 });
 
 const { hasPermission } = usePermissions();
@@ -49,12 +50,28 @@ const showCompletedTasks = ref(false); // Toggle para ocultar tareas completadas
 const showMobileBacklog = ref(false); // Toggle para mostrar/ocultar backlog en móvil
 
 // --- FILTRO DE PRIORIDAD PARA KANBAN ---
-const kanbanPriorityFilter = ref(null);
+const kanbanPriorityFilter = ref(props.current_priority || null);
 const priorityFilterOptions = [
     { label: 'Alta', value: 'Alta' },
     { label: 'Media', value: 'Media' },
     { label: 'Baja', value: 'Baja' }
 ];
+
+// Hacer petición al back-end cuando cambiemos el filtro de prioridad para obtener todos los resultados de BD
+watch(kanbanPriorityFilter, (newVal, oldVal) => {
+    if (newVal !== oldVal) {
+        router.get(route('tasks.index'), {
+            week_start: props.week_start,
+            priority: newVal || undefined
+        }, { 
+            preserveState: true, 
+            preserveScroll: true,
+            replace: true,
+            // Pedimos a Inertia que recargue solo estas props para que no ralentice la vista lista
+            only: ['assigned_tasks', 'unassigned_tasks', 'has_more_tasks', 'current_priority'] 
+        });
+    }
+});
 
 const boardColumns = ref({});
 
@@ -126,7 +143,12 @@ const handleColumnScroll = async (e, date) => {
             try {
                 const currentCount = boardColumns.value[date].length;
                 const res = await axios.get(route('tasks.index'), {
-                    params: { lazy_load: 'kanban_day', date: date, offset: currentCount }
+                    params: { 
+                        lazy_load: 'kanban_day', 
+                        date: date, 
+                        offset: currentCount,
+                        priority: kanbanPriorityFilter.value || undefined // Mandar filtro activo por AJAX
+                    }
                 });
                 
                 if (res.data && res.data.length > 0) {
@@ -157,7 +179,13 @@ const handleBacklogScroll = async (e) => {
             loadingMore['backlog_unassigned'] = true;
             try {
                 const offset = unassignedBacklog.value.length;
-                const res = await axios.get(route('tasks.index'), { params: { lazy_load: 'backlog_unassigned', offset } });
+                const res = await axios.get(route('tasks.index'), { 
+                    params: { 
+                        lazy_load: 'backlog_unassigned', 
+                        offset,
+                        priority: kanbanPriorityFilter.value || undefined
+                    } 
+                });
                 if (res.data.length > 0) {
                     const existingIds = new Set(unassignedBacklog.value.map(t => t.id));
                     unassignedBacklog.value.push(...res.data.filter(t => !existingIds.has(t.id)));
@@ -173,7 +201,13 @@ const handleBacklogScroll = async (e) => {
             loadingMore['backlog_nodate'] = true;
             try {
                 const offset = noDateBacklog.value.length;
-                const res = await axios.get(route('tasks.index'), { params: { lazy_load: 'backlog_nodate', offset } });
+                const res = await axios.get(route('tasks.index'), { 
+                    params: { 
+                        lazy_load: 'backlog_nodate', 
+                        offset,
+                        priority: kanbanPriorityFilter.value || undefined
+                    } 
+                });
                 if (res.data.length > 0) {
                     const existingIds = new Set(noDateBacklog.value.map(t => t.id));
                     noDateBacklog.value.push(...res.data.filter(t => !existingIds.has(t.id)));
@@ -207,7 +241,10 @@ const backlogNoDateCount = computed(() => {
 });
 
 const changeWeek = (dateStr) => {
-    router.get(route('tasks.index'), { week_start: dateStr }, { preserveState: true, preserveScroll: true });
+    router.get(route('tasks.index'), { 
+        week_start: dateStr,
+        priority: kanbanPriorityFilter.value || undefined // Mantener la prioridad al cambiar la semana
+    }, { preserveState: true, preserveScroll: true });
 };
 
 const onDatePickerChange = (timestamp) => {
@@ -388,7 +425,14 @@ const listColumns = computed(() => [
         minWidth: 200, 
         sorter: (a, b) => (a.title || '').localeCompare(b.title || ''),
         render(row) {
-            return h('span', { class: 'font-semibold text-gray-800' }, row.title);
+            const isCompleted = row.status === 'Completado';
+            // Se agregó la clase "line-through text-gray-500 opacity-70" para tachar el texto en la tabla.
+            return h('span', { 
+                class: [
+                    'font-semibold',
+                    isCompleted ? 'line-through text-gray-400 opacity-80' : 'text-gray-800'
+                ] 
+            }, row.title);
         }
     },
     {
@@ -611,7 +655,7 @@ const metricsData = computed(() => {
                         <n-select 
                             v-model:value="kanbanPriorityFilter" 
                             :options="priorityFilterOptions" 
-                            placeholder="Prioridad" 
+                            placeholder="Todas" 
                             clearable 
                             size="small" 
                         />
@@ -700,7 +744,7 @@ const metricsData = computed(() => {
                                 @change="onBacklogChange" 
                             >
                                 <template #item="{ element }">
-                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3">
+                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3" :class="{'task-completed-card': element.status === 'Completado'}">
                                         <TaskCard :task="element" :is-backlog="true" @click="openDetail(element)" />
                                     </div>
                                 </template>
@@ -721,7 +765,7 @@ const metricsData = computed(() => {
                                 @change="onBacklogChange" 
                             >
                                 <template #item="{ element }">
-                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3">
+                                    <div v-show="passesFilter(element)" class="mb-2 lg:mb-3" :class="{'task-completed-card': element.status === 'Completado'}">
                                         <TaskCard :task="element" :is-backlog="true" @click="openDetail(element)" />
                                     </div>
                                 </template>
@@ -756,7 +800,7 @@ const metricsData = computed(() => {
                                     @change="(evt) => onBoardChange(evt, day.date)"
                                 >
                                     <template #item="{ element }">
-                                        <div v-show="passesFilter(element)" class="mb-2">
+                                        <div v-show="passesFilter(element)" class="mb-2" :class="{'task-completed-card': element.status === 'Completado'}">
                                             <TaskCard :task="element" @click="openDetail(element)" />
                                         </div>
                                     </template>
@@ -955,6 +999,24 @@ const metricsData = computed(() => {
     opacity: 0.5 !important;
     border: 2px dashed #818cf8 !important;
     background-color: #eef2ff !important;
+}
+
+/* Estilos para tachar tarjetas completadas en Kanban */
+:deep(.task-completed-card) {
+    opacity: 0.65;
+    transition: opacity 0.2s ease;
+}
+:deep(.task-completed-card:hover) {
+    opacity: 0.85;
+}
+/* Intenta tachar dinámicamente etiquetas de texto comunes dentro del TaskCard */
+:deep(.task-completed-card h2),
+:deep(.task-completed-card h3),
+:deep(.task-completed-card h4),
+:deep(.task-completed-card h5),
+:deep(.task-completed-card .font-bold) {
+    text-decoration: line-through;
+    color: #6b7280;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
