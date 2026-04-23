@@ -123,6 +123,8 @@ const handleTaskSubmit = () => {
 const handleDeleteTask = (id) => {
     router.delete(route('task-templates.destroy', id), {
         preserveScroll: true,
+        preserveState: true,
+        replace: true,
         onSuccess: () => {
             notification.success({ title: 'Eliminado', content: 'Plantilla de tarea eliminada.', duration: 3000 });
             emit('sync');
@@ -144,6 +146,8 @@ const onDropTask = (dropIndex) => {
 
     router.post(route('task-templates.reorder'), { items: updatedItems }, {
         preserveScroll: true,
+        preserveState: true,
+        replace: true,
         onSuccess: () => { 
             notification.success({ title: 'Orden actualizado', content: 'Se guardó el nuevo orden de las tareas.', duration: 3000 }); 
             emit('sync');
