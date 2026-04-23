@@ -106,13 +106,17 @@ const submit = () => {
         // Modo Edición
         form.transform(() => payload).put(route('tasks.update', props.task.id), {
             onSuccess: () => emit('saved'),
-            preserveScroll: true
+            preserveScroll: true,
+            preserveState: true,
+            replace: true
         });
     } else {
         // Modo Creación
         form.transform(() => payload).post(route('tasks.store'), {
             onSuccess: () => emit('saved'),
-            preserveScroll: true
+            preserveScroll: true,
+            preserveState: true,
+            replace: true
         });
     }
 };

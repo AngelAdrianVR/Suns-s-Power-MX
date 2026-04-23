@@ -52,6 +52,7 @@ const submitComment = () => {
     commentForm.post(route('comments.store'), {
         preserveScroll: true,
         preserveState: true,
+        replace: true,
         onSuccess: () => {
             commentForm.reset('body');
             notification.success({ title: 'Comentario agregado', duration: 3000 });

@@ -150,7 +150,9 @@ const openMaterialReportModal = () => {
 
 const submitInstallationReport = () => {
     completionForm.post(route('service-orders.confirm-installation', props.order.id), {
+        preserveState: true,
         preserveScroll: true,
+        replace: true,
         onSuccess: () => {
             showCompletionModal.value = false;
             notification.success({ title: 'Material Conciliado', content: 'Las cantidades se han guardado correctamente.', duration: 5000 });

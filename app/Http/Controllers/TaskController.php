@@ -23,6 +23,7 @@ class TaskController extends Controller
     public function index(Request $request)
     {
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        $priority = $request->input('priority'); // <-- Capturamos la prioridad para filtrarla desde la base de datos
 
         // --- 1. ENDPOINTS AJAX PARA SCROLL (CARGA PEREZOSA DESDE BACKEND) ---
         if ($request->wantsJson() && $request->has('lazy_load')) {
@@ -45,6 +46,9 @@ class TaskController extends Controller
                 ->where('branch_id', $branchId)
                 ->has('assignees')
                 ->whereNotNull('start_date') 
+                ->when($priority, function ($q) use ($priority) {
+                    $q->where('priority', $priority); // Filtramos por prioridad en carga perezosa
+                })
                 ->where(function ($query) use ($targetDate) {
                     $query->where('start_date', '<=', $targetDate->copy()->endOfDay())
                           ->where(function($q) use ($targetDate) {
@@ -75,6 +79,9 @@ class TaskController extends Controller
                     }
                 ])
                 ->where('branch_id', $branchId)
+                ->when($priority, function ($q) use ($priority) {
+                    $q->where('priority', $priority); // Filtramos por prioridad en backlog
+                })
                 ->whereNotIn('status', ['Completado', 'Cancelado']);
 
                 if ($type === 'backlog_unassigned') {
@@ -120,6 +127,9 @@ class TaskController extends Controller
         ->where('branch_id', $branchId)
         ->has('assignees')
         ->whereNotNull('start_date') 
+        ->when($priority, function ($q) use ($priority) {
+            $q->where('priority', $priority); // Filtramos por prioridad inicial
+        })
         ->where(function ($query) use ($weekStart, $weekEnd) {
             $query->where('start_date', '<=', $weekEnd)
                   ->where(function($q) use ($weekStart) {
@@ -190,6 +200,9 @@ class TaskController extends Controller
                 $query->doesntHave('assignees')->orWhereNull('start_date'); 
             })
             ->whereNotIn('status', ['Completado', 'Cancelado'])
+            ->when($priority, function ($q) use ($priority) {
+                $q->where('priority', $priority); // Filtramos por prioridad en backlog
+            })
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -211,6 +224,7 @@ class TaskController extends Controller
         );
 
         // --- QUERY 3: TODAS LAS TAREAS (VISTA LISTA Y MÉTRICAS) ---
+        // (NO le aplicamos el filtro de Kanban aquí para que la tabla siga viéndose completa al alternar la vista)
         $allTasksQuery = Task::with([
             'assignees', 'comments.user', 'requiredEvidences.media',
             'taskable' => function (MorphTo $morphTo) {
@@ -255,11 +269,12 @@ class TaskController extends Controller
             'days' => $days,
             'assigned_tasks' => $assignedTasksLimited,
             'unassigned_tasks' => $unassignedTasksLimited,
-            'has_more_tasks' => $hasMoreTasks, // <- Nueva bandera
+            'has_more_tasks' => $hasMoreTasks,
             'all_tasks' => $allTasks,
             'assignable_users' => $assignableUsers,
             'service_orders' => $serviceOrders,
             'tickets' => $tickets,
+            'current_priority' => $priority, // <-- Pasamos el estado del filtro al frontend
         ]);
     }
 
