@@ -48,6 +48,7 @@ const showMetricsDrawer = ref(false);
 const listSearch = ref('');
 const showCompletedTasks = ref(false); // Toggle para ocultar tareas completadas en Kanban
 const showMobileBacklog = ref(false); // Toggle para mostrar/ocultar backlog en móvil
+const isFiltering = ref(false); // <-- Nuevo estado para el loading a pantalla completa
 
 // --- FILTRO DE PRIORIDAD PARA KANBAN ---
 const kanbanPriorityFilter = ref(props.current_priority || null);
@@ -60,15 +61,18 @@ const priorityFilterOptions = [
 // Hacer petición al back-end cuando cambiemos el filtro de prioridad para obtener todos los resultados de BD
 watch(kanbanPriorityFilter, (newVal, oldVal) => {
     if (newVal !== oldVal) {
+        isFiltering.value = true; // Activar estado de carga
         router.get(route('tasks.index'), {
             week_start: props.week_start,
             priority: newVal || undefined
         }, { 
             preserveState: true, 
             preserveScroll: true,
-            replace: true,
             // Pedimos a Inertia que recargue solo estas props para que no ralentice la vista lista
-            only: ['assigned_tasks', 'unassigned_tasks', 'has_more_tasks', 'current_priority'] 
+            only: ['assigned_tasks', 'unassigned_tasks', 'has_more_tasks', 'current_priority'],
+            onFinish: () => {
+                isFiltering.value = false; // Desactivar estado de carga al terminar
+            }
         });
     }
 });
@@ -241,10 +245,17 @@ const backlogNoDateCount = computed(() => {
 });
 
 const changeWeek = (dateStr) => {
+    isFiltering.value = true; // Mostramos carga visual
     router.get(route('tasks.index'), { 
         week_start: dateStr,
         priority: kanbanPriorityFilter.value || undefined // Mantener la prioridad al cambiar la semana
-    }, { preserveState: true, preserveScroll: true });
+    }, { 
+        preserveState: true, 
+        preserveScroll: true,
+        onFinish: () => {
+            isFiltering.value = false; // Desactivar al terminar
+        }
+    });
 };
 
 const onDatePickerChange = (timestamp) => {
@@ -622,6 +633,14 @@ const metricsData = computed(() => {
 
 <template>
     <AppLayout title="PMS - Dashboard Semanal">
+        <!-- OVERLAY DE CARGA PARA FILTROS -->
+        <div v-if="isFiltering" class="fixed inset-0 z-[9999] bg-white/40 backdrop-blur-[2px] flex items-center justify-center transition-all duration-300">
+            <div class="bg-white px-6 py-4 rounded-2xl shadow-xl border border-gray-100 flex flex-col items-center gap-3">
+                <n-icon class="animate-spin text-indigo-600" size="32"><RefreshOutline/></n-icon>
+                <span class="font-bold text-gray-700 text-sm">Cargando tareas...</span>
+            </div>
+        </div>
+
         <template #header>
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
                 <div>
