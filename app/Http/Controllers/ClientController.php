@@ -72,6 +72,7 @@ class ClientController extends Controller
                     'id' => $client->id,
                     'name' => $client->name,
                     'contact_person' => $client->contact_person,
+                    'type' => $client->type,
                     'email' => $mainContact ? $mainContact->email : '-',
                     'phone' => $mainContact ? $mainContact->phone : '-',
                     'tax_id' => $client->tax_id,
@@ -99,6 +100,8 @@ class ClientController extends Controller
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
             'tax_id' => 'nullable|string|max:20',
+            'type' => 'required|in:Prospecto,Cliente',
+            'lead_source' => 'nullable|string|max:255',
             
             // Dirección Atomizada
             'road_type' => 'nullable|string|max:50', // NUEVO CAMPO
@@ -238,7 +241,10 @@ class ClientController extends Controller
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
             'tax_id' => 'nullable|string|max:20',
+            'type' => 'required|in:Prospecto,Cliente',
+            'lead_source' => 'nullable|string|max:255',
             
+            // Dirección Atomizada
             'road_type' => 'nullable|string|max:50',
             'street' => 'nullable|string|max:255',
             'exterior_number' => 'nullable|string|max:50',

@@ -176,6 +176,13 @@ export default {
                     ]
                 },
                 {
+                    label: 'Visitas Técnicas',
+                    icon: icons.orders,
+                    route: 'technical-visits.index',
+                    active: current('technical-visits.*'),
+                    show: hasPermission('technical_visits.index')
+                },
+                {
                     label: 'Órdenes Servicio',
                     icon: icons.orders,
                     route: 'service-orders.index',

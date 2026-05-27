@@ -15,10 +15,10 @@ import {
 const { notification } = createDiscreteApi(['notification']);
 const formRef = ref(null);
 
-// Estructura inicial de un contacto (Igual que en Proveedores)
+// Estructura inicial de un contacto
 const createEmptyContact = (isPrimary = false) => ({
     name: '',
-    job_title: '', // Nuevo campo: Puesto / Parentesco
+    job_title: '', 
     email: '',
     phone: '',
     notes: '',
@@ -27,12 +27,14 @@ const createEmptyContact = (isPrimary = false) => ({
 
 // Formulario actualizado con la nueva estructura
 const form = useForm({
-    name: '',            
+    type: 'Prospecto',
+    name: '',
+    lead_source: '',
     contact_person: '',  
     tax_id: '',          
     
     // Dirección Atomizada
-    road_type: '', // NUEVO: Tipo de vialidad
+    road_type: '', 
     street: '',
     exterior_number: '',
     interior_number: '',
@@ -44,11 +46,10 @@ const form = useForm({
     
     notes: '',
 
-    // Lista de Contactos (Reemplaza a los campos planos)
+    // Lista de Contactos
     contacts: [ createEmptyContact(true) ]
 });
 
-// Opciones para tipo de vialidad (Opcional, puede ser un simple input)
 const roadTypeOptions = [
     { label: 'Calle', value: 'Calle' },
     { label: 'Avenida', value: 'Avenida' },
@@ -60,7 +61,6 @@ const roadTypeOptions = [
     { label: 'Camino', value: 'Camino' },
 ];
 
-// Lista de Estados de México
 const mexicoStates = [
     { label: 'Aguascalientes', value: 'Aguascalientes' },
     { label: 'Baja California', value: 'Baja California' },
@@ -96,15 +96,21 @@ const mexicoStates = [
     { label: 'Zacatecas', value: 'Zacatecas' }
 ];
 
+// Opciones de origen
+const leadSourceOptions = [
+    { label: 'Facebook', value: 'Facebook' },
+    { label: 'Google', value: 'Google' },
+    { label: 'Recomendación', value: 'Recomendación' },
+    { label: 'Instagram', value: 'Instagram' },
+    { label: 'Sitio Web', value: 'Sitio Web' },
+    { label: 'Otro', value: 'Otro' }
+];
+
 const rules = {
-    name: { 
-        required: true, 
-        message: 'El nombre o razón social es obligatorio', 
-        trigger: 'blur' 
-    },
+    type: { required: true, message: 'Selecciona el tipo de registro', trigger: 'change' },
+    name: { required: true, message: 'El nombre o razón social es obligatorio', trigger: 'blur' }
 };
 
-// Funciones para manejo de contactos (Idénticas a Suppliers)
 const addContact = () => {
     form.contacts.push(createEmptyContact(false));
 };
@@ -129,7 +135,7 @@ const submit = () => {
             // Validaciones extra para contactos
             const invalidContact = form.contacts.find(c => !c.name);
             if (invalidContact) {
-                notification.error({ title: 'Error', content: 'Todos los contactos deben tener un nombre.' });
+                notification.error({ title: 'Error', content: 'Todos los contactos deben tener un nombre.', duration: 3000 });
                 return;
             }
 
@@ -203,6 +209,28 @@ const submit = () => {
 
                                 <n-grid x-gap="12" :cols="1">
                                     <n-grid-item>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <n-form-item label="Tipo de Registro" path="type">
+                                                <n-select 
+                                                    v-model:value="form.type" 
+                                                    :options="[{label: 'Prospecto', value: 'Prospecto'}, {label: 'Cliente', value: 'Cliente'}]" 
+                                                />
+                                            </n-form-item>
+                                            <n-form-item label="¿De dónde se enteró de nosotros?" path="lead_source">
+                                                <n-select 
+                                                    v-model:value="form.lead_source" 
+                                                    filterable 
+                                                    tag
+                                                    clearable
+                                                    :options="leadSourceOptions" 
+                                                    placeholder="Ej. Facebook, Recomendación..." 
+                                                />
+                                            </n-form-item>
+                                        </div>
+                                        <n-divider class="!mt-0 !mb-4" />
+                                    </n-grid-item>
+
+                                    <n-grid-item>
                                         <n-form-item label="Nombre Completo / Razón Social" path="name">
                                             <n-input 
                                                 v-model:value="form.name" 
@@ -252,10 +280,8 @@ const submit = () => {
 
                                 <n-grid x-gap="12" y-gap="4" cols="1 s:2 m:4" responsive="screen">
                                     
-                                    <!-- NUEVO: Tipo de Vialidad -->
                                     <n-grid-item span="1 m:1">
                                         <n-form-item label="Tipo Vialidad" path="road_type">
-                                            <!-- Usamos NSelect con tags para permitir entrada libre o selección -->
                                             <n-select 
                                                 v-model:value="form.road_type" 
                                                 filterable 
@@ -266,7 +292,6 @@ const submit = () => {
                                         </n-form-item>
                                     </n-grid-item>
 
-                                    <!-- Calle ahora ocupa el resto -->
                                     <n-grid-item span="1 m:3">
                                         <n-form-item label="Nombre de la Vialidad (Calle)" path="street">
                                             <n-input 
@@ -394,7 +419,6 @@ const submit = () => {
                                         class="shadow-sm rounded-xl border border-gray-100 transition hover:shadow-md"
                                         :class="{'ring-2 ring-blue-100': contact.is_primary}"
                                     >
-                                        <!-- Header del Card de Contacto -->
                                         <div class="flex justify-between items-start mb-4">
                                             <div class="flex items-center gap-2">
                                                 <div 
@@ -428,7 +452,6 @@ const submit = () => {
                                             </div>
                                         </div>
 
-                                        <!-- Campos del Contacto -->
                                         <n-grid :x-gap="12" :y-gap="8" cols="1">
                                             <n-grid-item>
                                                 <n-form-item label="Nombre Completo" :path="`contacts[${index}].name`">
@@ -442,7 +465,6 @@ const submit = () => {
                                                 </n-form-item>
                                             </n-grid-item>
                                             
-                                            <!-- NUEVO: Puesto / Parentesco -->
                                             <n-grid-item>
                                                 <n-form-item label="Puesto / Parentesco" :path="`contacts[${index}].job_title`">
                                                     <n-input v-model:value="contact.job_title" placeholder="Ej. Gerente / Esposo" />
@@ -466,7 +488,6 @@ const submit = () => {
                                             </n-grid-item>
                                         </n-grid>
 
-                                        <!-- Validaciones individuales -->
                                         <div v-if="form.errors[`contacts.${index}.name`]" class="text-red-500 text-xs mt-1">
                                             {{ form.errors[`contacts.${index}.name`] }}
                                         </div>

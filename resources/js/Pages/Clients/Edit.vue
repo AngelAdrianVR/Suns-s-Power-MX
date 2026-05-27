@@ -36,6 +36,8 @@ const createEmptyContact = (isPrimary = false) => ({
 
 // Inicializar formulario transformando los contactos existentes
 const form = useForm({
+    type: props.client.type || 'Cliente', // Valor por defecto
+    lead_source: props.client.lead_source || '',
     name: props.client.name,
     contact_person: props.client.contact_person,
     tax_id: props.client.tax_id,
@@ -116,12 +118,19 @@ const mexicoStates = [
     { label: 'Zacatecas', value: 'Zacatecas' }
 ];
 
+// Opciones de origen
+const leadSourceOptions = [
+    { label: 'Facebook', value: 'Facebook' },
+    { label: 'Google', value: 'Google' },
+    { label: 'Recomendación', value: 'Recomendación' },
+    { label: 'Instagram', value: 'Instagram' },
+    { label: 'Sitio Web', value: 'Sitio Web' },
+    { label: 'Otro', value: 'Otro' }
+];
+
 const rules = {
-    name: { 
-        required: true, 
-        message: 'El nombre o razón social es obligatorio', 
-        trigger: 'blur' 
-    },
+    type: { required: true, message: 'Selecciona el tipo de registro', trigger: 'change' },
+    name: { required: true, message: 'El nombre o razón social es obligatorio', trigger: 'blur' }
 };
 
 // --- LÓGICA DE CONTACTOS ---
@@ -229,6 +238,28 @@ const submit = () => {
                                 </template>
 
                                 <n-grid x-gap="12" :cols="1">
+                                    <n-grid-item>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <n-form-item label="Tipo de Registro" path="type">
+                                                <n-select 
+                                                    v-model:value="form.type" 
+                                                    :options="[{label: 'Prospecto', value: 'Prospecto'}, {label: 'Cliente', value: 'Cliente'}]" 
+                                                />
+                                            </n-form-item>
+                                            <n-form-item label="¿De dónde se enteró de nosotros?" path="lead_source">
+                                                <n-select 
+                                                    v-model:value="form.lead_source" 
+                                                    filterable 
+                                                    tag
+                                                    clearable
+                                                    :options="leadSourceOptions" 
+                                                    placeholder="Ej. Facebook, Recomendación..." 
+                                                />
+                                            </n-form-item>
+                                        </div>
+                                        <n-divider class="!mt-0 !mb-4" />
+                                    </n-grid-item>
+                                    
                                     <n-grid-item>
                                         <n-form-item 
                                             label="Nombre Completo / Razón Social" 

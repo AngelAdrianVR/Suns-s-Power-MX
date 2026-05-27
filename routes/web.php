@@ -24,6 +24,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
 use App\Http\Controllers\SystemTypeProductController;
+use App\Http\Controllers\TechnicalVisitController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -122,6 +123,11 @@ Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'r
 Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
     ->name('service-orders.confirm-installation')
     ->middleware('auth');
+
+
+// ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
+Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
+
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
 Route::middleware('auth')->group(function () {
