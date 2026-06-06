@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class TechnicalVisit extends Model implements HasMedia
 {
@@ -26,7 +27,21 @@ class TechnicalVisit extends Model implements HasMedia
         'estimated_monthly_generation' => 'decimal:2',
         'estimated_monthly_saving' => 'decimal:2',
         'battery_capacity' => 'decimal:2',
+        'voltage' => 'decimal:2',
     ];
+
+    /**
+     * Registra las colecciones de medios para evidencias del checklist.
+     */
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('facade_photo')->singleFile();
+        $this->addMediaCollection('meter_photo')->singleFile();
+        $this->addMediaCollection('meter_prep_photo')->singleFile();
+        $this->addMediaCollection('main_panel_photo')->singleFile();
+        $this->addMediaCollection('secondary_panel_photo')->singleFile();
+        $this->addMediaCollection('additional_evidences');
+    }
 
     /**
      * Obtiene el nombre completo del prospecto o cliente.

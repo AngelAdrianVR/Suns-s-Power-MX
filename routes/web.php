@@ -127,6 +127,16 @@ Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderC
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
 Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
+// Acciones rápidas desde el índice (Reprogramar / Rechazar / Aceptar / Terminar)
+Route::patch('/visitas-tecnicas/{technicalVisit}/quick-update', [TechnicalVisitController::class, 'quickUpdate'])->name('technical-visits.quick-update')->middleware('auth');
+// Actualizar notas internas desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-notes', [TechnicalVisitController::class, 'updateNotes'])->name('technical-visits.update-notes')->middleware('auth');
+// Actualizar voltaje desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-voltage', [TechnicalVisitController::class, 'updateVoltage'])->name('technical-visits.update-voltage')->middleware('auth');
+// Subir evidencias del checklist
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-evidence', [TechnicalVisitController::class, 'uploadEvidence'])->name('technical-visits.upload-evidence')->middleware('auth');
+// Subir archivos adicionales
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-additional', [TechnicalVisitController::class, 'uploadAdditionalEvidence'])->name('technical-visits.upload-additional')->middleware('auth');
 
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------

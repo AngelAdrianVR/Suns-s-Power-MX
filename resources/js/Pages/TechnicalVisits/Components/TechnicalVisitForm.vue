@@ -21,11 +21,22 @@ const form = useForm({
     requires_long_ladder: false,
     property_floors: null,
     number_of_wires: null,
-    Maps_link: null,
+    google_maps_link: null,
     lead_source: null,
     sales_rep_id: null,
     internal_notes: null,
     documents: [],
+    // Dirección
+    road_type: null,
+    street: null,
+    exterior_number: null,
+    interior_number: null,
+    neighborhood: null,
+    municipality: null,
+    state: null,
+    zip_code: null,
+    country: 'México',
+    // Sistema
     system_of_interest: null,
     module_quantity: null,
     module_brand: null,
@@ -53,6 +64,20 @@ const leadSourceOptions = [
     { label: 'Recomendación', value: 'Recomendación' },
     { label: 'Lona / Espectacular', value: 'Espectacular' },
     { label: 'Otro', value: 'Otro' }
+];
+
+const roadTypeOptions = [
+    { label: 'Calle', value: 'Calle' },
+    { label: 'Avenida', value: 'Avenida' },
+    { label: 'Boulevard', value: 'Boulevard' },
+    { label: 'Circuito', value: 'Circuito' },
+    { label: 'Cerrada', value: 'Cerrada' },
+    { label: 'Privada', value: 'Privada' },
+    { label: 'Prolongación', value: 'Prolongación' },
+    { label: 'Carretera', value: 'Carretera' },
+    { label: 'Camino', value: 'Camino' },
+    { label: 'Pasaje', value: 'Pasaje' },
+    { label: 'Andador', value: 'Andador' },
 ];
 
 watch([() => form.module_quantity, () => form.module_capacity], ([qty, cap]) => {
@@ -156,8 +181,40 @@ const onCreateDevice = () => ({ concept: '', hours: 0 });
             <n-form-item-grid-item :span="8" label="Requiere escalera larga" :validation-status="form.errors.requires_long_ladder ? 'error' : undefined" :feedback="form.errors.requires_long_ladder">
                 <n-switch v-model:value="form.requires_long_ladder" />
             </n-form-item-grid-item>
-            <n-form-item-grid-item :span="24" label="Ubicación (Enlace de Google Maps)" :validation-status="form.errors.Maps_link ? 'error' : undefined" :feedback="form.errors.Maps_link">
-                <n-input v-model:value="form.Maps_link" type="url" placeholder="https://goo.gl/maps/..." />
+            <n-form-item-grid-item :span="24" label="Ubicación (Enlace de Google Maps)" :validation-status="form.errors.google_maps_link ? 'error' : undefined" :feedback="form.errors.google_maps_link">
+                <n-input v-model:value="form.google_maps_link" type="url" placeholder="https://goo.gl/maps/..." />
+            </n-form-item-grid-item>
+
+            <n-form-item-grid-item :span="24">
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 mt-4">Dirección</h3>
+            </n-form-item-grid-item>
+
+            <n-form-item-grid-item :span="6" label="Tipo de Vialidad" :validation-status="form.errors.road_type ? 'error' : undefined" :feedback="form.errors.road_type">
+                <n-select v-model:value="form.road_type" :options="roadTypeOptions" placeholder="Calle, Av..." clearable />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Calle" :validation-status="form.errors.street ? 'error' : undefined" :feedback="form.errors.street">
+                <n-input v-model:value="form.street" placeholder="Ej. Av. Principal" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="3" label="No. Ext" :validation-status="form.errors.exterior_number ? 'error' : undefined" :feedback="form.errors.exterior_number">
+                <n-input v-model:value="form.exterior_number" placeholder="123" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="3" label="No. Int" :validation-status="form.errors.interior_number ? 'error' : undefined" :feedback="form.errors.interior_number">
+                <n-input v-model:value="form.interior_number" placeholder="4B" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Colonia" :validation-status="form.errors.neighborhood ? 'error' : undefined" :feedback="form.errors.neighborhood">
+                <n-input v-model:value="form.neighborhood" placeholder="Ej. Centro" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="6" label="C.P." :validation-status="form.errors.zip_code ? 'error' : undefined" :feedback="form.errors.zip_code">
+                <n-input v-model:value="form.zip_code" placeholder="00000" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="6" label="País" :validation-status="form.errors.country ? 'error' : undefined" :feedback="form.errors.country">
+                <n-input v-model:value="form.country" placeholder="México" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Estado" :validation-status="form.errors.state ? 'error' : undefined" :feedback="form.errors.state">
+                <n-input v-model:value="form.state" placeholder="Ej. Jalisco" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Municipio" :validation-status="form.errors.municipality ? 'error' : undefined" :feedback="form.errors.municipality">
+                <n-input v-model:value="form.municipality" placeholder="Ej. Guadalajara" />
             </n-form-item-grid-item>
 
             <n-form-item-grid-item :span="24">

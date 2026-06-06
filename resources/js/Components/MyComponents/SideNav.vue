@@ -176,18 +176,25 @@ export default {
                     ]
                 },
                 {
-                    label: 'Visitas Técnicas',
+                    label: 'Servicios',
                     icon: icons.orders,
                     route: 'technical-visits.index',
-                    active: current('technical-visits.*'),
-                    show: hasPermission('technical_visits.index')
-                },
-                {
-                    label: 'Órdenes Servicio',
-                    icon: icons.orders,
-                    route: 'service-orders.index',
-                    active: current('service-orders.*'),
-                    show: hasPermission('service_orders.index')
+                    active: current('technical-visits.*') || current('service-orders.*'),
+                    show: hasPermission('technical_visits.index') || hasPermission('service_orders.index'),
+                    children: [
+                        {
+                            label: 'Visitas Técnicas',
+                            route: 'technical-visits.index',
+                            active: current('technical-visits.*'),
+                            show: hasPermission('technical_visits.index')
+                        },
+                        {
+                            label: 'Órdenes Servicio',
+                            route: 'service-orders.index',
+                            active: current('service-orders.*'),
+                            show: hasPermission('service_orders.index')
+                        }
+                    ]
                 },
                 {
                     label: 'Compras',

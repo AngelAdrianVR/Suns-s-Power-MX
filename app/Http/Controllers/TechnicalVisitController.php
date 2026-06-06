@@ -108,6 +108,9 @@ class TechnicalVisitController extends Controller
                     'system_of_interest' => $visit->system_of_interest,
                     'scheduled_at' => $visit->scheduled_at?->format('d/m/Y H:i'),
                     'requires_long_ladder' => $visit->requires_long_ladder,
+                    'google_maps_link' => $visit->google_maps_link,
+                    'reschedule_reason' => $visit->reschedule_reason,
+                    'rejection_reason' => $visit->rejection_reason,
                     'sales_rep' => $visit->salesRep ? [
                         'name' => $visit->salesRep->name,
                         'photo' => $visit->salesRep->profile_photo_url,
@@ -132,7 +135,11 @@ class TechnicalVisitController extends Controller
         
         return Inertia::render('TechnicalVisits/Create', [
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            'sales_reps' => User::role('Ventas')
+                ->where('id', '!=', 1)
+                ->where('branch_id', $branchId)
+                ->where('is_active', true)
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -156,7 +163,8 @@ class TechnicalVisitController extends Controller
             'requires_long_ladder' => 'boolean',
             'property_floors' => 'nullable|integer',
             'number_of_wires' => 'nullable|integer',
-            'Maps_link' => 'nullable|url',
+            'voltage' => 'nullable|numeric',
+            'google_maps_link' => 'nullable|url',
             
             // Dirección
             'road_type' => 'nullable|string|max:50',
@@ -222,8 +230,24 @@ class TechnicalVisitController extends Controller
 
         $technicalVisit->load(['client', 'salesRep', 'technician', 'serviceOrder']);
 
+        // Cargar medios de todas las colecciones de evidencia
+        $evidenceMedia = [];
+        $collections = ['facade_photo', 'meter_photo', 'meter_prep_photo', 'main_panel_photo', 'secondary_panel_photo', 'additional_evidences', 'documents'];
+        foreach ($collections as $collection) {
+            $evidenceMedia[$collection] = $technicalVisit->getMedia($collection)->map(function ($media) {
+                return [
+                    'id' => $media->id,
+                    'name' => $media->file_name,
+                    'url' => $media->getUrl(),
+                    'original_url' => $media->getUrl(),
+                    'mime_type' => $media->mime_type,
+                ];
+            });
+        }
+
         return Inertia::render('TechnicalVisits/Show', [
-            'visit' => $technicalVisit
+            'visit' => $technicalVisit,
+            'evidenceMedia' => $evidenceMedia,
         ]);
     }
 
@@ -232,10 +256,16 @@ class TechnicalVisitController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($technicalVisit->branch_id !== $branchId) return inertia('Forbidden403');
 
+        $technicalVisit->load('media');
+
         return Inertia::render('TechnicalVisits/Edit', [
             'visit' => $technicalVisit,
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            'sales_reps' => User::where('branch_id', $branchId)->where('is_active', true)->get(['id', 'name']),
+            'sales_reps' => User::role('Ventas')
+                ->where('id', '!=', 1)
+                ->where('branch_id', $branchId)
+                ->where('is_active', true)
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -257,6 +287,7 @@ class TechnicalVisitController extends Controller
             'scheduled_at' => 'required|date',
             'status' => 'required|in:Pendiente,Reprogramada,Aceptada,Terminada,Rechazada',
             'reschedule_reason' => 'nullable|string',
+            'rejection_reason' => 'nullable|string',
             
             'service_number' => 'nullable|string|max:255',
             'rate_type' => 'nullable|string|max:50',
@@ -264,7 +295,8 @@ class TechnicalVisitController extends Controller
             'requires_long_ladder' => 'boolean',
             'property_floors' => 'nullable|integer',
             'number_of_wires' => 'nullable|integer',
-            'Maps_link' => 'nullable|url',
+            'voltage' => 'nullable|numeric',
+            'google_maps_link' => 'nullable|url',
             
             'road_type' => 'nullable|string|max:50',
             'street' => 'nullable|string|max:255',
@@ -298,15 +330,152 @@ class TechnicalVisitController extends Controller
             'requires_pre_installation' => 'boolean',
             'pre_installation_details' => 'nullable|string',
             'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+
+            // Archivos
+            'documents' => 'nullable|array',
+            'documents.*' => 'file|max:10240',
         ]);
 
-        DB::transaction(function () use ($technicalVisit, $validated) {
-            $technicalVisit->update($validated);
+        DB::transaction(function () use ($technicalVisit, $validated, $request) {
+            $technicalVisit->update(collect($validated)->except(['documents'])->toArray());
+
+            // Subir archivos nuevos si existen (sin eliminar los existentes)
+            if ($request->hasFile('documents')) {
+                foreach ($request->file('documents') as $file) {
+                    $technicalVisit->addMedia($file)->toMediaCollection('documents');
+                }
+            }
         });
 
         // return redirect()->route('technical-visits.show', $technicalVisit->id)
         //     ->with('success', 'Visita técnica actualizada correctamente.');
         return redirect()->route('technical-visits.index');
+    }
+
+    /**
+     * Acciones rápidas desde el Index: Reprogramar, Rechazar, Aceptar o Terminar.
+     */
+    public function quickUpdate(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'action' => 'required|in:reschedule,reject,accept,complete',
+            'scheduled_at' => 'required_if:action,reschedule|date|nullable',
+            'reschedule_reason' => 'nullable|string|max:500',
+            'rejection_reason' => 'required_if:action,reject|string|max:500|nullable',
+        ]);
+
+        if ($validated['action'] === 'reschedule') {
+            $technicalVisit->update([
+                'scheduled_at' => $validated['scheduled_at'],
+                'status' => 'Reprogramada',
+                'reschedule_reason' => $validated['reschedule_reason'] ?? null,
+            ]);
+
+            return back()->with('success', 'Visita reprogramada correctamente.');
+        }
+
+        if ($validated['action'] === 'reject') {
+            $technicalVisit->update([
+                'status' => 'Rechazada',
+                'rejection_reason' => $validated['rejection_reason'] ?? null,
+            ]);
+
+            return back()->with('success', 'Visita marcada como rechazada.');
+        }
+
+        if ($validated['action'] === 'accept') {
+            $technicalVisit->update(['status' => 'Aceptada']);
+            return back()->with('success', 'Visita marcada como aceptada.');
+        }
+
+        if ($validated['action'] === 'complete') {
+            $technicalVisit->update(['status' => 'Terminada']);
+            return back()->with('success', 'Visita marcada como terminada.');
+        }
+    }
+
+    /**
+     * Actualiza las notas internas desde el Show.
+     */
+    public function updateNotes(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'internal_notes' => 'nullable|string',
+        ]);
+
+        $technicalVisit->update($validated);
+
+        return back()->with('success', 'Notas internas actualizadas correctamente.');
+    }
+
+    /**
+     * Sube una evidencia del checklist (fachada, medidor, etc.).
+     */
+    public function uploadEvidence(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'collection' => 'required|string|in:facade_photo,meter_photo,meter_prep_photo,main_panel_photo,secondary_panel_photo',
+            'file' => 'required|file|max:10240',
+        ]);
+
+        // Eliminar archivo anterior si existe (singleFile)
+        $technicalVisit->clearMediaCollection($validated['collection']);
+        $technicalVisit->addMediaFromRequest('file')->toMediaCollection($validated['collection']);
+
+        return back()->with('success', 'Evidencia subida correctamente.');
+    }
+
+    /**
+     * Sube archivos adicionales genéricos.
+     */
+    public function uploadAdditionalEvidence(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $request->validate([
+            'file' => 'required|file|max:10240',
+        ]);
+
+        $technicalVisit->addMediaFromRequest('file')->toMediaCollection('additional_evidences');
+
+        return back()->with('success', 'Archivo adicional subido correctamente.');
+    }
+
+    /**
+     * Actualiza el voltaje desde el Show.
+     */
+    public function updateVoltage(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'voltage' => 'nullable|numeric',
+        ]);
+
+        $technicalVisit->update($validated);
+
+        return back()->with('success', 'Voltaje actualizado correctamente.');
     }
 
     public function destroy(TechnicalVisit $technicalVisit)

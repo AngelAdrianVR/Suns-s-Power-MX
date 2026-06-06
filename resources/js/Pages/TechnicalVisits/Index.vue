@@ -5,12 +5,14 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, 
-    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem 
+    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem, NDropdown
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     CalendarOutline, LocationOutline, PersonOutline, BusinessOutline,
-    ChevronDownOutline, HardwareChipOutline, TimeOutline
+    ChevronDownOutline, HardwareChipOutline, TimeOutline, CloseCircleOutline,
+    OpenOutline, InformationCircleOutline, CheckmarkCircleOutline, CheckmarkDoneOutline,
+    EllipsisHorizontal
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -80,33 +82,67 @@ const openRescheduleModal = (visit) => {
 
 const submitReschedule = () => {
     if (!rescheduleForm.scheduled_at) {
-        notification.warning({ title: 'Atención', content: 'Debes seleccionar una nueva fecha y hora.' });
+        notification.warning({ title: 'Atención', content: 'Debes seleccionar una nueva fecha y hora.', duration: 3000 });
         return;
     }
     
-    // Convertimos el timestamp de NaiveUI a formato compatible con Laravel (Y-m-d H:i:s)
     const formattedDate = new Date(rescheduleForm.scheduled_at).toISOString().slice(0, 19).replace('T', ' ');
 
-    // Como tu update() requiere todos los campos, la forma más limpia aquí es 
-    // enviar a la vista de edición o implementar un método rápido.
-    // Aquí hacemos un PUT, pero asumiendo que tu controlador puede requerir los demás campos,
-    // puedes usar una ruta customizada si lo deseas en el futuro.
-    rescheduleForm.transform((data) => ({
-        ...data,
+    router.patch(route('technical-visits.quick-update', currentVisitId.value), {
+        action: 'reschedule',
         scheduled_at: formattedDate,
-        status: 'Reprogramada'
-    })).put(route('technical-visits.update', currentVisitId.value), {
+        reschedule_reason: rescheduleForm.reschedule_reason || '',
+    }, {
         preserveScroll: true,
         onSuccess: () => {
             showRescheduleModal.value = false;
-            notification.success({ title: 'Visita Reprogramada', content: 'La fecha se ha actualizado correctamente.' });
+            notification.success({ title: 'Visita Reprogramada', content: 'La fecha se ha actualizado correctamente.', duration: 3000 });
         },
-        onError: () => {
-            // Fallback: Si falla la validación por campos faltantes en update, redirigimos a Edit.
-            notification.error({ title: 'Error de validación', content: 'Por favor actualiza desde el formulario completo.', duration: 4000 });
-            goToEdit(currentVisitId.value);
-        }
     });
+};
+
+// Modal para Rechazar
+const showRejectModal = ref(false);
+const rejectForm = ref({ rejection_reason: '' });
+const currentRejectVisitId = ref(null);
+
+const openRejectModal = (visit) => {
+    currentRejectVisitId.value = visit.id;
+    rejectForm.value.rejection_reason = '';
+    showRejectModal.value = true;
+};
+
+const submitReject = () => {
+    if (!rejectForm.value.rejection_reason.trim()) {
+        notification.warning({ title: 'Atención', content: 'Debes escribir el motivo del rechazo.', duration: 3000 });
+        return;
+    }
+
+    router.patch(route('technical-visits.quick-update', currentRejectVisitId.value), {
+        action: 'reject',
+        rejection_reason: rejectForm.value.rejection_reason,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showRejectModal.value = false;
+            notification.success({ title: 'Visita Rechazada', content: 'La visita ha sido marcada como rechazada.', duration: 3000 });
+        },
+    });
+};
+
+// Acciones rápidas: Aceptar y Terminar
+const quickAction = (visitId, action) => {
+    if (action === 'accept') {
+        router.patch(route('technical-visits.quick-update', visitId), { action: 'accept' }, {
+            preserveScroll: true,
+            onSuccess: () => notification.success({ title: 'Visita Aceptada', content: 'La visita ha sido marcada como aceptada.', duration: 3000 }),
+        });
+    } else if (action === 'complete') {
+        router.patch(route('technical-visits.quick-update', visitId), { action: 'complete' }, {
+            preserveScroll: true,
+            onSuccess: () => notification.success({ title: 'Visita Terminada', content: 'La visita ha sido marcada como terminada.', duration: 3000 }),
+        });
+    }
 };
 
 const confirmDelete = (visit) => {
@@ -117,7 +153,7 @@ const confirmDelete = (visit) => {
         negativeText: 'Cancelar',
         onPositiveClick: () => {
             router.delete(route('technical-visits.destroy', visit.id), {
-                onSuccess: () => notification.success({ title: 'Éxito', content: 'Visita técnica eliminada.' }),
+                onSuccess: () => notification.success({ title: 'Éxito', content: 'Visita técnica eliminada.', duration: 3000 }),
             });
         }
     });
@@ -185,12 +221,26 @@ const createColumns = () => {
             key: 'location',
             width: 200,
             render(row) {
-                return h('div', { class: 'flex flex-col gap-1' }, [
+                const elements = [
                     h('div', { class: 'flex items-start gap-1 text-sm text-gray-600' }, [
                         h(NIcon, { component: LocationOutline, class: 'mt-0.5 text-gray-400' }),
                         h('span', { class: 'line-clamp-2' }, `${row.municipality || 'N/A'}, ${row.state || 'N/A'}`)
                     ])
-                ]);
+                ];
+                if (row.google_maps_link) {
+                    elements.push(
+                        h('a', { 
+                            href: row.google_maps_link, 
+                            target: '_blank', 
+                            class: 'text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 mt-1',
+                            onClick: (e) => e.stopPropagation()
+                        }, [
+                            h(NIcon, { component: OpenOutline, size: 12 }),
+                            'Ver en Google Maps'
+                        ])
+                    );
+                }
+                return h('div', { class: 'flex flex-col gap-1' }, elements);
             }
         },
         {
@@ -213,21 +263,56 @@ const createColumns = () => {
             key: 'status',
             width: 130, 
             render(row) {
-                return h(NTag, { 
-                    type: getStatusColor(row.status), 
-                    size: 'small', 
-                    bordered: false, 
-                    round: true
-                }, { default: () => row.status });
+                const elements = [
+                    h(NTag, { 
+                        type: getStatusColor(row.status), 
+                        size: 'small', 
+                        bordered: false, 
+                        round: true
+                    }, { default: () => row.status })
+                ];
+                
+                if (row.status === 'Reprogramada' && row.reschedule_reason) {
+                    elements.push(
+                        h('div', { class: 'text-xs text-gray-500 mt-1 flex items-start gap-1' }, [
+                            h(NIcon, { component: InformationCircleOutline, size: 12, class: 'mt-0.5 text-blue-400' }),
+                            h('span', { class: 'line-clamp-2' }, row.reschedule_reason)
+                        ])
+                    );
+                }
+                if (row.status === 'Rechazada' && row.rejection_reason) {
+                    elements.push(
+                        h('div', { class: 'text-xs text-gray-500 mt-1 flex items-start gap-1' }, [
+                            h(NIcon, { component: InformationCircleOutline, size: 12, class: 'mt-0.5 text-red-400' }),
+                            h('span', { class: 'line-clamp-2' }, row.rejection_reason)
+                        ])
+                    );
+                }
+                
+                return h('div', { class: 'flex flex-col' }, elements);
             }
         },
         {
             title: '',
             key: 'actions',
-            width: 180,
+            width: 200,
             render(row) {
                 const canEdit = hasPermission('technical_visits.edit');
                 const canDelete = hasPermission('technical_visits.delete');
+
+                // Opciones del dropdown de cambio de estatus
+                const statusOptions = [
+                    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
+                    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
+                    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
+                    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
+                ];
+
+                const handleStatusSelect = (key, visitRow) => {
+                    if (key === 'reschedule') { openRescheduleModal(visitRow); }
+                    else if (key === 'reject') { openRejectModal(visitRow); }
+                    else if (key === 'accept' || key === 'complete') { quickAction(visitRow.id, key); }
+                };
 
                 return h(NSpace, { justify: 'end', wrap: false }, () => [
                     h(NTooltip, { trigger: 'hover' }, {
@@ -239,17 +324,21 @@ const createColumns = () => {
                     }),
                     canEdit ? h(NTooltip, { trigger: 'hover' }, {
                         trigger: () => h(NButton, {
-                            circle: true, size: 'small', quaternary: true, type: 'primary',
-                            onClick: (e) => { e.stopPropagation(); openRescheduleModal(row); }
-                        }, { icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) }),
-                        default: () => 'Reprogramar'
-                    }) : null,
-                    canEdit ? h(NTooltip, { trigger: 'hover' }, {
-                        trigger: () => h(NButton, {
                             circle: true, size: 'small', quaternary: true, type: 'warning',
                             onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
                         }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
                         default: () => 'Editar'
+                    }) : null,
+                    canEdit ? h(NDropdown, {
+                        trigger: 'click',
+                        options: statusOptions,
+                        onSelect: (key) => { handleStatusSelect(key, row); },
+                        onClick: (e) => e.stopPropagation(),
+                    }, {
+                        default: () => h(NButton, {
+                            circle: true, size: 'small', quaternary: true, type: 'default',
+                            onClick: (e) => e.stopPropagation(),
+                        }, { icon: () => h(NIcon, null, { default: () => h(EllipsisHorizontal) }) }),
                     }) : null,
                     canDelete ? h(NTooltip, { trigger: 'hover' }, {
                         trigger: () => h(NButton, {
@@ -400,9 +489,17 @@ const rowProps = (row) => ({
                                 </div>
                                 <span class="text-xs text-gray-400 font-medium">Creada {{ visit.created_at_human }}</span>
                             </div>
-                            <n-tag :type="getStatusColor(visit.status)" size="small" round :bordered="false">
-                                {{ visit.status }}
-                            </n-tag>
+                            <div class="flex flex-col items-end gap-1">
+                                <n-tag :type="getStatusColor(visit.status)" size="small" round :bordered="false">
+                                    {{ visit.status }}
+                                </n-tag>
+                                <span v-if="visit.status === 'Reprogramada' && visit.reschedule_reason" class="text-[10px] text-blue-500 max-w-[150px] text-right leading-tight">
+                                    {{ visit.reschedule_reason }}
+                                </span>
+                                <span v-if="visit.status === 'Rechazada' && visit.rejection_reason" class="text-[10px] text-red-500 max-w-[150px] text-right leading-tight">
+                                    {{ visit.rejection_reason }}
+                                </span>
+                            </div>
                         </div>
 
                         <!-- Info Principal -->
@@ -420,6 +517,10 @@ const rowProps = (row) => ({
                                     <n-icon :component="LocationOutline" class="mt-0.5 text-gray-400"/>
                                     <span>{{ visit.municipality || 'N/A' }}, {{ visit.state || 'N/A' }}</span>
                                 </div>
+                                <a v-if="visit.google_maps_link" :href="visit.google_maps_link" target="_blank" class="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1" @click.stop>
+                                    <n-icon :component="OpenOutline" size="12" />
+                                    Ver en Google Maps
+                                </a>
                             </div>
                             
                             <div class="flex flex-wrap gap-2 mt-3">
@@ -440,13 +541,20 @@ const rowProps = (row) => ({
                                     <template #icon><n-icon :component="EyeOutline" /></template>
                                 </n-button>
                                 
-                                <n-button v-if="hasPermission('technical_visits.edit')" circle size="small" quaternary type="primary" @click.stop="openRescheduleModal(visit)">
-                                    <template #icon><n-icon :component="TimeOutline" /></template>
-                                </n-button>
-                                
                                 <n-button v-if="hasPermission('technical_visits.edit')" circle size="small" quaternary type="warning" @click.stop="goToEdit(visit.id)">
                                     <template #icon><n-icon :component="CreateOutline" /></template>
                                 </n-button>
+
+                                <n-dropdown v-if="hasPermission('technical_visits.edit')" trigger="click" :options="[
+                                    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
+                                    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
+                                    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
+                                    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
+                                ]" :on-select="(key) => { if (key === 'reschedule') openRescheduleModal(visit); else if (key === 'reject') openRejectModal(visit); else quickAction(visit.id, key); }">
+                                    <n-button circle size="small" quaternary type="default" @click.stop>
+                                        <template #icon><n-icon :component="EllipsisHorizontal" /></template>
+                                    </n-button>
+                                </n-dropdown>
 
                                 <n-button v-if="hasPermission('technical_visits.delete')" circle size="small" quaternary type="error" @click.stop="confirmDelete(visit)">
                                     <template #icon><n-icon :component="TrashOutline" /></template>
@@ -498,7 +606,41 @@ const rowProps = (row) => ({
                 <template #footer>
                     <div class="flex justify-end gap-3">
                         <n-button @click="showRescheduleModal = false">Cancelar</n-button>
-                        <n-button type="primary" @click="submitReschedule" :loading="rescheduleForm.processing">Guardar Cambios</n-button>
+                        <n-button type="primary" @click="submitReschedule">Guardar Cambios</n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
+        <!-- Modal Rechazar -->
+        <n-modal v-model:show="showRejectModal">
+            <n-card
+                style="width: 450px"
+                title="Rechazar Visita"
+                :bordered="false"
+                size="huge"
+                role="dialog"
+                aria-modal="true"
+            >
+                <template #header-extra>
+                    <n-icon size="24" :component="CloseCircleOutline" class="text-red-500" />
+                </template>
+                
+                <n-form :model="rejectForm">
+                    <n-form-item label="Motivo del Rechazo" path="rejection_reason" required>
+                        <n-input 
+                            v-model:value="rejectForm.rejection_reason" 
+                            type="textarea" 
+                            placeholder="Ej: El prospecto no está interesado, datos de contacto incorrectos..."
+                            :autosize="{ minRows: 4 }"
+                        />
+                    </n-form-item>
+                </n-form>
+                
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="showRejectModal = false">Cancelar</n-button>
+                        <n-button type="error" @click="submitReject">Confirmar Rechazo</n-button>
                     </div>
                 </template>
             </n-card>

@@ -1,7 +1,8 @@
 <script setup>
 import { ref, watch } from 'vue';
-import { useForm } from '@inertiajs/vue3';
-import { NForm, NGrid, NFormItemGridItem, NInput, NSelect, NDatePicker, NSwitch, NUpload, NButton, NDynamicInput, NInputNumber } from 'naive-ui';
+import { useForm, router } from '@inertiajs/vue3';
+import { NForm, NGrid, NFormItemGridItem, NInput, NSelect, NDatePicker, NSwitch, NUpload, NButton, NDynamicInput, NInputNumber, NIcon, NPopconfirm, NDivider, NText, NP } from 'naive-ui';
+import { CloudUploadOutline, TrashOutline, AttachOutline, ImageOutline, DocumentTextOutline, CloudDownloadOutline } from '@vicons/ionicons5';
 
 const props = defineProps({
     clients: Array,
@@ -22,11 +23,22 @@ const form = useForm({
     requires_long_ladder: props.visit?.requires_long_ladder || false,
     property_floors: props.visit?.property_floors || null,
     number_of_wires: props.visit?.number_of_wires || null,
-    Maps_link: props.visit?.Maps_link || null,
+    google_maps_link: props.visit?.google_maps_link || null,
     lead_source: props.visit?.lead_source || null,
     sales_rep_id: props.visit?.sales_rep_id || null,
     internal_notes: props.visit?.internal_notes || null,
     documents: [],
+    // Dirección
+    road_type: props.visit?.road_type || null,
+    street: props.visit?.street || null,
+    exterior_number: props.visit?.exterior_number || null,
+    interior_number: props.visit?.interior_number || null,
+    neighborhood: props.visit?.neighborhood || null,
+    municipality: props.visit?.municipality || null,
+    state: props.visit?.state || null,
+    zip_code: props.visit?.zip_code || null,
+    country: props.visit?.country || 'México',
+    // Sistema
     system_of_interest: props.visit?.system_of_interest || null,
     module_quantity: props.visit?.module_quantity || null,
     module_brand: props.visit?.module_brand || null,
@@ -42,6 +54,7 @@ const form = useForm({
     backup_devices: props.visit?.backup_devices || [],
     status: props.visit?.status || 'Pendiente',
     reschedule_reason: props.visit?.reschedule_reason || null,
+    rejection_reason: props.visit?.rejection_reason || null,
 });
 
 const rateTypeOptions = ['01', '1A', '1B', '1C', '1D', '1E', '1F', 'DAC', 'PDBT', 'GDBT', 'GDMTO', 'GDMTH', '00'].map(v => ({ label: v, value: v }));
@@ -57,6 +70,20 @@ const leadSourceOptions = [
     { label: 'Recomendación', value: 'Recomendación' },
     { label: 'Lona / Espectacular', value: 'Espectacular' },
     { label: 'Otro', value: 'Otro' }
+];
+
+const roadTypeOptions = [
+    { label: 'Calle', value: 'Calle' },
+    { label: 'Avenida', value: 'Avenida' },
+    { label: 'Boulevard', value: 'Boulevard' },
+    { label: 'Circuito', value: 'Circuito' },
+    { label: 'Cerrada', value: 'Cerrada' },
+    { label: 'Privada', value: 'Privada' },
+    { label: 'Prolongación', value: 'Prolongación' },
+    { label: 'Carretera', value: 'Carretera' },
+    { label: 'Camino', value: 'Camino' },
+    { label: 'Pasaje', value: 'Pasaje' },
+    { label: 'Andador', value: 'Andador' },
 ];
 
 watch([() => form.module_quantity, () => form.module_capacity], ([qty, cap]) => {
@@ -110,6 +137,23 @@ const submit = () => {
 };
 
 const onCreateDevice = () => ({ concept: '', hours: 0 });
+
+// --- MANEJO DE ARCHIVOS EXISTENTES ---
+const getFileIcon = (fileName) => {
+    const ext = fileName?.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return ImageOutline;
+    if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) return DocumentTextOutline;
+    return AttachOutline;
+};
+
+const deleteExistingFile = (fileId) => {
+    router.delete(route('media.delete-file', fileId), {
+        preserveScroll: true,
+        onSuccess: () => {
+            // No necesitamos notificación; el componente se recargará solo
+        },
+    });
+};
 </script>
 
 <template>
@@ -123,8 +167,11 @@ const onCreateDevice = () => ({ concept: '', hours: 0 });
                 <n-form-item-grid-item :span="12" label="Estatus" :validation-status="form.errors.status ? 'error' : undefined" :feedback="form.errors.status">
                     <n-select v-model:value="form.status" :options="statusOptions" filterable placeholder="Selecciona el estatus" />
                 </n-form-item-grid-item>
-                <n-form-item-grid-item v-if="['Reprogramada', 'Rechazada'].includes(form.status)" :span="12" label="Razón del estatus" :validation-status="form.errors.reschedule_reason ? 'error' : undefined" :feedback="form.errors.reschedule_reason">
+                <n-form-item-grid-item v-if="form.status === 'Reprogramada'" :span="12" label="Motivo de Reprogramación" :validation-status="form.errors.reschedule_reason ? 'error' : undefined" :feedback="form.errors.reschedule_reason">
                     <n-input v-model:value="form.reschedule_reason" type="textarea" :rows="1" placeholder="Explica la razón..." />
+                </n-form-item-grid-item>
+                <n-form-item-grid-item v-if="form.status === 'Rechazada'" :span="12" label="Motivo del Rechazo" :validation-status="form.errors.rejection_reason ? 'error' : undefined" :feedback="form.errors.rejection_reason">
+                    <n-input v-model:value="form.rejection_reason" type="textarea" :rows="1" placeholder="Explica la razón del rechazo..." />
                 </n-form-item-grid-item>
             </template>
 
@@ -175,8 +222,40 @@ const onCreateDevice = () => ({ concept: '', hours: 0 });
             <n-form-item-grid-item :span="8" label="Requiere escalera larga" :validation-status="form.errors.requires_long_ladder ? 'error' : undefined" :feedback="form.errors.requires_long_ladder">
                 <n-switch v-model:value="form.requires_long_ladder" />
             </n-form-item-grid-item>
-            <n-form-item-grid-item :span="24" label="Ubicación (Enlace de Google Maps)" :validation-status="form.errors.Maps_link ? 'error' : undefined" :feedback="form.errors.Maps_link">
-                <n-input v-model:value="form.Maps_link" type="url" placeholder="https://goo.gl/maps/..." />
+            <n-form-item-grid-item :span="24" label="Ubicación (Enlace de Google Maps)" :validation-status="form.errors.google_maps_link ? 'error' : undefined" :feedback="form.errors.google_maps_link">
+                <n-input v-model:value="form.google_maps_link" type="url" placeholder="https://goo.gl/maps/..." />
+            </n-form-item-grid-item>
+
+            <n-form-item-grid-item :span="24">
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 mt-4">Dirección</h3>
+            </n-form-item-grid-item>
+
+            <n-form-item-grid-item :span="6" label="Tipo de Vialidad" :validation-status="form.errors.road_type ? 'error' : undefined" :feedback="form.errors.road_type">
+                <n-select v-model:value="form.road_type" :options="roadTypeOptions" placeholder="Calle, Av..." clearable />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Calle" :validation-status="form.errors.street ? 'error' : undefined" :feedback="form.errors.street">
+                <n-input v-model:value="form.street" placeholder="Ej. Av. Principal" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="3" label="No. Ext" :validation-status="form.errors.exterior_number ? 'error' : undefined" :feedback="form.errors.exterior_number">
+                <n-input v-model:value="form.exterior_number" placeholder="123" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="3" label="No. Int" :validation-status="form.errors.interior_number ? 'error' : undefined" :feedback="form.errors.interior_number">
+                <n-input v-model:value="form.interior_number" placeholder="4B" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Colonia" :validation-status="form.errors.neighborhood ? 'error' : undefined" :feedback="form.errors.neighborhood">
+                <n-input v-model:value="form.neighborhood" placeholder="Ej. Centro" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="6" label="C.P." :validation-status="form.errors.zip_code ? 'error' : undefined" :feedback="form.errors.zip_code">
+                <n-input v-model:value="form.zip_code" placeholder="00000" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="6" label="País" :validation-status="form.errors.country ? 'error' : undefined" :feedback="form.errors.country">
+                <n-input v-model:value="form.country" placeholder="México" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Estado" :validation-status="form.errors.state ? 'error' : undefined" :feedback="form.errors.state">
+                <n-input v-model:value="form.state" placeholder="Ej. Jalisco" />
+            </n-form-item-grid-item>
+            <n-form-item-grid-item :span="12" label="Municipio" :validation-status="form.errors.municipality ? 'error' : undefined" :feedback="form.errors.municipality">
+                <n-input v-model:value="form.municipality" placeholder="Ej. Guadalajara" />
             </n-form-item-grid-item>
 
             <n-form-item-grid-item :span="24">
@@ -251,9 +330,62 @@ const onCreateDevice = () => ({ concept: '', hours: 0 });
                 <n-input v-model:value="form.internal_notes" type="textarea" :rows="3" placeholder="Detalles u observaciones de la visita..." />
             </n-form-item-grid-item>
             
-            <n-form-item-grid-item :span="24" label="Adjuntar Documentos" :validation-status="form.errors.documents ? 'error' : undefined" :feedback="form.errors.documents">
+            <n-form-item-grid-item :span="24">
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 mt-4">Documentos y Archivos</h3>
+            </n-form-item-grid-item>
+
+            <!-- Archivos existentes -->
+            <n-form-item-grid-item v-if="visit?.media && visit.media.length > 0" :span="24" label="Archivos Actuales">
+                <div class="grid grid-cols-1 gap-3 w-full">
+                    <div v-for="file in visit.media" :key="file.id" 
+                        class="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white hover:shadow-sm transition-shadow">
+                        
+                        <div class="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-500">
+                            <n-icon size="18">
+                                <component :is="getFileIcon(file.name)" />
+                            </n-icon>
+                        </div>
+                        
+                        <div class="flex-1 min-w-0">
+                            <a :href="file.url" target="_blank" class="block">
+                                <p class="text-sm font-medium text-gray-700 truncate hover:text-blue-600 transition-colors">
+                                    {{ file.name }}
+                                </p>
+                                <p class="text-xs text-gray-400">{{ file.size }}</p>
+                            </a>
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            <a :href="file.url" target="_blank" title="Descargar">
+                                <n-button size="tiny" circle secondary type="info">
+                                    <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+                                </n-button>
+                            </a>
+                            
+                            <n-popconfirm
+                                @positive-click="deleteExistingFile(file.id)"
+                                positive-text="Sí, eliminar"
+                                negative-text="Cancelar"
+                            >
+                                <template #trigger>
+                                    <n-button size="tiny" circle secondary type="error">
+                                        <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                    </n-button>
+                                </template>
+                                ¿Eliminar este archivo permanentemente?
+                            </n-popconfirm>
+                        </div>
+                    </div>
+                </div>
+            </n-form-item-grid-item>
+
+            <!-- Subir nuevos archivos -->
+            <n-form-item-grid-item :span="24" label="Agregar Nuevos Archivos" :validation-status="form.errors.documents ? 'error' : undefined" :feedback="form.errors.documents">
                 <n-upload multiple @change="handleUpload">
-                    <n-button>Seleccionar Archivos</n-button>
+                    <n-button>
+                        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
+                        Seleccionar Archivos
+                    </n-button>
                 </n-upload>
             </n-form-item-grid-item>
 

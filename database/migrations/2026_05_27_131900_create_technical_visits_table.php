@@ -31,6 +31,7 @@ return new class extends Migration
             $table->dateTime('scheduled_at');
             $table->enum('status', ['Pendiente', 'Reprogramada', 'Aceptada', 'Terminada', 'Rechazada'])->default('Pendiente');
             $table->text('reschedule_reason')->nullable();
+            $table->text('rejection_reason')->nullable();
             
             // Datos del Inmueble y Servicio
             $table->string('service_number')->nullable();
@@ -39,6 +40,7 @@ return new class extends Migration
             $table->boolean('requires_long_ladder')->default(false);
             $table->integer('property_floors')->nullable();
             $table->integer('number_of_wires')->nullable();
+            $table->decimal('voltage', 8, 2)->nullable()->comment('Voltaje medido en la visita (V)');
             $table->string('google_maps_link')->nullable();
 
             // Dirección Desglosada (Address Splitting)
