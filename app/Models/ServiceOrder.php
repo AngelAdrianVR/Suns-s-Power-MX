@@ -53,6 +53,13 @@ class ServiceOrder extends Model implements HasMedia
         'installation_lat',
         'installation_lng',
 
+        // Propuesta comercial y reacondicionamientos
+        'payment_method',
+        'down_payment',
+        'requires_pre_installation',
+        'pre_installation_details',
+        'pre_installation_assigned_to',
+
         'notes',
     ];
 
@@ -63,6 +70,8 @@ class ServiceOrder extends Model implements HasMedia
         'installation_lng' => 'decimal:8',
         'unit_capacity' => 'decimal:2',   // <-- NUEVO
         'total_capacity' => 'decimal:2',  // <-- NUEVO
+        'down_payment' => 'decimal:2',
+        'requires_pre_installation' => 'boolean',
     ];
 
     protected function fullInstallationAddress(): Attribute
@@ -87,6 +96,10 @@ class ServiceOrder extends Model implements HasMedia
     public function payments(): HasMany { return $this->hasMany(Payment::class); }
     public function tasks(): MorphMany { return $this->morphMany(Task::class, 'taskable'); }
     public function documents(): MorphMany { return $this->morphMany(Document::class, 'documentable'); }
+
+    public function conditionings(): HasMany { 
+        return $this->hasMany(ServiceOrderConditioning::class); 
+    }
     
     // NUEVA RELACIÓN PARA LAS EVIDENCIAS REQUERIDAS
     public function evidences(): HasMany {

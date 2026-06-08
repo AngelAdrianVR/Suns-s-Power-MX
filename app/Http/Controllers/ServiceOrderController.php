@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\ServiceOrder;
 use App\Models\ServiceOrderItem;
+use App\Models\ServiceOrderConditioning;
 use App\Models\Product;
 use App\Models\Client;
+use App\Models\Payment;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
 use App\Models\SystemType;
@@ -206,13 +208,51 @@ class ServiceOrderController extends Controller
             'installation_country' => 'nullable|string|max:100',
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
-            'notes' => 'nullable|string'
+            'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $validated['branch_id'] = $branchId;
         
         DB::transaction(function () use ($validated, $branchId, $userId) {
-            $serviceOrder = ServiceOrder::create($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder = ServiceOrder::create(collect($validated)->except(['conditionings'])->toArray());
+
+            // Guardar tareas de acondicionamiento previo
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Crear pago de anticipo si aplica
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
 
             if (!empty($validated['system_type'])) {
                 // 1. Evidencias
@@ -349,6 +389,7 @@ class ServiceOrderController extends Controller
             'items' => fn($q) => $q->with('product.category')->orderBy('order', 'asc'), 
             'tasks' => fn($q) => $q->with(['assignees', 'comments.user', 'requiredEvidences.media'])->orderBy('order', 'asc'),
             'evidences' => fn($q) => $q->with('media')->orderBy('order', 'asc'),
+            'conditionings' => fn($q) => $q->with(['media', 'user'])->orderBy('id', 'asc'),
             'media'
         ]);
 
@@ -454,6 +495,8 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
+        $serviceOrder->load(['conditionings.media']);
+
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
@@ -495,12 +538,52 @@ class ServiceOrderController extends Controller
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
             'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $oldSystemType = $serviceOrder->system_type;
 
         DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
-            $serviceOrder->update($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder->update(collect($validated)->except(['conditionings'])->toArray());
+
+            // Sincronizar tareas de acondicionamiento previo: borrar existentes y recrear
+            $serviceOrder->conditionings()->delete();
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Sincronizar pago de anticipo: eliminar anterior y crear nuevo si aplica
+            $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
 
             if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
                 $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
@@ -1093,5 +1176,93 @@ class ServiceOrderController extends Controller
         self::syncSystemTypeData($branchId);
 
         return back()->with('success', "Sincronización de tareas, evidencias y productos completada en base a las plantillas.");
+    }
+
+    // ================================================================
+    // CRUD DE ACONDICIONAMIENTO PREVIO (Conditionings)
+    // ================================================================
+
+    public function storeConditioning(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'required|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'notes' => 'nullable|string',
+        ]);
+
+        $serviceOrder->conditionings()->create([
+            'category' => $validated['category'],
+            'task' => $validated['task'],
+            'user_id' => $validated['user_id'] ?? null,
+            'status' => 'Pendiente',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return back()->with('success', 'Tarea de acondicionamiento agregada.');
+    }
+
+    public function updateConditioning(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'nullable|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'nullable|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'status' => 'nullable|in:Pendiente,En proceso,Terminado',
+            'notes' => 'nullable|string',
+        ]);
+
+        $conditioning->update(array_filter($validated, fn($v) => $v !== null));
+
+        return back()->with('success', 'Tarea de acondicionamiento actualizada.');
+    }
+
+    public function destroyConditioning(ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $conditioning->delete();
+
+        return back()->with('success', 'Tarea de acondicionamiento eliminada.');
+    }
+
+    public function uploadConditioningMedia(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $request->validate([
+            'file' => 'required|file|max:81920', // 80 MB
+        ]);
+
+        // Limitar a 3 imágenes por tarea
+        if ($conditioning->getMedia('evidence')->count() >= 3) {
+            return back()->with('error', 'Máximo 3 evidencias por tarea de acondicionamiento.');
+        }
+
+        $conditioning->addMediaFromRequest('file')->toMediaCollection('evidence');
+
+        return back()->with('success', 'Evidencia subida correctamente.');
+    }
+
+    public function deleteConditioningMedia(ServiceOrderConditioning $conditioning, $mediaId)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $media = $conditioning->getMedia('evidence')->where('id', $mediaId)->first();
+        if ($media) {
+            $media->delete();
+            return back()->with('success', 'Evidencia eliminada.');
+        }
+
+        return back()->with('error', 'Archivo no encontrado.');
     }
 }

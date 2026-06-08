@@ -7,6 +7,7 @@ import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue';
 import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
 import OrderFilesTab from './Components/OrderFilesTab.vue';
+import OrderConditioningTab from './Components/OrderConditioningTab.vue';
 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
@@ -14,7 +15,9 @@ import {
     NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
 } from 'naive-ui';
 import { 
-    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline
+    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, 
+    CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
+    HardwareChipOutline, HomeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -108,6 +111,30 @@ const allTasksCompleted = computed(() => {
 const formattedTotal = computed(() =>
   new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(props.order.total_amount ?? 0)
 );
+
+const paymentMethodLabel = computed(() => {
+    const map = {
+        'Contado': 'Contado', '3 MSI': '3 Meses', '6 MSI': '6 Meses',
+        '9 MSI': '9 Meses', '12 MSI': '12 Meses', 'Personalizado': 'Personalizado'
+    };
+    return map[props.order.payment_method] || props.order.payment_method || 'No definido';
+});
+
+const formattedDownPayment = computed(() => {
+    if (!props.order.down_payment) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(props.order.down_payment);
+});
+
+const remainingAmount = computed(() => {
+    if (!props.order.total_amount || !props.order.down_payment) return null;
+    const remaining = Number(props.order.total_amount) - Number(props.order.down_payment);
+    if (remaining <= 0) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(remaining);
+});
+
+const refreshOrder = () => {
+    router.reload({ only: ['order'] });
+};
 
 // --- CONCILIACIÓN DE MATERIAL ---
 const hasNoMaterials = computed(() => {
@@ -331,6 +358,10 @@ const confirmDelete = () => {
                                     <n-statistic :value="formattedTotal">
                                         <template #prefix>$</template>
                                     </n-statistic>
+                                    <div v-if="formattedDownPayment" class="mt-1 text-xs">
+                                        <span class="text-green-600 font-medium">{{ formattedDownPayment }}</span>
+                                        <span class="text-gray-400"> anticipo</span>
+                                    </div>
                                 </div>
                             </n-grid-item>
                             <n-grid-item>
@@ -369,6 +400,50 @@ const confirmDelete = () => {
                     </n-card>
                 </div>
 
+                <!-- Segunda fila: Pago y Acondicionamiento -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <n-card v-if="order.payment_method || order.down_payment" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
+                        <div class="flex items-center gap-2 text-emerald-800 font-semibold mb-3">
+                            <n-icon :component="CashOutline" /> Plan de Pago
+                        </div>
+                        <n-grid cols="2" y-gap="8">
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Método</div>
+                                <n-tag type="info" size="small" round :bordered="false">{{ paymentMethodLabel }}</n-tag>
+                            </n-grid-item>
+                            <n-grid-item v-if="formattedDownPayment">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Anticipo</div>
+                                <div class="text-sm font-bold text-green-700">{{ formattedDownPayment }}</div>
+                            </n-grid-item>
+                            <n-grid-item v-if="remainingAmount">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Saldo Pendiente</div>
+                                <div class="text-sm font-bold text-amber-600">{{ remainingAmount }}</div>
+                            </n-grid-item>
+                        </n-grid>
+                    </n-card>
+
+                    <n-card v-if="order.requires_pre_installation" size="small" class="rounded-2xl shadow-sm bg-orange-50/30 border-orange-100">
+                        <div class="flex items-center gap-2 text-orange-800 font-semibold mb-3">
+                            <n-icon :component="HomeOutline" /> Acondicionamiento Previo
+                        </div>
+                        <n-grid cols="2" y-gap="8">
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Coordinado por</div>
+                                <n-tag type="warning" size="small" round :bordered="false">
+                                    {{ order.pre_installation_assigned_to || 'Sin asignar' }}
+                                </n-tag>
+                            </n-grid-item>
+                            <n-grid-item v-if="order.conditionings?.length">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Tareas</div>
+                                <div class="text-sm font-bold text-gray-700">{{ order.conditionings.length }} registradas</div>
+                            </n-grid-item>
+                        </n-grid>
+                        <p v-if="order.pre_installation_details" class="text-xs text-gray-500 mt-3 line-clamp-2">
+                            {{ order.pre_installation_details }}
+                        </p>
+                    </n-card>
+                </div>
+
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4" :value="activeTab" @update:value="handleTabChange">
                         
@@ -393,6 +468,14 @@ const confirmDelete = () => {
                         <!-- NUEVO: Agregamos el listener @upload-success para forzar el rebote -->
                         <n-tab-pane name="files" tab="Evidencias">
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
+                        </n-tab-pane>
+
+                        <n-tab-pane name="conditioning" tab="Acondicionamiento">
+                            <OrderConditioningTab 
+                                :order="order" 
+                                :assignable-users="assignable_users"
+                                @refresh="refreshOrder"
+                            />
                         </n-tab-pane>
 
                     </n-tabs>

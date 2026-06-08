@@ -124,6 +124,23 @@ Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderC
     ->name('service-orders.confirm-installation')
     ->middleware('auth');
 
+// --- RUTAS DE ACONDICIONAMIENTO PREVIO (CONDITIONINGS) ---
+Route::post('service-orders/{serviceOrder}/conditionings', [ServiceOrderController::class, 'storeConditioning'])
+    ->name('service-orders.conditionings.store')
+    ->middleware('auth');
+Route::patch('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'updateConditioning'])
+    ->name('service-orders.conditionings.update')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'destroyConditioning'])
+    ->name('service-orders.conditionings.destroy')
+    ->middleware('auth');
+Route::post('service-orders/conditionings/{conditioning}/media', [ServiceOrderController::class, 'uploadConditioningMedia'])
+    ->name('service-orders.conditionings.media.upload')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}/media/{media}', [ServiceOrderController::class, 'deleteConditioningMedia'])
+    ->name('service-orders.conditionings.media.delete')
+    ->middleware('auth');
+
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
 Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');

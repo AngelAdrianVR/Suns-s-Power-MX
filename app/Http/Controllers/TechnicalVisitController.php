@@ -592,6 +592,13 @@ class TechnicalVisitController extends Controller
             return back()->with('success', 'Esta visita ya tiene una orden de servicio asignada.');
         }
 
+        // Campos de propuesta comercial desde el modal
+        $paymentMethod = $request->input('payment_method');
+        $downPayment = $request->input('down_payment');
+        $requiresPreInstallation = $request->boolean('requires_pre_installation');
+        $preInstallationAssignedTo = $request->input('pre_installation_assigned_to');
+        $preInstallationDetails = $request->input('pre_installation_details');
+
         // Mapear voltage a formato válido para service_orders
         $voltageValue = null;
         if ($technicalVisit->voltage) {
@@ -601,13 +608,14 @@ class TechnicalVisitController extends Controller
             else $voltageValue = '440V';
         }
 
-        $serviceOrder = DB::transaction(function () use ($technicalVisit, $branchId, $voltageValue) {
+        $serviceOrder = DB::transaction(function () use ($technicalVisit, $branchId, $voltageValue, $paymentMethod, $downPayment, $requiresPreInstallation, $preInstallationAssignedTo, $preInstallationDetails) {
             $order = ServiceOrder::create([
                 'branch_id' => $branchId,
                 'client_id' => $technicalVisit->client_id,
                 'sales_rep_id' => $technicalVisit->sales_rep_id,
-                'status' => 'Cotización',
+                'status' => 'Aceptado',
                 'total_amount' => $technicalVisit->budget ?? 0,
+                'down_payment' => $downPayment,
                 'service_number' => $technicalVisit->service_number,
                 'rate_type' => $technicalVisit->rate_type,
                 'system_type' => $technicalVisit->system_of_interest,
@@ -616,6 +624,11 @@ class TechnicalVisitController extends Controller
                 'number_of_units' => $technicalVisit->module_quantity,
                 'unit_capacity' => $technicalVisit->module_capacity,
                 'total_capacity' => $technicalVisit->gross_installed_capacity,
+                // Propuesta comercial
+                'payment_method' => $paymentMethod,
+                'requires_pre_installation' => $requiresPreInstallation,
+                'pre_installation_details' => $preInstallationDetails,
+                'pre_installation_assigned_to' => $preInstallationAssignedTo,
                 // Dirección de instalación mapeada desde la visita
                 'installation_street' => $technicalVisit->street,
                 'installation_exterior_number' => $technicalVisit->exterior_number,
