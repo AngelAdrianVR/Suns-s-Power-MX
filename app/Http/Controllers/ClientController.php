@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Payment;
+use App\Models\TechnicalVisit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -319,6 +320,9 @@ class ClientController extends Controller
                 'delete' => 'No se puede eliminar: El cliente tiene pagos registrados.'
             ]);
         }
+
+        // Desvincular visitas técnicas relacionadas (evitar cascadeOnDelete)
+        TechnicalVisit::where('client_id', $client->id)->update(['client_id' => null]);
 
         // Eliminar contactos relacionados (Polimórficos)
         $client->contacts()->delete(); 

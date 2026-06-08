@@ -137,6 +137,12 @@ Route::patch('/visitas-tecnicas/{technicalVisit}/update-voltage', [TechnicalVisi
 Route::post('/visitas-tecnicas/{technicalVisit}/upload-evidence', [TechnicalVisitController::class, 'uploadEvidence'])->name('technical-visits.upload-evidence')->middleware('auth');
 // Subir archivos adicionales
 Route::post('/visitas-tecnicas/{technicalVisit}/upload-additional', [TechnicalVisitController::class, 'uploadAdditionalEvidence'])->name('technical-visits.upload-additional')->middleware('auth');
+// Actualizar sistema de interés inline
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-system-type', [TechnicalVisitController::class, 'updateSystemType'])->name('technical-visits.update-system-type')->middleware('auth');
+// Convertir prospecto de visita a cliente + crear orden de servicio
+Route::post('/visitas-tecnicas/{technicalVisit}/convert-to-client', [TechnicalVisitController::class, 'convertToClient'])->name('technical-visits.convert-to-client')->middleware('auth');
+// Crear orden de servicio desde visita técnica
+Route::post('/visitas-tecnicas/{technicalVisit}/create-service-order', [TechnicalVisitController::class, 'createServiceOrder'])->name('technical-visits.create-service-order')->middleware('auth');
 
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------

@@ -5,7 +5,7 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, 
-    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem, NDropdown
+    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem, NDropdown, NSwitch
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
@@ -39,7 +39,8 @@ const statusFilter = ref(props.filters.status || null);
 const municipalityFilter = ref(props.filters.municipality || null);
 const stateFilter = ref(props.filters.state || null);
 const systemTypeFilter = ref(props.filters.system_type || null);
-const dateRangeFilter = ref(parseDateRange(props.filters.date_range)); 
+const dateRangeFilter = ref(parseDateRange(props.filters.date_range));
+const showCompletedFilter = ref(props.filters.show_completed === '1' || props.filters.show_completed === true); 
 
 let searchTimeout;
 
@@ -50,7 +51,8 @@ const applyFilters = () => {
         municipality: municipalityFilter.value,
         state: stateFilter.value,
         system_type: systemTypeFilter.value,
-        date_range: dateRangeFilter.value 
+        date_range: dateRangeFilter.value,
+        show_completed: showCompletedFilter.value ? '1' : '0',
     }, { preserveState: true, replace: true });
 };
 
@@ -59,7 +61,7 @@ watch(search, (value) => {
     searchTimeout = setTimeout(applyFilters, 300);
 });
 
-watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter, dateRangeFilter], applyFilters);
+watch([statusFilter, municipalityFilter, stateFilter, systemTypeFilter, dateRangeFilter, showCompletedFilter], applyFilters);
 
 // Acciones de Navegación
 const goToEdit = (id) => router.visit(route('technical-visits.edit', id));
@@ -138,12 +140,93 @@ const quickAction = (visitId, action) => {
             onSuccess: () => notification.success({ title: 'Visita Aceptada', content: 'La visita ha sido marcada como aceptada.', duration: 3000 }),
         });
     } else if (action === 'complete') {
-        router.patch(route('technical-visits.quick-update', visitId), { action: 'complete' }, {
-            preserveScroll: true,
-            onSuccess: () => notification.success({ title: 'Visita Terminada', content: 'La visita ha sido marcada como terminada.', duration: 3000 }),
-        });
+        // Ahora abre el modal de completado en lugar de terminar directo
+        openCompleteModal(visitId);
     }
 };
+
+// --- MODAL DE COMPLETADO (Convertir a Cliente + Orden de Servicio) ---
+const showCompleteModal = ref(false);
+const completeStep = ref(1); // 1 = ¿Crear cliente?, 2 = ¿Crear orden de servicio?, 3 = Éxito
+const completingVisitId = ref(null);
+const isCompleting = ref(false);
+const taxId = ref(''); // RFC opcional
+const newServiceOrderId = ref(null);
+const completingSystemType = ref(null);
+
+const openCompleteModal = (visitId) => {
+    completingVisitId.value = visitId;
+    completeStep.value = 1;
+    taxId.value = '';
+    newServiceOrderId.value = null;
+    // Buscar el system_of_interest de la visita
+    const visitData = props.visits.data.find(v => v.id === visitId);
+    completingSystemType.value = visitData?.system_of_interest || null;
+    showCompleteModal.value = true;
+};
+
+const handleCompleteFlow = (createClient) => {
+    isCompleting.value = true;
+    router.post(route('technical-visits.convert-to-client', completingVisitId.value), {
+        create_client: createClient,
+        tax_id: taxId.value || null,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isCompleting.value = false;
+            if (createClient) {
+                // Si creó cliente, mostrar paso 2 (orden de servicio)
+                completeStep.value = 2;
+                notification.success({ title: 'Cliente Creado', content: 'Visita terminada y cliente creado exitosamente.', duration: 3000 });
+            } else {
+                // Si no, cerrar modal
+                showCompleteModal.value = false;
+                notification.success({ title: 'Completado', content: 'Visita marcada como terminada.', duration: 3000 });
+            }
+        },
+        onError: () => {
+            isCompleting.value = false;
+            notification.error({ title: 'Error', content: 'No se pudo completar la operación.', duration: 3000 });
+        },
+    });
+};
+
+const handleCreateServiceOrder = () => {
+    isCompleting.value = true;
+    router.post(route('technical-visits.create-service-order', completingVisitId.value), {}, {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            isCompleting.value = false;
+            newServiceOrderId.value = page.props.flash?.new_service_order_id || null;
+            completeStep.value = 3;
+            notification.success({ title: 'Orden Creada', content: 'La orden de servicio se generó correctamente.', duration: 4000 });
+        },
+        onError: () => {
+            isCompleting.value = false;
+            notification.error({ title: 'Error', content: 'No se pudo crear la orden de servicio.', duration: 3000 });
+        },
+    });
+};
+
+const goToServiceOrderEdit = (id) => {
+    showCompleteModal.value = false;
+    router.visit(route('service-orders.edit', id || newServiceOrderId.value));
+};
+
+// --- EDICIÓN INLINE DE SISTEMA DE INTERÉS ---
+
+const updateSystemType = (visitId, newValue) => {
+    router.patch(route('technical-visits.update-system-type', visitId), {
+        system_of_interest: newValue,
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => notification.success({ title: 'Actualizado', content: 'Sistema de interés actualizado.', duration: 2000 }),
+    });
+};
+
+// Opciones para el select inline de sistema (columna de la tabla)
+const inlineSystemOptions = ['Interconectado', 'Autónomo', 'Back-up', 'Bombeo'].map(s => ({ label: s, value: s }));
 
 const confirmDelete = (visit) => {
     dialog.warning({
@@ -293,6 +376,39 @@ const createColumns = () => {
             }
         },
         {
+            title: 'Sistema',
+            key: 'system_of_interest',
+            width: 160,
+            render(row) {
+                // Visitas terminadas: solo mostrar tag, sin edición
+                if (row.status === 'Terminada') {
+                    if (!row.system_of_interest) {
+                        return h('span', { class: 'text-xs text-gray-400' }, '—');
+                    }
+                    return h(NTag, {
+                        type: 'info',
+                        size: 'small',
+                        round: true,
+                        bordered: false,
+                    }, { default: () => row.system_of_interest });
+                }
+
+                const current = row.system_of_interest || 'Sin definir';
+                return h(NSelect, {
+                    value: current,
+                    options: inlineSystemOptions,
+                    size: 'tiny',
+                    placeholder: 'Seleccionar',
+                    clearable: true,
+                    consistentMenuWidth: false,
+                    onClick: (e) => e.stopPropagation(),
+                    onUpdateValue: (value) => {
+                        updateSystemType(row.id, value);
+                    },
+                });
+            }
+        },
+        {
             title: '',
             key: 'actions',
             width: 200,
@@ -307,6 +423,8 @@ const createColumns = () => {
                     { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
                     { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
                 ];
+
+                const isTerminated = row.status === 'Terminada';
 
                 const handleStatusSelect = (key, visitRow) => {
                     if (key === 'reschedule') { openRescheduleModal(visitRow); }
@@ -329,7 +447,8 @@ const createColumns = () => {
                         }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
                         default: () => 'Editar'
                     }) : null,
-                    canEdit ? h(NDropdown, {
+                    // Ocultar dropdown de estatus para visitas terminadas
+                    canEdit && !isTerminated ? h(NDropdown, {
                         trigger: 'click',
                         options: statusOptions,
                         onSelect: (key) => { handleStatusSelect(key, row); },
@@ -363,7 +482,8 @@ const handlePageChange = (page) => {
         municipality: municipalityFilter.value,
         state: stateFilter.value,
         system_type: systemTypeFilter.value,
-        date_range: dateRangeFilter.value
+        date_range: dateRangeFilter.value,
+        show_completed: showCompletedFilter.value ? '1' : '0',
     }, { preserveState: true });
 };
 
@@ -396,7 +516,7 @@ const rowProps = (row) => ({
         </template>
 
         <div class="py-8 min-h-screen">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+            <div class="max-w-[90rem] mx-auto sm:px-6 lg:px-8">
                 
                 <!-- Filtros -->
                 <div class="mb-6 px-4 sm:px-0 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
@@ -446,6 +566,13 @@ const rowProps = (row) => ({
                             clearable
                             class="w-full md:w-40 shadow-sm"
                         />
+                        <n-switch 
+                            v-model:value="showCompletedFilter"
+                            size="small"
+                        >
+                            <template #checked>Mostrando terminadas</template>
+                            <template #unchecked>Terminadas ocultas</template>
+                        </n-switch>
                     </div>
                 </div>
 
@@ -545,7 +672,7 @@ const rowProps = (row) => ({
                                     <template #icon><n-icon :component="CreateOutline" /></template>
                                 </n-button>
 
-                                <n-dropdown v-if="hasPermission('technical_visits.edit')" trigger="click" :options="[
+                                <n-dropdown v-if="hasPermission('technical_visits.edit') && visit.status !== 'Terminada'" trigger="click" :options="[
                                     { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
                                     { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
                                     { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
@@ -643,6 +770,104 @@ const rowProps = (row) => ({
                         <n-button type="error" @click="submitReject">Confirmar Rechazo</n-button>
                     </div>
                 </template>
+            </n-card>
+        </n-modal>
+
+        <!-- Modal Completar Visita (Paso a Paso) -->
+        <n-modal v-model:show="showCompleteModal" :mask-closable="false">
+            <n-card
+                style="width: 480px"
+                :title="completeStep === 1 ? 'Completar Visita' : 'Crear Orden de Servicio'"
+                :bordered="false"
+                size="huge"
+                role="dialog"
+                aria-modal="true"
+            >
+                <template #header-extra>
+                    <n-icon size="24" :component="CheckmarkDoneOutline" class="text-green-500" />
+                </template>
+
+                <!-- Paso 1: ¿Convertir a Cliente? -->
+                <div v-if="completeStep === 1">
+                    <div class="text-center mb-6">
+                        <n-icon size="48" :component="BusinessOutline" class="text-indigo-400 mb-3" />
+                        <h3 class="text-lg font-semibold text-gray-800">¿Convertir prospecto en cliente?</h3>
+                        <p class="text-sm text-gray-500 mt-2">
+                            Se creará un nuevo registro de cliente con los datos de esta visita 
+                            (nombre, dirección y contacto).
+                        </p>
+                    </div>
+
+                    <!-- RFC Opcional -->
+                    <div class="mb-6 px-4">
+                        <n-input 
+                            v-model:value="taxId" 
+                            placeholder="RFC del cliente (opcional)" 
+                            maxlength="13"
+                            class="w-full"
+                        >
+                            <template #prefix>
+                                <span class="text-xs text-gray-400 font-mono">RFC</span>
+                            </template>
+                        </n-input>
+                    </div>
+
+                    <div class="flex justify-center gap-4">
+                        <n-button size="large" @click="showCompleteModal = false" :disabled="isCompleting">
+                            Cancelar
+                        </n-button>
+                        <n-button size="large" @click="handleCompleteFlow(false)" :loading="isCompleting">
+                            No, solo terminar
+                        </n-button>
+                        <n-button size="large" type="primary" @click="handleCompleteFlow(true)" :loading="isCompleting">
+                            <template #icon><n-icon><BusinessOutline /></n-icon></template>
+                            Sí, crear cliente
+                        </n-button>
+                    </div>
+                </div>
+
+                <!-- Paso 2: ¿Crear Orden de Servicio? -->
+                <div v-if="completeStep === 2">
+                    <div class="text-center mb-6">
+                        <n-icon size="48" :component="HardwareChipOutline" class="text-green-400 mb-3" />
+                        <h3 class="text-lg font-semibold text-gray-800">¿Crear orden de servicio?</h3>
+                        <p class="text-sm text-gray-500 mt-2">
+                            Se generará una orden de servicio tipo <strong>{{ completingSystemType || 'sin definir' }}</strong>
+                            con tareas, evidencias y productos configurados automáticamente. <br>
+                            Si el cliente no aceptó el trabajo no es necesario crear la orden.
+                        </p>
+                    </div>
+                    <div class="flex justify-center gap-4">
+                        <n-button size="large" @click="showCompleteModal = false" :disabled="isCompleting">
+                            No, finalizar
+                        </n-button>
+                        <n-button size="large" type="success" @click="handleCreateServiceOrder()" :loading="isCompleting">
+                            <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
+                            Sí, crear orden
+                        </n-button>
+                    </div>
+                </div>
+
+                <!-- Paso 3: Orden Creada Exitosa -->
+                <div v-if="completeStep === 3">
+                    <div class="text-center mb-6">
+                        <n-icon size="48" :component="CheckmarkDoneOutline" class="text-green-500 mb-3" />
+                        <h3 class="text-lg font-semibold text-gray-800">¡Orden de servicio creada exitosamente!</h3>
+                        <p class="text-sm text-gray-500 mt-2">
+                            Algunos campos no pudieron llenarse automáticamente desde la visita técnica.
+                            ¿Quieres completarlos ahora?
+                        </p>
+                    </div>
+                    <div class="flex justify-center gap-4">
+                        <n-button size="large" @click="showCompleteModal = false">
+                            Cerrar
+                        </n-button>
+                        <n-button size="large" type="primary" @click="goToServiceOrderEdit(newServiceOrderId)">
+                            <template #icon><n-icon><CreateOutline /></n-icon></template>
+                            Completar orden
+                        </n-button>
+                    </div>
+                </div>
             </n-card>
         </n-modal>
         

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\TechnicalVisit;
 use App\Models\Client;
+use App\Models\ServiceOrder;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -26,6 +27,7 @@ class TechnicalVisitController extends Controller
         $state = $filters['state'] ?? null;
         $systemType = $filters['system_type'] ?? null;
         $dateRange = $filters['date_range'] ?? null;
+        $showCompleted = $request->boolean('show_completed', false);
 
         // Extraer opciones disponibles para los filtros
         $availableMunicipalities = TechnicalVisit::where('branch_id', $branchId)
@@ -66,6 +68,10 @@ class TechnicalVisitController extends Controller
             })
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
+            })
+            // Por defecto ocultar visitas terminadas, a menos que se pida explícitamente
+            ->when(!$showCompleted, function ($query) {
+                $query->where('status', '!=', 'Terminada');
             })
             ->when($municipality, function ($query, $municipality) {
                 $query->where('municipality', $municipality);
@@ -476,6 +482,165 @@ class TechnicalVisitController extends Controller
         $technicalVisit->update($validated);
 
         return back()->with('success', 'Voltaje actualizado correctamente.');
+    }
+
+    /**
+     * Actualiza el sistema de interés inline desde el Index o Show.
+     */
+    public function updateSystemType(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'system_of_interest' => 'nullable|in:Interconectado,Autónomo,Back-up,Bombeo',
+        ]);
+
+        $technicalVisit->update($validated);
+
+        return back()->with('success', 'Sistema de interés actualizado.');
+    }
+
+    /**
+     * Convierte el prospecto de la visita en un Cliente.
+     * Crea el registro en clients, el contacto principal, y actualiza la visita.
+     */
+    public function convertToClient(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        // Si ya tiene cliente asignado, no duplicar
+        if ($technicalVisit->client_id) {
+            return back()->with('success', 'Esta visita ya tiene un cliente asignado.');
+        }
+
+        $createClient = $request->boolean('create_client', false);
+        $taxId = $request->input('tax_id'); // RFC opcional desde el modal
+
+        DB::transaction(function () use ($technicalVisit, $createClient, $branchId, $taxId) {
+            // Marcar como terminada
+            $technicalVisit->update(['status' => 'Terminada']);
+
+            if ($createClient) {
+                // Crear el cliente con los datos de la visita
+                $client = Client::create([
+                    'branch_id' => $branchId,
+                    'name' => $technicalVisit->business_name 
+                        ?? trim("{$technicalVisit->first_name} {$technicalVisit->paternal_surname} {$technicalVisit->maternal_surname}"),
+                    'tax_id' => $taxId,
+                    'type' => 'Cliente',
+                    // Dirección
+                    'road_type' => $technicalVisit->road_type,
+                    'street' => $technicalVisit->street,
+                    'exterior_number' => $technicalVisit->exterior_number,
+                    'interior_number' => $technicalVisit->interior_number,
+                    'neighborhood' => $technicalVisit->neighborhood,
+                    'municipality' => $technicalVisit->municipality,
+                    'state' => $technicalVisit->state,
+                    'zip_code' => $technicalVisit->zip_code,
+                    'country' => $technicalVisit->country ?? 'México',
+                    'notes' => $technicalVisit->internal_notes,
+                ]);
+
+                // Crear el contacto principal en la tabla polimórfica
+                $contactPersonName = trim("{$technicalVisit->first_name} {$technicalVisit->paternal_surname} {$technicalVisit->maternal_surname}");
+                if ($contactPersonName || $technicalVisit->phone) {
+                    $client->contacts()->create([
+                        'branch_id' => $branchId,
+                        'name' => $contactPersonName ?: ($technicalVisit->business_name ?? 'Contacto Principal'),
+                        'phone' => $technicalVisit->phone,
+                        'is_primary' => true,
+                    ]);
+                }
+
+                // Asignar el cliente a la visita
+                $technicalVisit->update(['client_id' => $client->id]);
+            }
+        });
+
+        $message = 'Visita marcada como terminada.';
+        if ($createClient) {
+            $message = 'Visita terminada y cliente creado exitosamente.';
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * Crea una Orden de Servicio a partir de una Visita Técnica.
+     * Mapea los campos disponibles y dispara la generación de tareas/evidencias/productos.
+     */
+    public function createServiceOrder(Request $request, TechnicalVisit $technicalVisit)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($technicalVisit->branch_id !== $branchId) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        // Validar que tenga cliente asignado
+        if (!$technicalVisit->client_id) {
+            return back()->with('error', 'Primero debes crear o asignar un cliente a esta visita.');
+        }
+
+        // Validar que no tenga ya una orden de servicio
+        if ($technicalVisit->service_order_id) {
+            return back()->with('success', 'Esta visita ya tiene una orden de servicio asignada.');
+        }
+
+        // Mapear voltage a formato válido para service_orders
+        $voltageValue = null;
+        if ($technicalVisit->voltage) {
+            $v = (float) $technicalVisit->voltage;
+            if ($v <= 150) $voltageValue = '110V';
+            elseif ($v <= 300) $voltageValue = '220V';
+            else $voltageValue = '440V';
+        }
+
+        $serviceOrder = DB::transaction(function () use ($technicalVisit, $branchId, $voltageValue) {
+            $order = ServiceOrder::create([
+                'branch_id' => $branchId,
+                'client_id' => $technicalVisit->client_id,
+                'sales_rep_id' => $technicalVisit->sales_rep_id,
+                'status' => 'Cotización',
+                'total_amount' => $technicalVisit->budget ?? 0,
+                'service_number' => $technicalVisit->service_number,
+                'rate_type' => $technicalVisit->rate_type,
+                'system_type' => $technicalVisit->system_of_interest,
+                'voltage' => $voltageValue,
+                'number_of_wires' => $technicalVisit->number_of_wires,
+                'number_of_units' => $technicalVisit->module_quantity,
+                'unit_capacity' => $technicalVisit->module_capacity,
+                'total_capacity' => $technicalVisit->gross_installed_capacity,
+                // Dirección de instalación mapeada desde la visita
+                'installation_street' => $technicalVisit->street,
+                'installation_exterior_number' => $technicalVisit->exterior_number,
+                'installation_interior_number' => $technicalVisit->interior_number,
+                'installation_neighborhood' => $technicalVisit->neighborhood,
+                'installation_municipality' => $technicalVisit->municipality,
+                'installation_state' => $technicalVisit->state,
+                'installation_zip_code' => $technicalVisit->zip_code,
+                'installation_country' => $technicalVisit->country ?? 'México',
+                'notes' => $technicalVisit->internal_notes,
+            ]);
+
+            // Asignar la orden a la visita
+            $technicalVisit->update(['service_order_id' => $order->id]);
+
+            return $order;
+        });
+
+        // Sincronizar tareas, evidencias y productos según el system_type
+        \App\Http\Controllers\ServiceOrderController::syncSystemTypeData($branchId);
+
+        return back()->with([
+            'success' => 'Orden de servicio #' . $serviceOrder->id . ' creada exitosamente.',
+            'new_service_order_id' => $serviceOrder->id,
+        ]);
     }
 
     public function destroy(TechnicalVisit $technicalVisit)
