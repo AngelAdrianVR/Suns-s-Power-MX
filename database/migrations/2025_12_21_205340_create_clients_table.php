@@ -19,6 +19,12 @@ return new class extends Migration
             $table->string('name'); // Razón social o Nombre completo
             $table->string('contact_person')->nullable();
             $table->string('tax_id')->nullable(); // RFC
+
+             // Diferenciador principal
+            $table->enum('type', ['Prospecto', 'Cliente'])->default('Prospecto');
+                        
+            // Origen del prospecto
+            $table->string('lead_source')->nullable()->comment('De dónde se enteró de nosotros');
             
             // Datos de Contacto columnas comentadas porque se guardará el contacto en la tabla polimórfica
             // $table->string('email')->nullable();

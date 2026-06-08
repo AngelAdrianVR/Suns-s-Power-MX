@@ -103,6 +103,9 @@ const createColumns = () => [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.name),
                 row.tax_id 
                     ? h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, `RFC: ${row.tax_id}`)
+                    : null,
+                row.type === 'Prospecto' 
+                    ? h('span', { class: 'text-xs text-yellow-600 font-medium mt-0.5' }, 'Prospecto') 
                     : null
             ]);
         }

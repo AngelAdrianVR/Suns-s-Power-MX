@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Payment;
+use App\Models\TechnicalVisit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +73,7 @@ class ClientController extends Controller
                     'id' => $client->id,
                     'name' => $client->name,
                     'contact_person' => $client->contact_person,
+                    'type' => $client->type,
                     'email' => $mainContact ? $mainContact->email : '-',
                     'phone' => $mainContact ? $mainContact->phone : '-',
                     'tax_id' => $client->tax_id,
@@ -99,6 +101,8 @@ class ClientController extends Controller
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
             'tax_id' => 'nullable|string|max:20',
+            'type' => 'required|in:Prospecto,Cliente',
+            'lead_source' => 'nullable|string|max:255',
             
             // Dirección Atomizada
             'road_type' => 'nullable|string|max:50', // NUEVO CAMPO
@@ -238,7 +242,10 @@ class ClientController extends Controller
             'name' => 'required|string|max:255',
             'contact_person' => 'nullable|string|max:255',
             'tax_id' => 'nullable|string|max:20',
+            'type' => 'required|in:Prospecto,Cliente',
+            'lead_source' => 'nullable|string|max:255',
             
+            // Dirección Atomizada
             'road_type' => 'nullable|string|max:50',
             'street' => 'nullable|string|max:255',
             'exterior_number' => 'nullable|string|max:50',
@@ -313,6 +320,9 @@ class ClientController extends Controller
                 'delete' => 'No se puede eliminar: El cliente tiene pagos registrados.'
             ]);
         }
+
+        // Desvincular visitas técnicas relacionadas (evitar cascadeOnDelete)
+        TechnicalVisit::where('client_id', $client->id)->update(['client_id' => null]);
 
         // Eliminar contactos relacionados (Polimórficos)
         $client->contacts()->delete(); 

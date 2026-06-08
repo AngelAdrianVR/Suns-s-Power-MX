@@ -24,6 +24,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
 use App\Http\Controllers\SystemTypeProductController;
+use App\Http\Controllers\TechnicalVisitController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -122,6 +123,27 @@ Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'r
 Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
     ->name('service-orders.confirm-installation')
     ->middleware('auth');
+
+
+// ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
+Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
+// Acciones rápidas desde el índice (Reprogramar / Rechazar / Aceptar / Terminar)
+Route::patch('/visitas-tecnicas/{technicalVisit}/quick-update', [TechnicalVisitController::class, 'quickUpdate'])->name('technical-visits.quick-update')->middleware('auth');
+// Actualizar notas internas desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-notes', [TechnicalVisitController::class, 'updateNotes'])->name('technical-visits.update-notes')->middleware('auth');
+// Actualizar voltaje desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-voltage', [TechnicalVisitController::class, 'updateVoltage'])->name('technical-visits.update-voltage')->middleware('auth');
+// Subir evidencias del checklist
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-evidence', [TechnicalVisitController::class, 'uploadEvidence'])->name('technical-visits.upload-evidence')->middleware('auth');
+// Subir archivos adicionales
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-additional', [TechnicalVisitController::class, 'uploadAdditionalEvidence'])->name('technical-visits.upload-additional')->middleware('auth');
+// Actualizar sistema de interés inline
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-system-type', [TechnicalVisitController::class, 'updateSystemType'])->name('technical-visits.update-system-type')->middleware('auth');
+// Convertir prospecto de visita a cliente + crear orden de servicio
+Route::post('/visitas-tecnicas/{technicalVisit}/convert-to-client', [TechnicalVisitController::class, 'convertToClient'])->name('technical-visits.convert-to-client')->middleware('auth');
+// Crear orden de servicio desde visita técnica
+Route::post('/visitas-tecnicas/{technicalVisit}/create-service-order', [TechnicalVisitController::class, 'createServiceOrder'])->name('technical-visits.create-service-order')->middleware('auth');
+
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
 Route::middleware('auth')->group(function () {

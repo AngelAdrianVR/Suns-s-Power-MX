@@ -256,5 +256,7 @@ return [
         'join_date' => 'fecha de ingreso',
         'purchase_price' => 'precio de compra',
         'sale_price' => 'precio de venta',
+        'scheduled_at' => 'fecha programada',
+        'sales_rep_id' => 'representante de ventas',
     ],
 ];
