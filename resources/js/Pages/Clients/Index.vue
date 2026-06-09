@@ -10,7 +10,7 @@ import {
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     PersonOutline, CallOutline, MailOutline, WalletOutline, CashOutline, AlertCircleOutline,
-    LocationOutline // Importamos icono para dirección
+    LocationOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -219,12 +219,20 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión de expedientes y estado de cuenta por sucursal</p>
                 </div>
-                <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon><n-icon><AddOutline /></n-icon></template>
-                        Nuevo Cliente
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-3">
+                    <Link :href="route('clients.debt-report')">
+                        <n-button secondary round size="large" type="warning">
+                            <template #icon><n-icon><DocumentTextOutline /></n-icon></template>
+                            Cartera de deuda
+                        </n-button>
+                    </Link>
+                    <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon><n-icon><AddOutline /></n-icon></template>
+                            Nuevo Cliente
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 

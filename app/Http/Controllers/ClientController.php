@@ -165,7 +165,8 @@ class ClientController extends Controller
         $client->load([
             'contacts', 
             'serviceOrders' => function ($q) {
-                $q->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'start_date')
+                $q->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'start_date', 'payment_method', 'down_payment')
+                  ->withSum('payments as total_paid', 'amount')
                   ->orderBy('created_at', 'desc')
                   ->take(10);
             },
@@ -181,6 +182,31 @@ class ClientController extends Controller
                   ->take(15);
             },
         ]);
+
+        // Transformar service orders para agregar campos calculados
+        $client->serviceOrders->transform(function ($order) {
+            $paid = (float) ($order->total_paid ?? 0);
+            $total = (float) ($order->total_amount ?? 0);
+            $order->amount_paid = $paid;
+            $order->remaining = max(0, $total - $paid);
+            
+            // Calcular fecha límite de liquidación según plan de pago
+            $monthsMap = [
+                'Contado' => 0, '3 MSI' => 3, '6 MSI' => 6,
+                '9 MSI' => 9, '12 MSI' => 12,
+            ];
+            $months = $monthsMap[$order->payment_method] ?? null;
+            
+            if ($months !== null && $months > 0) {
+                $order->liquidation_deadline = $order->created_at->copy()->addMonths($months)->format('Y-m-d');
+                $order->is_overdue = now()->startOfDay()->gt($order->created_at->copy()->addMonths($months)->startOfDay());
+            } else {
+                $order->liquidation_deadline = null;
+                $order->is_overdue = false;
+            }
+            
+            return $order;
+        });
 
         // --- NUEVA LÓGICA ---
         // Transformamos los pagos para inyectar la URL del comprobante
@@ -377,6 +403,89 @@ class ClientController extends Controller
             'state' => $client->state,
             'zip_code' => $client->zip_code,
             'country' => $client->country,
+        ]);
+    }
+
+    /**
+     * Reporte de Cartera de Deuda - Vista imprimible.
+     */
+    public function debtReport()
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        $clients = Client::where('branch_id', $branchId)
+            ->whereHas('serviceOrders', function ($q) {
+                $q->whereNotIn('status', ['Cancelado', 'Cotización']);
+            })
+            ->with(['serviceOrders' => function ($q) {
+                $q->whereNotIn('status', ['Cancelado', 'Cotización'])
+                  ->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'payment_method', 'down_payment')
+                  ->withSum('payments as total_paid', 'amount')
+                  ->orderBy('created_at', 'desc');
+            }])
+            ->orderBy('name')
+            ->get();
+
+        // Filtrar solo clientes con saldo pendiente y calcular datos
+        $reportData = $clients->map(function ($client) {
+            $totalDebt = 0;
+            $totalPaid = 0;
+            $orders = [];
+
+            foreach ($client->serviceOrders as $order) {
+                $paid = (float) ($order->total_paid ?? 0);
+                $total = (float) ($order->total_amount ?? 0);
+                $remaining = max(0, $total - $paid);
+
+                if ($remaining <= 0) continue; // Solo órdenes con saldo
+
+                $totalDebt += $total;
+                $totalPaid += $paid;
+
+                $monthsMap = [
+                    'Contado' => 0, '3 MSI' => 3, '6 MSI' => 6,
+                    '9 MSI' => 9, '12 MSI' => 12,
+                ];
+                $months = $monthsMap[$order->payment_method] ?? null;
+                $deadline = null;
+                $isOverdue = false;
+
+                if ($months !== null && $months > 0) {
+                    $deadlineDate = $order->created_at->copy()->addMonths($months);
+                    $deadline = $deadlineDate->format('Y-m-d');
+                    $isOverdue = now()->startOfDay()->gt($deadlineDate->startOfDay());
+                }
+
+                $orders[] = [
+                    'id' => $order->id,
+                    'status' => $order->status,
+                    'total_amount' => $total,
+                    'paid' => $paid,
+                    'remaining' => $remaining,
+                    'payment_method' => $order->payment_method,
+                    'liquidation_deadline' => $deadline,
+                    'is_overdue' => $isOverdue,
+                    'created_at' => $order->created_at->format('Y-m-d'),
+                ];
+            }
+
+            if (empty($orders)) return null;
+
+            return [
+                'id' => $client->id,
+                'name' => $client->name,
+                'tax_id' => $client->tax_id,
+                'phone' => $client->contact_person ?? ($client->contacts->first()?->phone ?? null),
+                'total_debt' => $totalDebt,
+                'total_paid' => $totalPaid,
+                'balance' => $totalDebt - $totalPaid,
+                'orders' => $orders,
+            ];
+        })->filter()->values();
+
+        return Inertia::render('Clients/DebtReport', [
+            'reportData' => $reportData,
+            'generatedAt' => now()->format('d/m/Y H:i'),
         ]);
     }
 }

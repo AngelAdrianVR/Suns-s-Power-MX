@@ -214,6 +214,10 @@ Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class
 
 
 // ---------------------------- Rutas de Clientes --------------------------------
+// Reporte de cartera de deuda (DEBE ir antes del resource para no colisionar con {cliente})
+Route::get('/clientes/reporte-cartera', [ClientController::class, 'debtReport'])
+    ->name('clients.debt-report')
+    ->middleware('auth');
 Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
