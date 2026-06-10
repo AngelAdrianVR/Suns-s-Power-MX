@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\ServiceOrder;
 use App\Models\ServiceOrderItem;
+use App\Models\ServiceOrderConditioning;
 use App\Models\Product;
 use App\Models\Client;
+use App\Models\Payment;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
 use App\Models\SystemType;
@@ -16,6 +18,7 @@ use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
@@ -206,13 +209,51 @@ class ServiceOrderController extends Controller
             'installation_country' => 'nullable|string|max:100',
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
-            'notes' => 'nullable|string'
+            'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $validated['branch_id'] = $branchId;
         
         DB::transaction(function () use ($validated, $branchId, $userId) {
-            $serviceOrder = ServiceOrder::create($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder = ServiceOrder::create(collect($validated)->except(['conditionings'])->toArray());
+
+            // Guardar tareas de acondicionamiento previo
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Crear pago de anticipo si aplica
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
 
             if (!empty($validated['system_type'])) {
                 // 1. Evidencias
@@ -349,6 +390,7 @@ class ServiceOrderController extends Controller
             'items' => fn($q) => $q->with('product.category')->orderBy('order', 'asc'), 
             'tasks' => fn($q) => $q->with(['assignees', 'comments.user', 'requiredEvidences.media'])->orderBy('order', 'asc'),
             'evidences' => fn($q) => $q->with('media')->orderBy('order', 'asc'),
+            'conditionings' => fn($q) => $q->with(['media', 'user'])->orderBy('id', 'asc'),
             'media'
         ]);
 
@@ -454,6 +496,8 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
+        $serviceOrder->load(['conditionings.media']);
+
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
@@ -495,12 +539,52 @@ class ServiceOrderController extends Controller
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
             'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $oldSystemType = $serviceOrder->system_type;
 
         DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
-            $serviceOrder->update($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder->update(collect($validated)->except(['conditionings'])->toArray());
+
+            // Sincronizar tareas de acondicionamiento previo: borrar existentes y recrear
+            $serviceOrder->conditionings()->delete();
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Sincronizar pago de anticipo: eliminar anterior y crear nuevo si aplica
+            $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
 
             if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
                 $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
@@ -1093,5 +1177,277 @@ class ServiceOrderController extends Controller
         self::syncSystemTypeData($branchId);
 
         return back()->with('success', "Sincronización de tareas, evidencias y productos completada en base a las plantillas.");
+    }
+
+    // ================================================================
+    // CRUD DE ACONDICIONAMIENTO PREVIO (Conditionings)
+    // ================================================================
+
+    public function storeConditioning(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'required|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'notes' => 'nullable|string',
+        ]);
+
+        $serviceOrder->conditionings()->create([
+            'category' => $validated['category'],
+            'task' => $validated['task'],
+            'user_id' => $validated['user_id'] ?? null,
+            'status' => 'Pendiente',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return back()->with('success', 'Tarea de acondicionamiento agregada.');
+    }
+
+    public function updateConditioning(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'nullable|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'nullable|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'status' => 'nullable|in:Pendiente,En proceso,Terminado',
+            'notes' => 'nullable|string',
+        ]);
+
+        $conditioning->update(array_filter($validated, fn($v) => $v !== null));
+
+        return back()->with('success', 'Tarea de acondicionamiento actualizada.');
+    }
+
+    public function destroyConditioning(ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $conditioning->delete();
+
+        return back()->with('success', 'Tarea de acondicionamiento eliminada.');
+    }
+
+    public function uploadConditioningMedia(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $request->validate([
+            'file' => 'required|file|max:81920', // 80 MB
+        ]);
+
+        // Limitar a 3 imágenes por tarea
+        if ($conditioning->getMedia('evidence')->count() >= 3) {
+            return back()->with('error', 'Máximo 3 evidencias por tarea de acondicionamiento.');
+        }
+
+        $conditioning->addMediaFromRequest('file')->toMediaCollection('evidence');
+
+        return back()->with('success', 'Evidencia subida correctamente.');
+    }
+
+    public function deleteConditioningMedia(ServiceOrderConditioning $conditioning, $mediaId)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $media = $conditioning->getMedia('evidence')->where('id', $mediaId)->first();
+        if ($media) {
+            $media->delete();
+            return back()->with('success', 'Evidencia eliminada.');
+        }
+
+        return back()->with('error', 'Archivo no encontrado.');
+    }
+
+    /**
+     * API: Obtiene la proyección de pagos de una orden de servicio.
+     * GET /api/service-orders/{serviceOrder}/payment-projection
+     */
+    public function paymentProjection(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Cargar relaciones necesarias
+        $serviceOrder->load(['payments' => function ($q) {
+            $q->orderBy('payment_date');
+        }, 'client.contacts']);
+
+        $projection = $serviceOrder->getPaymentProjection();
+
+        // Agregar información del cliente para recordatorios
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        return response()->json([
+            'service_order' => [
+                'id' => $serviceOrder->id,
+                'status' => $serviceOrder->status,
+                'total_amount' => (float) $serviceOrder->total_amount,
+                'payment_method' => $serviceOrder->payment_method,
+                'down_payment' => (float) ($serviceOrder->down_payment ?? 0),
+                'price_per_module' => (float) ($serviceOrder->price_per_module ?? 0),
+                'created_at' => $serviceOrder->created_at->format('Y-m-d'),
+            ],
+            'projection' => $projection,
+            'reminder_info' => [
+                'has_email' => $primaryContact && !empty($primaryContact->email),
+                'has_phone' => $primaryContact && !empty($primaryContact->phone),
+                'email' => $primaryContact->email ?? null,
+                'phone' => $primaryContact->phone ?? null,
+                'contact_name' => $primaryContact->name ?? null,
+            ],
+        ]);
+    }
+
+    /**
+     * API: Envía recordatorio de pago al cliente (email y/o WhatsApp).
+     * POST /api/service-orders/{serviceOrder}/send-reminder
+     */
+    public function sendPaymentReminder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'channel' => 'required|in:email,whatsapp,both',
+            'installment' => 'nullable|integer|min:1',
+            'message' => 'nullable|string|max:500',
+        ]);
+
+        $channel = $request->input('channel');
+        $installment = $request->input('installment');
+        $customMessage = $request->input('message');
+
+        $serviceOrder->load('client.contacts');
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        if (!$primaryContact) {
+            return response()->json(['error' => 'El cliente no tiene contactos registrados.'], 422);
+        }
+
+        $results = [];
+        $baseMessage = $customMessage ?: $this->buildDefaultReminderMessage($serviceOrder, $installment);
+
+        // Enviar por Email
+        if (in_array($channel, ['email', 'both']) && !empty($primaryContact->email)) {
+            try {
+                // Usar el sistema de notificaciones de Laravel (mail)
+                Mail::raw($baseMessage, function ($message) use ($primaryContact, $serviceOrder) {
+                    $message->to($primaryContact->email, $primaryContact->name)
+                        ->subject("Recordatorio de Pago - Orden #{$serviceOrder->id} - Sun's Power MX");
+                });
+                $results['email'] = ['sent' => true, 'to' => $primaryContact->email];
+            } catch (\Exception $e) {
+                $results['email'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['email', 'both'])) {
+            $results['email'] = ['sent' => false, 'error' => 'El contacto no tiene email registrado.'];
+        }
+
+        // Enviar por WhatsApp
+        if (in_array($channel, ['whatsapp', 'both']) && !empty($primaryContact->phone)) {
+            try {
+                $phone = preg_replace('/[^0-9]/', '', $primaryContact->phone);
+                // Asegurar formato internacional (MX: +52)
+                if (strlen($phone) === 10) {
+                    $phone = '52' . $phone;
+                }
+                $whatsappUrl = "https://wa.me/{$phone}?text=" . urlencode($baseMessage);
+
+                // Si hay integración con API de WhatsApp Business, se usaría aquí.
+                // Por ahora devolvemos la URL para que el frontend la abra.
+                $results['whatsapp'] = [
+                    'sent' => true,
+                    'url' => $whatsappUrl,
+                    'phone' => $primaryContact->phone,
+                ];
+            } catch (\Exception $e) {
+                $results['whatsapp'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['whatsapp', 'both'])) {
+            $results['whatsapp'] = ['sent' => false, 'error' => 'El contacto no tiene teléfono registrado.'];
+        }
+
+        $allSent = collect($results)->every(fn($r) => $r['sent'] ?? false);
+
+        return response()->json([
+            'success' => $allSent,
+            'results' => $results,
+            'message' => $allSent ? 'Recordatorio enviado correctamente.' : 'Algunos canales no pudieron enviarse.',
+        ]);
+    }
+
+    /**
+     * Construye el mensaje predeterminado de recordatorio de pago.
+     * Solo incluye datos de la mensualidad específica (sin número de servicio).
+     */
+    private function buildDefaultReminderMessage(ServiceOrder $serviceOrder, ?int $installment = null): string
+    {
+        $clientName = $serviceOrder->client->name;
+        $projection = $serviceOrder->getPaymentProjection();
+        $installments = $projection['installments'] ?? [];
+
+        $msg = "Estimado(a) {$clientName},\n\n";
+        $msg .= "Le recordamos que tiene un pago pendiente con Sun's Power MX.\n\n";
+
+        if ($installment && isset($installments[$installment - 1])) {
+            $inst = $installments[$installment - 1];
+            $msg .= "Mensualidad: {$inst['label']}\n";
+            $msg .= "Monto: \$" . number_format($inst['amount'], 2) . " MXN\n";
+            $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($inst['projected_date'])->format('d/m/Y') . "\n\n";
+        } else {
+            // Buscar la primera cuota pendiente/atrasada
+            $nextPending = collect($installments)->first(fn($i) => in_array($i['status'], ['pending', 'late', 'defaulted', 'upcoming']));
+            if ($nextPending) {
+                $msg .= "Mensualidad: {$nextPending['label']}\n";
+                $msg .= "Monto: \$" . number_format($nextPending['amount'], 2) . " MXN\n";
+                $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($nextPending['projected_date'])->format('d/m/Y') . "\n\n";
+            }
+        }
+
+        $msg .= "Por favor, realice su pago a la brevedad para mantener su servicio al corriente.\n\n";
+        $msg .= "Si ya realizó su pago, haga caso omiso a este mensaje.\n\n";
+        $msg .= "Atentamente,\nSun's Power MX";
+
+        return $msg;
+    }
+
+    /**
+     * API: Actualiza el método de pago de una orden de servicio.
+     * PATCH /api/service-orders/{serviceOrder}/payment-method
+     */
+    public function updatePaymentMethod(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+        ]);
+
+        $serviceOrder->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'payment_method' => $serviceOrder->payment_method,
+            'message' => 'Plan de pago actualizado correctamente.',
+        ]);
     }
 }

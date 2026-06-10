@@ -5,14 +5,14 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, 
-    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem, NDropdown, NSwitch
+    createDiscreteApi, NTooltip, NSelect, NDatePicker, NModal, NCard, NForm, NFormItem, NDropdown, NSwitch, NDivider
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     CalendarOutline, LocationOutline, PersonOutline, BusinessOutline,
     ChevronDownOutline, HardwareChipOutline, TimeOutline, CloseCircleOutline,
     OpenOutline, InformationCircleOutline, CheckmarkCircleOutline, CheckmarkDoneOutline,
-    EllipsisHorizontal
+    EllipsisHorizontal, CashOutline, HomeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -154,6 +154,28 @@ const taxId = ref(''); // RFC opcional
 const newServiceOrderId = ref(null);
 const completingSystemType = ref(null);
 
+// Propuesta comercial para Step 2 del modal
+const paymentMethod = ref(null);
+const downPayment = ref(null);
+const requiresPreInstallation = ref(false);
+const preInstallationAssignedTo = ref(null);
+const preInstallationDetails = ref('');
+
+const paymentMethodOptions = [
+    { label: 'Contado', value: 'Contado' },
+    { label: '3 MSI', value: '3 MSI' },
+    { label: '6 MSI', value: '6 MSI' },
+    { label: '9 MSI', value: '9 MSI' },
+    { label: '12 MSI', value: '12 MSI' },
+    { label: 'Personalizado', value: 'Personalizado' },
+];
+
+const preInstallationOptions = [
+    { label: "Sun's power mx", value: "Sun's power mx" },
+    { label: 'Cliente', value: 'Cliente' },
+    { label: 'Otro', value: 'Otro' },
+];
+
 const openCompleteModal = (visitId) => {
     completingVisitId.value = visitId;
     completeStep.value = 1;
@@ -175,6 +197,12 @@ const handleCompleteFlow = (createClient) => {
         onSuccess: () => {
             isCompleting.value = false;
             if (createClient) {
+                // Resetear campos de propuesta comercial al avanzar al paso 2
+                paymentMethod.value = null;
+                downPayment.value = null;
+                requiresPreInstallation.value = false;
+                preInstallationAssignedTo.value = null;
+                preInstallationDetails.value = '';
                 // Si creó cliente, mostrar paso 2 (orden de servicio)
                 completeStep.value = 2;
                 notification.success({ title: 'Cliente Creado', content: 'Visita terminada y cliente creado exitosamente.', duration: 3000 });
@@ -193,7 +221,13 @@ const handleCompleteFlow = (createClient) => {
 
 const handleCreateServiceOrder = () => {
     isCompleting.value = true;
-    router.post(route('technical-visits.create-service-order', completingVisitId.value), {}, {
+    router.post(route('technical-visits.create-service-order', completingVisitId.value), {
+        payment_method: paymentMethod.value,
+        down_payment: downPayment.value ? parseFloat(downPayment.value) : null,
+        requires_pre_installation: requiresPreInstallation.value,
+        pre_installation_assigned_to: preInstallationAssignedTo.value,
+        pre_installation_details: preInstallationDetails.value || null,
+    }, {
         preserveScroll: true,
         onSuccess: (page) => {
             isCompleting.value = false;
@@ -833,10 +867,73 @@ const rowProps = (row) => ({
                         <h3 class="text-lg font-semibold text-gray-800">¿Crear orden de servicio?</h3>
                         <p class="text-sm text-gray-500 mt-2">
                             Se generará una orden de servicio tipo <strong>{{ completingSystemType || 'sin definir' }}</strong>
-                            con tareas, evidencias y productos configurados automáticamente. <br>
-                            Si el cliente no aceptó el trabajo no es necesario crear la orden.
+                            con tareas, evidencias y productos configurados automáticamente.
                         </p>
                     </div>
+
+                    <!-- Propuesta Comercial -->
+                    <div class="bg-gray-50 rounded-xl p-4 mb-6 space-y-4">
+                        <h4 class="text-sm font-bold text-gray-600 flex items-center gap-2">
+                            <n-icon :component="CashOutline" class="text-indigo-500" />
+                            Propuesta Comercial
+                        </h4>
+
+                        <n-form-item label="Método de Pago" label-placement="top" size="small">
+                            <n-select
+                                v-model:value="paymentMethod"
+                                :options="paymentMethodOptions"
+                                placeholder="Seleccionar plan de pago"
+                                clearable
+                            />
+                        </n-form-item>
+
+                        <n-form-item label="Anticipo (MXN)" label-placement="top" size="small">
+                            <n-input
+                                v-model:value="downPayment"
+                                type="number"
+                                placeholder="0.00"
+                                :min="0"
+                                :step="0.01"
+                            >
+                                <template #prefix>$</template>
+                            </n-input>
+                        </n-form-item>
+
+                        <n-divider class="!my-3" />
+
+                        <h4 class="text-sm font-bold text-gray-600 flex items-center gap-2">
+                            <n-icon :component="HomeOutline" class="text-orange-500" />
+                            Acondicionamiento Previo
+                        </h4>
+
+                        <n-form-item label="¿Requiere acondicionamiento previo a la instalación?" label-placement="top" size="small">
+                            <n-switch v-model:value="requiresPreInstallation">
+                                <template #checked>Sí</template>
+                                <template #unchecked>No</template>
+                            </n-switch>
+                        </n-form-item>
+
+                        <template v-if="requiresPreInstallation">
+                            <n-form-item label="¿Quién lo realizará?" label-placement="top" size="small">
+                                <n-select
+                                    v-model:value="preInstallationAssignedTo"
+                                    :options="preInstallationOptions"
+                                    placeholder="Seleccionar responsable"
+                                    clearable
+                                />
+                            </n-form-item>
+
+                            <n-form-item label="Detalles del acondicionamiento" label-placement="top" size="small">
+                                <n-input
+                                    v-model:value="preInstallationDetails"
+                                    type="textarea"
+                                    placeholder="Describir los trabajos de acondicionamiento necesarios..."
+                                    :autosize="{ minRows: 2, maxRows: 4 }"
+                                />
+                            </n-form-item>
+                        </template>
+                    </div>
+
                     <div class="flex justify-center gap-4">
                         <n-button size="large" @click="showCompleteModal = false" :disabled="isCompleting">
                             No, finalizar

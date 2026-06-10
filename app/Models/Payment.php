@@ -15,6 +15,7 @@ class Payment extends Model implements HasMedia
     protected $fillable = [
         'client_id',
         'service_order_id',
+        'installment_number',
         'amount',
         'payment_date',
         'method', // Enum: Efectivo, Transferencia...

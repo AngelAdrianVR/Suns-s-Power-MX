@@ -77,13 +77,7 @@ return new class extends Migration
             $table->string('battery_brand')->nullable();
             $table->decimal('battery_capacity', 10, 2)->nullable()->comment('En kWh');
             $table->json('backup_devices')->nullable()->comment('Lista de equipos a respaldar (concepto, horas)');
-            
-            // Propuesta Comercial y Acondicionamiento
-            $table->enum('payment_method', ['Contado', '3 MSI', '6 MSI', '9 MSI', '12 MSI', 'Personalizado'])->nullable();
-            $table->boolean('requires_pre_installation')->default(false);
-            $table->text('pre_installation_details')->nullable();
-            $table->enum('pre_installation_assigned_to', ['Sun\'s power mx', 'Cliente', 'Otro'])->nullable();
-            
+                        
             $table->timestamps();
         });
     }

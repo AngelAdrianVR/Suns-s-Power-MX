@@ -20,9 +20,29 @@ const props = defineProps({
         type: Object,
         default: null
     },
+    preselectedOrderId: {
+        type: Number,
+        default: null
+    },
+    preselectedAmount: {
+        type: Number,
+        default: null
+    },
+    lockAmount: {
+        type: Boolean,
+        default: false
+    },
+    installmentNumber: {
+        type: Number,
+        default: null
+    },
+    modalTitle: {
+        type: String,
+        default: 'Registrar Abono'
+    },
 });
 
-const emit = defineEmits(['update:show', 'close']);
+const emit = defineEmits(['update:show', 'close', 'paid']);
 const { notification } = createDiscreteApi(['notification']);
 
 const loadingOrders = ref(false);
@@ -68,6 +88,9 @@ watch(() => props.show, async (newValue) => {
         form.reset();
         form.client_id = props.client.id;
         form.payment_date = Date.now();
+        // Reset preselected values for next open
+        form.service_order_id = null;
+        form.amount = 0;
         serviceOrders.value = [];
         loadingOrders.value = true;
         fetchError.value = null;
@@ -76,7 +99,14 @@ watch(() => props.show, async (newValue) => {
             const response = await axios.get(route('api.clients.pending-orders', props.client.id));
             serviceOrders.value = response.data;
             
-            if (serviceOrders.value.length === 1) {
+            // Priorizar preselectedOrderId si viene
+            if (props.preselectedOrderId) {
+                const found = serviceOrders.value.find(o => o.id === props.preselectedOrderId);
+                if (found) {
+                    form.service_order_id = found.id;
+                    form.amount = props.preselectedAmount ?? found.pending_balance;
+                }
+            } else if (serviceOrders.value.length === 1) {
                 form.service_order_id = serviceOrders.value[0].id;
                 form.amount = serviceOrders.value[0].pending_balance;
             }
@@ -88,10 +118,10 @@ watch(() => props.show, async (newValue) => {
     }
 });
 
-// Auto-llenar monto al cambiar de orden
+// Auto-llenar monto al cambiar de orden (solo si no está bloqueado)
 watch(() => form.service_order_id, (newId) => {
     const order = serviceOrders.value.find(o => o.id === newId);
-    if (order) {
+    if (order && !props.lockAmount) {
         form.amount = order.pending_balance;
     }
 });
@@ -125,11 +155,13 @@ const submit = () => {
 
     form.transform((data) => ({
         ...data,
+        installment_number: props.installmentNumber,
         payment_date: new Date(data.payment_date).toISOString().split('T')[0]
     })).post(route('payments.store'), {
         preserveScroll: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Abono registrado correctamente.', duration: 3000 });
+            emit('paid');
             closeModal();
         },
         onError: () => {
@@ -148,7 +180,7 @@ const closeModal = () => {
     <NModal :show="show" @update:show="(val) => emit('update:show', val)">
         <NCard 
             style="width: 650px; border-radius: 0.75rem;" 
-            :title="`Registrar Abono`"
+            :title="modalTitle"
             :bordered="false"
             size="small"
             role="dialog"
@@ -230,6 +262,7 @@ const closeModal = () => {
                                 class="w-full"
                                 size="medium"
                                 placeholder="0.00"
+                                :disabled="lockAmount"
                             >
                                 <template #prefix>$</template>
                             </NInputNumber>

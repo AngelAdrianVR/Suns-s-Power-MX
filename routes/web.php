@@ -3,6 +3,7 @@
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EvidenceTemplateController;
 use App\Http\Controllers\NotificationController;
@@ -116,12 +117,45 @@ Route::post('/service-order-evidences/{evidence}/media', [ServiceOrderController
 // Regresamos a POST la original por si en un futuro decides colocar un botón en el sistema para dispararla
 Route::post('/ordenes-servicio/sync-evidences', [ServiceOrderController::class, 'syncEvidences'])->name('service-orders.sync-evidences')->middleware('auth');
 
+// API: Proyección de pagos y recordatorios
+Route::get('/api/service-orders/{serviceOrder}/payment-projection', [ServiceOrderController::class, 'paymentProjection'])
+    ->name('api.service-orders.payment-projection')
+    ->middleware('auth');
+Route::post('/api/service-orders/{serviceOrder}/send-reminder', [ServiceOrderController::class, 'sendPaymentReminder'])
+    ->name('api.service-orders.send-reminder')
+    ->middleware('auth');
+// Actualizar método de pago de una orden
+Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderController::class, 'updatePaymentMethod'])
+    ->name('api.service-orders.update-payment-method')
+    ->middleware('auth');
+// API: Reporte de cartera de deuda
+Route::get('/api/clients/debt-report', [ClientController::class, 'apiDebtReport'])
+    ->name('api.clients.debt-report')
+    ->middleware('auth');
+
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
 Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
 Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
 
 Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
     ->name('service-orders.confirm-installation')
+    ->middleware('auth');
+
+// --- RUTAS DE ACONDICIONAMIENTO PREVIO (CONDITIONINGS) ---
+Route::post('service-orders/{serviceOrder}/conditionings', [ServiceOrderController::class, 'storeConditioning'])
+    ->name('service-orders.conditionings.store')
+    ->middleware('auth');
+Route::patch('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'updateConditioning'])
+    ->name('service-orders.conditionings.update')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'destroyConditioning'])
+    ->name('service-orders.conditionings.destroy')
+    ->middleware('auth');
+Route::post('service-orders/conditionings/{conditioning}/media', [ServiceOrderController::class, 'uploadConditioningMedia'])
+    ->name('service-orders.conditionings.media.upload')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}/media/{media}', [ServiceOrderController::class, 'deleteConditioningMedia'])
+    ->name('service-orders.conditionings.media.delete')
     ->middleware('auth');
 
 
@@ -143,6 +177,12 @@ Route::patch('/visitas-tecnicas/{technicalVisit}/update-system-type', [Technical
 Route::post('/visitas-tecnicas/{technicalVisit}/convert-to-client', [TechnicalVisitController::class, 'convertToClient'])->name('technical-visits.convert-to-client')->middleware('auth');
 // Crear orden de servicio desde visita técnica
 Route::post('/visitas-tecnicas/{technicalVisit}/create-service-order', [TechnicalVisitController::class, 'createServiceOrder'])->name('technical-visits.create-service-order')->middleware('auth');
+
+
+// ---------------------------------- RUTAS DE CONTACTOS (CRUD) ----------------------------------
+Route::post('/contactos', [ContactController::class, 'store'])->name('contacts.store')->middleware('auth');
+Route::patch('/contactos/{contact}', [ContactController::class, 'update'])->name('contacts.update')->middleware('auth');
+Route::delete('/contactos/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy')->middleware('auth');
 
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
@@ -197,6 +237,10 @@ Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class
 
 
 // ---------------------------- Rutas de Clientes --------------------------------
+// Reporte de cartera de deuda (DEBE ir antes del resource para no colisionar con {cliente})
+Route::get('/clientes/reporte-cartera', [ClientController::class, 'debtReport'])
+    ->name('clients.debt-report')
+    ->middleware('auth');
 Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
