@@ -66,7 +66,7 @@ class PaymentController extends Controller
             'method' => 'required|string|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:500',
-            // NUEVO: Validación de archivo obligatorio
+            'installment_number' => 'nullable|integer|min:1',
             'proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240', 
         ]);
 
@@ -83,6 +83,7 @@ class PaymentController extends Controller
             $payment = Payment::create([
                 'client_id' => $validated['client_id'],
                 'service_order_id' => $validated['service_order_id'],
+                'installment_number' => $validated['installment_number'] ?? null,
                 'amount' => $validated['amount'],
                 'payment_date' => $validated['payment_date'],
                 'method' => $validated['method'],

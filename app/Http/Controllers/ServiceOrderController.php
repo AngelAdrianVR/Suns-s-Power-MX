@@ -18,6 +18,7 @@ use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
@@ -1264,5 +1265,189 @@ class ServiceOrderController extends Controller
         }
 
         return back()->with('error', 'Archivo no encontrado.');
+    }
+
+    /**
+     * API: Obtiene la proyección de pagos de una orden de servicio.
+     * GET /api/service-orders/{serviceOrder}/payment-projection
+     */
+    public function paymentProjection(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Cargar relaciones necesarias
+        $serviceOrder->load(['payments' => function ($q) {
+            $q->orderBy('payment_date');
+        }, 'client.contacts']);
+
+        $projection = $serviceOrder->getPaymentProjection();
+
+        // Agregar información del cliente para recordatorios
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        return response()->json([
+            'service_order' => [
+                'id' => $serviceOrder->id,
+                'status' => $serviceOrder->status,
+                'total_amount' => (float) $serviceOrder->total_amount,
+                'payment_method' => $serviceOrder->payment_method,
+                'down_payment' => (float) ($serviceOrder->down_payment ?? 0),
+                'price_per_module' => (float) ($serviceOrder->price_per_module ?? 0),
+                'created_at' => $serviceOrder->created_at->format('Y-m-d'),
+            ],
+            'projection' => $projection,
+            'reminder_info' => [
+                'has_email' => $primaryContact && !empty($primaryContact->email),
+                'has_phone' => $primaryContact && !empty($primaryContact->phone),
+                'email' => $primaryContact->email ?? null,
+                'phone' => $primaryContact->phone ?? null,
+                'contact_name' => $primaryContact->name ?? null,
+            ],
+        ]);
+    }
+
+    /**
+     * API: Envía recordatorio de pago al cliente (email y/o WhatsApp).
+     * POST /api/service-orders/{serviceOrder}/send-reminder
+     */
+    public function sendPaymentReminder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'channel' => 'required|in:email,whatsapp,both',
+            'installment' => 'nullable|integer|min:1',
+            'message' => 'nullable|string|max:500',
+        ]);
+
+        $channel = $request->input('channel');
+        $installment = $request->input('installment');
+        $customMessage = $request->input('message');
+
+        $serviceOrder->load('client.contacts');
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        if (!$primaryContact) {
+            return response()->json(['error' => 'El cliente no tiene contactos registrados.'], 422);
+        }
+
+        $results = [];
+        $baseMessage = $customMessage ?: $this->buildDefaultReminderMessage($serviceOrder, $installment);
+
+        // Enviar por Email
+        if (in_array($channel, ['email', 'both']) && !empty($primaryContact->email)) {
+            try {
+                // Usar el sistema de notificaciones de Laravel (mail)
+                Mail::raw($baseMessage, function ($message) use ($primaryContact, $serviceOrder) {
+                    $message->to($primaryContact->email, $primaryContact->name)
+                        ->subject("Recordatorio de Pago - Orden #{$serviceOrder->id} - Sun's Power MX");
+                });
+                $results['email'] = ['sent' => true, 'to' => $primaryContact->email];
+            } catch (\Exception $e) {
+                $results['email'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['email', 'both'])) {
+            $results['email'] = ['sent' => false, 'error' => 'El contacto no tiene email registrado.'];
+        }
+
+        // Enviar por WhatsApp
+        if (in_array($channel, ['whatsapp', 'both']) && !empty($primaryContact->phone)) {
+            try {
+                $phone = preg_replace('/[^0-9]/', '', $primaryContact->phone);
+                // Asegurar formato internacional (MX: +52)
+                if (strlen($phone) === 10) {
+                    $phone = '52' . $phone;
+                }
+                $whatsappUrl = "https://wa.me/{$phone}?text=" . urlencode($baseMessage);
+
+                // Si hay integración con API de WhatsApp Business, se usaría aquí.
+                // Por ahora devolvemos la URL para que el frontend la abra.
+                $results['whatsapp'] = [
+                    'sent' => true,
+                    'url' => $whatsappUrl,
+                    'phone' => $primaryContact->phone,
+                ];
+            } catch (\Exception $e) {
+                $results['whatsapp'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['whatsapp', 'both'])) {
+            $results['whatsapp'] = ['sent' => false, 'error' => 'El contacto no tiene teléfono registrado.'];
+        }
+
+        $allSent = collect($results)->every(fn($r) => $r['sent'] ?? false);
+
+        return response()->json([
+            'success' => $allSent,
+            'results' => $results,
+            'message' => $allSent ? 'Recordatorio enviado correctamente.' : 'Algunos canales no pudieron enviarse.',
+        ]);
+    }
+
+    /**
+     * Construye el mensaje predeterminado de recordatorio de pago.
+     * Solo incluye datos de la mensualidad específica (sin número de servicio).
+     */
+    private function buildDefaultReminderMessage(ServiceOrder $serviceOrder, ?int $installment = null): string
+    {
+        $clientName = $serviceOrder->client->name;
+        $projection = $serviceOrder->getPaymentProjection();
+        $installments = $projection['installments'] ?? [];
+
+        $msg = "Estimado(a) {$clientName},\n\n";
+        $msg .= "Le recordamos que tiene un pago pendiente con Sun's Power MX.\n\n";
+
+        if ($installment && isset($installments[$installment - 1])) {
+            $inst = $installments[$installment - 1];
+            $msg .= "Mensualidad: {$inst['label']}\n";
+            $msg .= "Monto: \$" . number_format($inst['amount'], 2) . " MXN\n";
+            $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($inst['projected_date'])->format('d/m/Y') . "\n\n";
+        } else {
+            // Buscar la primera cuota pendiente/atrasada
+            $nextPending = collect($installments)->first(fn($i) => in_array($i['status'], ['pending', 'late', 'defaulted', 'upcoming']));
+            if ($nextPending) {
+                $msg .= "Mensualidad: {$nextPending['label']}\n";
+                $msg .= "Monto: \$" . number_format($nextPending['amount'], 2) . " MXN\n";
+                $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($nextPending['projected_date'])->format('d/m/Y') . "\n\n";
+            }
+        }
+
+        $msg .= "Por favor, realice su pago a la brevedad para mantener su servicio al corriente.\n\n";
+        $msg .= "Si ya realizó su pago, haga caso omiso a este mensaje.\n\n";
+        $msg .= "Atentamente,\nSun's Power MX";
+
+        return $msg;
+    }
+
+    /**
+     * API: Actualiza el método de pago de una orden de servicio.
+     * PATCH /api/service-orders/{serviceOrder}/payment-method
+     */
+    public function updatePaymentMethod(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+        ]);
+
+        $serviceOrder->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'payment_method' => $serviceOrder->payment_method,
+            'message' => 'Plan de pago actualizado correctamente.',
+        ]);
     }
 }

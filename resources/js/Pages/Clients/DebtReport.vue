@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue';
-import AppLayout from '@/Layouts/AppLayout.vue';
-import { NButton, NIcon, NTag, NDivider } from 'naive-ui';
-import { PrintOutline, DownloadOutline, AlertCircleOutline } from '@vicons/ionicons5';
+import { Link, router } from '@inertiajs/vue3';
+import { NButton, NIcon, NTag } from 'naive-ui';
+import { PrintOutline, DownloadOutline, AlertCircleOutline, ArrowBackOutline } from '@vicons/ionicons5';
 
 const props = defineProps({
     reportData: Array,
@@ -43,21 +43,28 @@ const printReport = () => {
 </script>
 
 <template>
-    <!-- <AppLayout title="Reporte de Cartera de Deuda"> -->
-        <div class="py-8 min-h-screen bg-gray-50 print:bg-white">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="py-8 min-h-screen bg-gray-50 print:bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-                <!-- Barra de acciones (oculta en impresión) -->
-                <div class="flex justify-between items-center mb-6 print:hidden">
-                    <div>
-                        <h2 class="font-bold text-2xl text-gray-800">Reporte de Cartera de Deuda</h2>
-                        <p class="text-sm text-gray-500 mt-1">Generado el {{ generatedAt }}</p>
-                    </div>
-                    <n-button type="primary" size="large" @click="printReport" class="shadow-md">
+            <!-- Barra superior -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 print:hidden">
+                <div>
+                    <h2 class="font-bold text-2xl text-gray-800">Reporte de Cartera de Deuda</h2>
+                    <p class="text-sm text-gray-500 mt-1">Generado el {{ generatedAt }} &mdash; {{ totalClients }} clientes, {{ totalOrders }} órdenes</p>
+                </div>
+                <div class="flex gap-3">
+                    <Link :href="route('clients.index')">
+                        <n-button size="large" round>
+                            <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
+                            Volver
+                        </n-button>
+                    </Link>
+                    <n-button type="primary" size="large" @click="printReport" round class="shadow-md">
                         <template #icon><n-icon><PrintOutline /></n-icon></template>
-                        Imprimir Reporte
+                        Imprimir
                     </n-button>
                 </div>
+            </div>
 
                 <!-- CONTENIDO IMPRIMIBLE -->
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border-none print:rounded-none">
