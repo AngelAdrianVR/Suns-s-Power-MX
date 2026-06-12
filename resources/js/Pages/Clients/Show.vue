@@ -64,6 +64,13 @@ const openPaymentModal = (orderId = null, amount = null, lock = false, installme
     showPaymentModal.value = true;
 };
 
+// Recarga forzando la URL con el tab actual para garantizar que se refresquen todos los datos
+const handleRefresh = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', activeTab.value);
+    router.get(url.toString(), {}, { preserveScroll: true });
+};
+
 // --- UTILIDADES ---
 const formatCurrency = (amount) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 
@@ -231,7 +238,7 @@ const googleMapsUrl = computed(() => {
                                     <n-badge :value="client.service_orders.length" type="info" :max="99" class="scale-75 origin-left" />
                                 </div>
                             </template>
-                            <ClientOrderDetail :client="client" :stats="stats" @open-payment="openPaymentModal" />
+                            <ClientOrderDetail :client="client" :stats="stats" @open-payment="openPaymentModal" @refresh="handleRefresh" />
                         </n-tab-pane>
 
                         <n-tab-pane name="tickets" tab="Tickets">
@@ -282,7 +289,7 @@ const googleMapsUrl = computed(() => {
             :lock-amount="lockPaymentAmount"
             :installment-number="paymentInstallmentNumber"
             :modal-title="paymentModalTitle"
-            @paid="router.reload({ preserveScroll: true })"
+            @paid="handleRefresh"
             @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null;"
         />
     </AppLayout>

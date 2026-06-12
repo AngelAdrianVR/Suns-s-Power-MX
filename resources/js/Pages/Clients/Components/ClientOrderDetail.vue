@@ -14,7 +14,8 @@ import {
     ConstructOutline, WalletOutline, AlertCircleOutline,
     CheckmarkCircleOutline, TimeOutline, CloseCircleOutline,
     MailOutline, LogoWhatsapp, CashOutline, EyeOutline,
-    SendOutline, AttachOutline, CalendarOutline
+    SendOutline, AttachOutline, CalendarOutline,
+    CreateOutline, SaveOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -22,7 +23,7 @@ const props = defineProps({
     stats: Object,
 });
 
-const emit = defineEmits(['open-payment']);
+const emit = defineEmits(['open-payment', 'refresh']);
 
 const { hasPermission } = usePermissions();
 const { openFileWithRetry } = useSecureFile();
@@ -158,6 +159,12 @@ const hasLateInstallments = computed(() => {
     );
 });
 
+// --- SOLO PERMITIR MODIFICAR PLAN SI NO HAY PAGOS REGISTRADOS ---
+const canModifyPaymentPlan = computed(() => {
+    if (!selectedOrder.value) return false;
+    return !selectedOrder.value.total_paid || selectedOrder.value.total_paid <= 0;
+});
+
 // Solo se permite recordatorio para la primera cuota pendiente/atrasada
 const canRemindNext = computed(() => {
     if (!nextPendingInstallment.value) return false;
@@ -219,11 +226,14 @@ const savePaymentMethod = async () => {
         await axios.patch(route('api.service-orders.update-payment-method', selectedOrderId.value), paymentMethodForm.value);
         showPaymentMethodModal.value = false;
         notification.success({ title: 'Actualizado', content: 'Plan de pago guardado correctamente.', duration: 3000 });
+        // Notificar al padre para refrescar datos de la orden (payment_method, etc.)
+        emit('refresh');
         // Refrescar proyección
         const response = await axios.get(route('api.service-orders.payment-projection', selectedOrderId.value));
         projectionData.value = response.data;
     } catch (error) {
-        notification.error({ title: 'Error', content: 'No se pudo actualizar el plan de pago.', duration: 3000 });
+        const msg = error.response?.data?.error || 'No se pudo actualizar el plan de pago.';
+        notification.error({ title: 'Error', content: msg, duration: 4000 });
     } finally {
         savingPaymentMethod.value = false;
     }
@@ -304,6 +314,38 @@ const orderRemaining = computed(() => {
     if (!selectedOrder.value) return 0;
     return Math.max(0, parseFloat(selectedOrder.value.total_amount || 0) - orderTotalPaid.value);
 });
+
+// --- INLINE EDIT: PRECIO DE MANTENIMIENTO POR MÓDULO ---
+const isEditingPrice = ref(false);
+const editingPrice = ref(null);
+const isSavingPrice = ref(false);
+
+const startEditPrice = () => {
+    editingPrice.value = selectedOrder.value?.price_per_module || null;
+    isEditingPrice.value = true;
+};
+
+const cancelEditPrice = () => {
+    isEditingPrice.value = false;
+    editingPrice.value = selectedOrder.value?.price_per_module || null;
+};
+
+const savePrice = async () => {
+    isSavingPrice.value = true;
+    try {
+        await axios.patch(
+            route('api.service-orders.update-maintenance-price', selectedOrderId.value),
+            { price_per_module: editingPrice.value }
+        );
+        isEditingPrice.value = false;
+        notification.success({ title: 'Actualizado', content: 'Precio de mantenimiento guardado.', duration: 3000 });
+        emit('refresh');
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudo guardar el precio.', duration: 3000 });
+    } finally {
+        isSavingPrice.value = false;
+    }
+};
 </script>
 
 <template>
@@ -356,13 +398,27 @@ const orderRemaining = computed(() => {
                         <n-grid-item span="4 m:2 l:1">
                             <n-statistic label="Plan de Pago" tabular-nums>
                                 <template v-if="selectedOrder.payment_method">
-                                    <n-tag type="info" size="small" round :bordered="false">
-                                        {{ paymentPlanLabel(selectedOrder.payment_method) }}
-                                    </n-tag>
+                                    <div class="flex items-center gap-1 flex-wrap">
+                                        <n-tag type="info" size="small" round :bordered="false">
+                                            {{ paymentPlanLabel(selectedOrder.payment_method) }}
+                                        </n-tag>
+                                        <n-button
+                                            v-if="canModifyPaymentPlan"
+                                            size="tiny" text type="warning"
+                                            @click="openPaymentMethodModal"
+                                        >
+                                            Editar
+                                        </n-button>
+                                    </div>
                                 </template>
-                                <n-button v-else size="tiny" text type="warning" @click="openPaymentMethodModal">
+                                <n-button
+                                    v-else-if="canModifyPaymentPlan"
+                                    size="tiny" text type="warning"
+                                    @click="openPaymentMethodModal"
+                                >
                                     Agregar plan de pago
                                 </n-button>
+                                <span v-else class="text-xs text-gray-400 italic">Sin plan</span>
                             </n-statistic>
                         </n-grid-item>
                         <n-grid-item span="4 m:2 l:1">
@@ -384,9 +440,30 @@ const orderRemaining = computed(() => {
                             <div class="text-[10px] text-gray-400 uppercase">Tipo de Sistema</div>
                             <div class="text-sm font-medium">{{ selectedOrder.system_type }}</div>
                         </n-grid-item>
-                        <n-grid-item v-if="selectedOrder.price_per_module">
-                            <div class="text-[10px] text-gray-400 uppercase">Precio / Módulo</div>
-                            <div class="text-sm font-medium">{{ formatCurrency(selectedOrder.price_per_module) }}</div>
+                        <n-grid-item>
+                            <div class="text-[10px] text-gray-400 uppercase">Precio Mantenimiento / Módulo</div>
+                            <div v-if="!isEditingPrice" class="flex items-center gap-1">
+                                <span class="text-sm font-medium">{{ selectedOrder.price_per_module ? formatCurrency(selectedOrder.price_per_module) : '—' }}</span>
+                                <n-button size="tiny" text type="primary" @click="startEditPrice">
+                                    <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                </n-button>
+                            </div>
+                            <div v-else class="flex items-center gap-1">
+                                <n-input-number
+                                    v-model:value="editingPrice"
+                                    :min="0"
+                                    :precision="2"
+                                    size="tiny"
+                                    placeholder="0.00"
+                                    class="w-24"
+                                >
+                                    <template #prefix>$</template>
+                                </n-input-number>
+                                <n-button size="tiny" type="primary" @click="savePrice" :loading="isSavingPrice">
+                                    <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                </n-button>
+                                <n-button size="tiny" @click="cancelEditPrice">X</n-button>
+                            </div>
                         </n-grid-item>
                     </n-grid>
 

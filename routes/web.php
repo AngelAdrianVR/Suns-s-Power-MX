@@ -128,6 +128,10 @@ Route::post('/api/service-orders/{serviceOrder}/send-reminder', [ServiceOrderCon
 Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderController::class, 'updatePaymentMethod'])
     ->name('api.service-orders.update-payment-method')
     ->middleware('auth');
+// Actualizar precio de mantenimiento por módulo
+Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
+    ->name('api.service-orders.update-maintenance-price')
+    ->middleware('auth');
 // API: Reporte de cartera de deuda
 Route::get('/api/clients/debt-report', [ClientController::class, 'apiDebtReport'])
     ->name('api.clients.debt-report')

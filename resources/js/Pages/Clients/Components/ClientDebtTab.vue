@@ -216,10 +216,10 @@ const columns = [
                     class="w-48"
                     @update:value="handleFilterChange"
                 />
-                <n-button size="small" secondary round type="warning" @click="downloadReport">
+                <!-- <n-button size="small" secondary round type="warning" @click="downloadReport">
                     <template #icon><n-icon><DownloadOutline /></n-icon></template>
                     Descargar reporte
-                </n-button>
+                </n-button> -->
             </div>
         </div>
 

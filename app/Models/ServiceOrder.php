@@ -56,7 +56,7 @@ class ServiceOrder extends Model implements HasMedia
         // Propuesta comercial y reacondicionamientos
         'payment_method',
         'down_payment',
-        'price_per_module',
+        'price_per_module', // <-- NUEVO costo de mantenimiento por modulo
         'extra_data',
         'requires_pre_installation',
         'pre_installation_details',
@@ -126,7 +126,6 @@ class ServiceOrder extends Model implements HasMedia
     {
         $method = $this->payment_method;
         $totalAmount = (float) $this->total_amount;
-        $downPayment = (float) ($this->down_payment ?? 0);
         $startDate = $this->created_at ?? now();
 
         // Si no hay método de pago o es Cotización/Cancelado, no hay proyección
@@ -134,10 +133,25 @@ class ServiceOrder extends Model implements HasMedia
             return [];
         }
 
+        // Cargar pagos reales si no están cargados
+        if (!$this->relationLoaded('payments')) {
+            $this->load('payments');
+        }
+
+        // --- CALCULAR ANTICIPO TOTAL ---
+        // Tomar el anticipo del campo `down_payment` + pagos registrados con notas 'Anticipo'
+        $downPayment = (float) ($this->down_payment ?? 0);
+        $anticipoPayments = $this->payments->where('notes', 'Anticipo');
+        $anticipoTotal = (float) $anticipoPayments->sum('amount');
+        $totalDownPayment = $downPayment + $anticipoTotal;
+
+        // Pre-marcar los pagos de anticipo como ya usados para que no se emparejen con cuotas
+        $usedPaymentIds = $anticipoPayments->pluck('id')->toArray();
+
         $projections = [];
 
         if ($method === 'Contado') {
-            $amount = $totalAmount - $downPayment;
+            $amount = $totalAmount - $totalDownPayment;
             if ($amount > 0) {
                 $projections[] = [
                     'installment' => 1,
@@ -148,7 +162,7 @@ class ServiceOrder extends Model implements HasMedia
             }
         } elseif (in_array($method, ['3 MSI', '6 MSI', '9 MSI', '12 MSI'])) {
             $months = (int) explode(' ', $method)[0];
-            $remainingAmount = $totalAmount - $downPayment;
+            $remainingAmount = $totalAmount - $totalDownPayment;
             $monthlyAmount = $remainingAmount / $months;
 
             for ($i = 1; $i <= $months; $i++) {
@@ -164,13 +178,7 @@ class ServiceOrder extends Model implements HasMedia
             return [];
         }
 
-        // Cargar pagos reales si no están cargados
-        if (!$this->relationLoaded('payments')) {
-            $this->load('payments');
-        }
-
         $actualPayments = $this->payments->sortBy('payment_date')->values();
-        $usedPaymentIds = [];
 
         // Mapa rápido: pagos con installment_number definido (prioridad máxima)
         $installmentPayments = $actualPayments->filter(fn($p) => $p->installment_number !== null)
@@ -324,6 +332,8 @@ class ServiceOrder extends Model implements HasMedia
         return [
             'method' => $method,
             'down_payment' => $downPayment,
+            'anticipo_payments_total' => $anticipoTotal,
+            'total_down_payment' => $totalDownPayment,
             'total_amount' => $totalAmount,
             'installments' => $projections,
             'unmatched_payments' => $unmatchedPayments->map(fn($p) => [

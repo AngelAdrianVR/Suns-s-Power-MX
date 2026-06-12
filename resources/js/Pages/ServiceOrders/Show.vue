@@ -3,6 +3,7 @@ import { ref, computed, onMounted, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import axios from 'axios';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
 import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
@@ -17,7 +18,7 @@ import {
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, 
     CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
-    HardwareChipOutline, HomeOutline
+    HardwareChipOutline, HomeOutline, SaveOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
@@ -131,6 +132,43 @@ const remainingAmount = computed(() => {
     if (remaining <= 0) return null;
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(remaining);
 });
+
+const formattedPricePerModule = computed(() => {
+    if (!props.order.price_per_module) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(props.order.price_per_module);
+});
+
+// --- INLINE EDIT: PRECIO DE MANTENIMIENTO POR MÓDULO ---
+const isEditingPrice = ref(false);
+const editingPrice = ref(null);
+const isSavingPrice = ref(false);
+
+const startEditPrice = () => {
+    editingPrice.value = props.order.price_per_module || null;
+    isEditingPrice.value = true;
+};
+
+const cancelEditPrice = () => {
+    isEditingPrice.value = false;
+    editingPrice.value = props.order.price_per_module || null;
+};
+
+const savePrice = async () => {
+    isSavingPrice.value = true;
+    try {
+        await axios.patch(
+            route('api.service-orders.update-maintenance-price', props.order.id),
+            { price_per_module: editingPrice.value }
+        );
+        isEditingPrice.value = false;
+        notification.success({ title: 'Actualizado', content: 'Precio de mantenimiento guardado.', duration: 3000 });
+        router.reload({ only: ['order'] });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudo guardar el precio.', duration: 3000 });
+    } finally {
+        isSavingPrice.value = false;
+    }
+};
 
 const refreshOrder = () => {
     router.reload({ only: ['order'] });
@@ -402,22 +440,67 @@ const confirmDelete = () => {
 
                 <!-- Segunda fila: Pago y Acondicionamiento -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <n-card v-if="order.payment_method || order.down_payment" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
-                        <div class="flex items-center gap-2 text-emerald-800 font-semibold mb-3">
-                            <n-icon :component="CashOutline" /> Plan de Pago
+                    <n-card v-if="order.payment_method || order.down_payment || order.price_per_module" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
+                        <!-- Se actualizó el div superior con 'justify-between' para separar el título y el botón -->
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2 text-emerald-800 font-semibold">
+                                <n-icon :component="CashOutline" /> Plan de Pago
+                            </div>
+                            
+                            <!-- Nuevo botón de navegación -->
+                            <n-button 
+                                v-if="order?.client?.id"
+                                size="small" 
+                                type="primary" 
+                                secondary
+                                @click="$inertia.visit(route('clients.show', { id: order.client.id }))"
+                            >
+                                Ver Detalles
+                            </n-button>
                         </div>
+
                         <n-grid cols="2" y-gap="8">
                             <n-grid-item>
                                 <div class="text-xs text-gray-400 uppercase font-bold">Método</div>
                                 <n-tag type="info" size="small" round :bordered="false">{{ paymentMethodLabel }}</n-tag>
                             </n-grid-item>
+                            
                             <n-grid-item v-if="formattedDownPayment">
                                 <div class="text-xs text-gray-400 uppercase font-bold">Anticipo</div>
                                 <div class="text-sm font-bold text-green-700">{{ formattedDownPayment }}</div>
                             </n-grid-item>
+                            
                             <n-grid-item v-if="remainingAmount">
                                 <div class="text-xs text-gray-400 uppercase font-bold">Saldo Pendiente</div>
                                 <div class="text-sm font-bold text-amber-600">{{ remainingAmount }}</div>
+                            </n-grid-item>
+
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Precio Mantenimiento / Módulo</div>
+                                <div v-if="!isEditingPrice" class="flex items-center gap-2">
+                                    <span class="text-sm font-bold text-gray-700">
+                                        {{ formattedPricePerModule || '—' }}
+                                    </span>
+                                    <n-button size="tiny" text type="primary" @click="startEditPrice">
+                                        <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                    </n-button>
+                                </div>
+                                <div v-else class="flex items-center gap-2">
+                                    <n-input-number
+                                        v-model:value="editingPrice"
+                                        :min="0"
+                                        :precision="2"
+                                        size="small"
+                                        placeholder="0.00"
+                                        class="w-32"
+                                    >
+                                        <template #prefix>$</template>
+                                    </n-input-number>
+                                    <n-button size="tiny" type="primary" @click="savePrice" :loading="isSavingPrice">
+                                        <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                    </n-button>
+                                    <n-button size="tiny" @click="cancelEditPrice">Cancelar</n-button>
+                                </div>
                             </n-grid-item>
                         </n-grid>
                     </n-card>

@@ -213,6 +213,7 @@ class ServiceOrderController extends Controller
             // Propuesta comercial
             'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
             'down_payment' => 'nullable|numeric|min:0',
+            'price_per_module' => 'nullable|numeric|min:0',
             'requires_pre_installation' => 'boolean',
             'pre_installation_details' => 'nullable|string',
             'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
@@ -542,6 +543,7 @@ class ServiceOrderController extends Controller
             // Propuesta comercial
             'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
             'down_payment' => 'nullable|numeric|min:0',
+            'price_per_module' => 'nullable|numeric|min:0',
             'requires_pre_installation' => 'boolean',
             'pre_installation_details' => 'nullable|string',
             'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
@@ -1437,6 +1439,14 @@ class ServiceOrderController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
+        // Validar que no existan pagos registrados (incluyendo anticipo)
+        if ($serviceOrder->payments()->exists()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No se puede modificar el plan de pago porque ya existen pagos registrados.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
             'down_payment' => 'nullable|numeric|min:0',
@@ -1448,6 +1458,30 @@ class ServiceOrderController extends Controller
             'success' => true,
             'payment_method' => $serviceOrder->payment_method,
             'message' => 'Plan de pago actualizado correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Actualiza el precio de mantenimiento por módulo.
+     * PATCH /api/service-orders/{serviceOrder}/maintenance-price
+     */
+    public function updateMaintenancePrice(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'price_per_module' => 'nullable|numeric|min:0',
+        ]);
+
+        $serviceOrder->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'price_per_module' => (float) $serviceOrder->price_per_module,
+            'message' => 'Precio de mantenimiento actualizado correctamente.',
         ]);
     }
 }
