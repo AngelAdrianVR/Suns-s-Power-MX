@@ -356,26 +356,57 @@ const createColumns = () => {
         {
             title: '',
             key: 'actions',
-            width: 200,
+            width: 220,
             render(row) {
                 const canEdit = hasPermission('technical_visits.edit');
                 const canDelete = hasPermission('technical_visits.delete');
 
-                // Opciones del dropdown de cambio de estatus
-                const statusOptions = [
-                    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
-                    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
-                    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
-                    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
-                ];
+                // --- Opciones dinámicas según estatus ---
+                const getStatusOptions = (visitRow) => {
+                    const s = visitRow.status;
+                    const items = [];
 
-                const isTerminated = row.status === 'Terminada';
+                    // Pendiente: NO mostrar Terminar
+                    if (s === 'Pendiente' || s === 'Reprogramada') {
+                        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                    }
+                    // Aceptada: mostrar Terminar
+                    else if (s === 'Aceptada') {
+                        items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                    }
+                    // Rechazada: solo opción de Aceptar/Reprogramar para revertir
+                    else if (s === 'Rechazada') {
+                        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                    }
+                    // Terminada: acciones de conversión
+                    else if (s === 'Terminada') {
+                        if (!visitRow.has_client) {
+                            items.push({ label: 'Convertir a Cliente', key: 'convert-client', icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) });
+                        }
+                        if (visitRow.has_client && !visitRow.has_service_order) {
+                            items.push({ label: 'Crear Orden de Servicio', key: 'create-order', icon: () => h(NIcon, null, { default: () => h(HardwareChipOutline) }) });
+                        }
+                    }
+
+                    return items;
+                };
 
                 const handleStatusSelect = (key, visitRow) => {
                     if (key === 'reschedule') { openRescheduleModal(visitRow); }
                     else if (key === 'reject') { openRejectModal(visitRow); }
-                    else if (key === 'accept' || key === 'complete') { quickAction(visitRow.id, key); }
+                    else if (key === 'accept') { quickAction(visitRow.id, 'accept'); }
+                    else if (key === 'complete') { quickAction(visitRow.id, 'complete'); }
+                    else if (key === 'convert-client') { goToShow(visitRow.id); }
+                    else if (key === 'create-order') { goToShow(visitRow.id); }
                 };
+
+                const dynamicOptions = getStatusOptions(row);
+                const hasDropdown = dynamicOptions.length > 0 && canEdit;
 
                 return h(NSpace, { justify: 'end', wrap: false }, () => [
                     h(NTooltip, { trigger: 'hover' }, {
@@ -392,10 +423,9 @@ const createColumns = () => {
                         }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
                         default: () => 'Editar'
                     }) : null,
-                    // Ocultar dropdown de estatus para visitas terminadas
-                    canEdit && !isTerminated ? h(NDropdown, {
+                    hasDropdown ? h(NDropdown, {
                         trigger: 'click',
-                        options: statusOptions,
+                        options: dynamicOptions,
                         onSelect: (key) => { handleStatusSelect(key, row); },
                         onClick: (e) => e.stopPropagation(),
                     }, {
@@ -612,21 +642,55 @@ const rowProps = (row) => ({
                                 <n-button circle size="small" quaternary type="info" @click.stop="goToShow(visit.id)">
                                     <template #icon><n-icon :component="EyeOutline" /></template>
                                 </n-button>
-                                
+
                                 <n-button v-if="hasPermission('technical_visits.edit')" circle size="small" quaternary type="warning" @click.stop="goToEdit(visit.id)">
                                     <template #icon><n-icon :component="CreateOutline" /></template>
                                 </n-button>
 
-                                <n-dropdown v-if="hasPermission('technical_visits.edit') && visit.status !== 'Terminada'" trigger="click" :options="[
-                                    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
-                                    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
-                                    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
-                                    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
-                                ]" :on-select="(key) => { if (key === 'reschedule') openRescheduleModal(visit); else if (key === 'reject') openRejectModal(visit); else quickAction(visit.id, key); }">
-                                    <n-button circle size="small" quaternary type="default" @click.stop>
-                                        <template #icon><n-icon :component="EllipsisHorizontal" /></template>
-                                    </n-button>
-                                </n-dropdown>
+                                <!-- Dropdown de acciones para visitas NO terminadas -->
+                                <template v-if="hasPermission('technical_visits.edit') && visit.status !== 'Terminada'">
+                                    <n-dropdown trigger="click" :options="(() => {
+                                        const items = [];
+                                        const s = visit.status;
+                                        if (s === 'Pendiente' || s === 'Reprogramada') {
+                                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                                        } else if (s === 'Aceptada') {
+                                            items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                                        } else if (s === 'Rechazada') {
+                                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                        }
+                                        return items;
+                                    })()" :on-select="(key) => { if (key === 'reschedule') openRescheduleModal(visit); else if (key === 'reject') openRejectModal(visit); else quickAction(visit.id, key); }">
+                                        <n-button circle size="small" quaternary type="default" @click.stop>
+                                            <template #icon><n-icon :component="EllipsisHorizontal" /></template>
+                                        </n-button>
+                                    </n-dropdown>
+                                </template>
+
+                                <!-- Botones de conversión para visitas terminadas -->
+                                <template v-if="visit.status === 'Terminada' && hasPermission('technical_visits.edit')">
+                                    <n-tooltip v-if="!visit.has_client" trigger="hover">
+                                        <template #trigger>
+                                            <n-button circle size="small" quaternary type="success" @click.stop="goToShow(visit.id)">
+                                                <template #icon><n-icon :component="BusinessOutline" /></template>
+                                            </n-button>
+                                        </template>
+                                        Convertir a Cliente
+                                    </n-tooltip>
+                                    <n-tooltip v-if="visit.has_client && !visit.has_service_order" trigger="hover">
+                                        <template #trigger>
+                                            <n-button circle size="small" quaternary type="info" @click.stop="goToShow(visit.id)">
+                                                <template #icon><n-icon :component="HardwareChipOutline" /></template>
+                                            </n-button>
+                                        </template>
+                                        Crear Orden de Servicio
+                                    </n-tooltip>
+                                </template>
 
                                 <n-button v-if="hasPermission('technical_visits.delete')" circle size="small" quaternary type="error" @click.stop="confirmDelete(visit)">
                                     <template #icon><n-icon :component="TrashOutline" /></template>

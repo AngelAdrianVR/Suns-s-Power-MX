@@ -132,6 +132,22 @@ Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderC
 Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
     ->name('api.service-orders.update-maintenance-price')
     ->middleware('auth');
+// API: Obtener cuotas proyectadas desde la BD
+Route::get('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'getInstallments'])
+    ->name('api.service-orders.installments')
+    ->middleware('auth');
+// API: Actualizar una cuota individual (fecha, monto)
+Route::patch('/api/installments/{installment}', [ServiceOrderController::class, 'updateInstallment'])
+    ->name('api.installments.update')
+    ->middleware('auth');
+// API: Pagar una cuota específica
+Route::post('/api/installments/{installment}/pay', [ServiceOrderController::class, 'payInstallment'])
+    ->name('api.installments.pay')
+    ->middleware('auth');
+// API: Liquidar todas las cuotas pendientes de una orden
+Route::post('/api/service-orders/{serviceOrder}/liquidate', [ServiceOrderController::class, 'liquidateOrder'])
+    ->name('api.service-orders.liquidate')
+    ->middleware('auth');
 // API: Reporte de cartera de deuda
 Route::get('/api/clients/debt-report', [ClientController::class, 'apiDebtReport'])
     ->name('api.clients.debt-report')

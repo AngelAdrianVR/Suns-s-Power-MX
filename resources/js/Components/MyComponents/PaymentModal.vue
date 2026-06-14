@@ -36,6 +36,14 @@ const props = defineProps({
         type: Number,
         default: null
     },
+    installmentId: {
+        type: Number,
+        default: null
+    },
+    isLiquidating: {
+        type: Boolean,
+        default: false
+    },
     modalTitle: {
         type: String,
         default: 'Registrar Abono'
@@ -135,7 +143,7 @@ const handleFileChange = (options) => {
     }
 };
 
-const submit = () => {
+const submit = async () => {
     if (!form.service_order_id) {
         notification.warning({ title: 'Atención', content: 'Debes seleccionar una orden de servicio.', duration: 3000 });
         return;
@@ -144,6 +152,66 @@ const submit = () => {
         notification.warning({ title: 'Atención', content: 'El monto debe ser mayor a cero.', duration: 3000 });
         return;
     }
+
+    const paymentDate = new Date(form.payment_date).toISOString().split('T')[0];
+
+    // --- FLUJO: Liquidar toda la orden (nuevo endpoint) ---
+    if (props.isLiquidating) {
+        try {
+            const formData = new FormData();
+            formData.append('amount', form.amount);
+            formData.append('payment_date', paymentDate);
+            formData.append('method', form.method);
+            formData.append('reference', form.reference || '');
+            formData.append('notes', form.notes || 'Liquidación total');
+            if (form.proof) {
+                formData.append('proof', form.proof);
+            }
+
+            await axios.post(route('api.service-orders.liquidate', form.service_order_id), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            notification.success({ title: 'Liquidado', content: 'Orden liquidada correctamente. Todas las cuotas han sido marcadas como pagadas.', duration: 3000 });
+            emit('paid');
+            closeModal();
+            return;
+        } catch (error) {
+            const msg = error.response?.data?.error || 'No se pudo liquidar la orden.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+            return;
+        }
+    }
+
+    // --- FLUJO: Pago de cuota específica (nuevo endpoint) ---
+    if (props.installmentId) {
+        try {
+            const formData = new FormData();
+            formData.append('amount', form.amount);
+            formData.append('payment_date', paymentDate);
+            formData.append('method', form.method);
+            formData.append('reference', form.reference || '');
+            formData.append('notes', form.notes || `Pago de mensualidad`);
+            if (form.proof) {
+                formData.append('proof', form.proof);
+            }
+
+            await axios.post(route('api.installments.pay', props.installmentId), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            notification.success({ title: 'Pagado', content: 'Pago registrado y cuota actualizada.', duration: 3000 });
+            emit('paid');
+            closeModal();
+            return;
+        } catch (error) {
+            const msg = error.response?.data?.error || 'No se pudo registrar el pago.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+            return;
+        }
+    }
+
+    // --- FLUJO: Pago tradicional (store original) ---
     if (!form.proof) {
         notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.', duration: 3000 });
         return;
@@ -156,7 +224,7 @@ const submit = () => {
     form.transform((data) => ({
         ...data,
         installment_number: props.installmentNumber,
-        payment_date: new Date(data.payment_date).toISOString().split('T')[0]
+        payment_date: paymentDate
     })).post(route('payments.store'), {
         preserveScroll: true,
         onSuccess: () => {

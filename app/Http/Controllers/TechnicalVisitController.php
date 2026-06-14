@@ -108,6 +108,8 @@ class TechnicalVisitController extends Controller
                     'status' => $visit->status,
                     'prospect_name' => $visit->full_name,
                     'client' => $visit->client ? ['id' => $visit->client->id, 'name' => $visit->client->name] : null,
+                    'has_client' => !is_null($visit->client_id),
+                    'has_service_order' => !is_null($visit->service_order_id),
                     'address' => $visit->full_address,
                     'municipality' => $visit->municipality,
                     'state' => $visit->state,

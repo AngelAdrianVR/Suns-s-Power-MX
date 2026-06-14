@@ -264,18 +264,50 @@ const submitReject = () => {
     });
 };
 
-// Opciones del dropdown de estatus
-const statusDropdownOptions = [
-    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
-    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
-    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
-    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
-];
+// Opciones del dropdown de estatus (dinámicas según estado)
+const statusDropdownOptions = computed(() => {
+    const s = props.visit?.status;
+    const items = [];
+    const canConvert = props.visit?.service_order_id === null;
+
+    if (s === 'Terminada') {
+        if (!props.visit?.client_id) {
+            items.push({ label: 'Convertir a Cliente', key: 'convert-client', icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) });
+        }
+        if (props.visit?.client_id && canConvert) {
+            items.push({ label: 'Crear Orden de Servicio', key: 'create-order', icon: () => h(NIcon, null, { default: () => h(HardwareChipOutline) }) });
+        }
+        return items;
+    }
+
+    // Pendiente / Reprogramada: sin Terminar
+    if (s === 'Pendiente' || s === 'Reprogramada') {
+        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+    }
+    // Aceptada: con Terminar
+    else if (s === 'Aceptada') {
+        items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+    }
+    // Rechazada: solo aceptar/reprogramar para revertir
+    else if (s === 'Rechazada') {
+        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+    }
+
+    return items;
+});
 
 const handleStatusSelect = (key) => {
     if (key === 'reschedule') openRescheduleModal();
     else if (key === 'reject') openRejectModal();
-    else if (key === 'accept' || key === 'complete') quickAction(key);
+    else if (key === 'accept') quickAction('accept');
+    else if (key === 'complete') quickAction('complete');
+    else if (key === 'convert-client') showCompleteModal.value = true;
+    else if (key === 'create-order') showCompleteModal.value = true;
 };
 
 // --- UTILIDADES ---
@@ -371,9 +403,10 @@ const salesRepInitials = computed(() => {
                                 <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
                             </n-button>
                         </Link>
-                        <n-dropdown v-if="hasPermission('technical_visits.edit')" trigger="click" :options="statusDropdownOptions" :on-select="handleStatusSelect">
+                        <n-dropdown v-if="hasPermission('technical_visits.edit') && statusDropdownOptions.length > 0" trigger="click" :options="statusDropdownOptions" :on-select="handleStatusSelect">
                             <n-button secondary round type="primary" size="small">
-                                <template #icon><n-icon><EllipsisHorizontal /></n-icon></template> Acciones
+                                <template #icon><n-icon><EllipsisHorizontal /></n-icon></template>
+                                {{ props.visit.status === 'Terminada' ? 'Conversión' : 'Acciones' }}
                             </n-button>
                         </n-dropdown>
                     </div>

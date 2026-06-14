@@ -553,7 +553,7 @@ const confirmDelete = () => {
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
                         </n-tab-pane>
 
-                        <n-tab-pane name="conditioning" tab="Acondicionamiento">
+                        <n-tab-pane name="conditioning" tab="Acondicionamiento previo">
                             <OrderConditioningTab 
                                 :order="order" 
                                 :assignable-users="assignable_users"

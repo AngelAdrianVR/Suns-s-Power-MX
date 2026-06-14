@@ -8,6 +8,7 @@ use App\Models\ServiceOrderConditioning;
 use App\Models\Product;
 use App\Models\Client;
 use App\Models\Payment;
+use App\Models\PaymentInstallment;
 use App\Models\EvidenceTemplate;
 use App\Models\ServiceOrderEvidence;
 use App\Models\SystemType;
@@ -255,6 +256,9 @@ class ServiceOrderController extends Controller
                     'notes' => 'Anticipo',
                 ]);
             }
+
+            // Generar cuotas proyectadas (payment_installments) según el plan de pago
+            $serviceOrder->generateInstallments();
 
             if (!empty($validated['system_type'])) {
                 // 1. Evidencias
@@ -587,6 +591,9 @@ class ServiceOrderController extends Controller
                     'notes' => 'Anticipo',
                 ]);
             }
+
+            // Regenerar cuotas proyectadas si cambió el método de pago, total o anticipo
+            $serviceOrder->generateInstallments();
 
             if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
                 $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
@@ -1439,11 +1446,17 @@ class ServiceOrderController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        // Validar que no existan pagos registrados (incluyendo anticipo)
-        if ($serviceOrder->payments()->exists()) {
+        // Validar que no existan pagos de mensualidades (solo se permite anticipo)
+        $hasInstallmentPayments = $serviceOrder->payments()
+            ->where(function ($q) {
+                $q->where('notes', '!=', 'Anticipo')
+                  ->orWhereNull('notes');
+            })
+            ->exists();
+        if ($hasInstallmentPayments) {
             return response()->json([
                 'success' => false,
-                'error' => 'No se puede modificar el plan de pago porque ya existen pagos registrados.',
+                'error' => 'No se puede modificar el plan de pago porque ya existen mensualidades pagadas.',
             ], 422);
         }
 
@@ -1453,6 +1466,9 @@ class ServiceOrderController extends Controller
         ]);
 
         $serviceOrder->update($validated);
+
+        // Regenerar cuotas proyectadas según el nuevo plan
+        $serviceOrder->generateInstallments();
 
         return response()->json([
             'success' => true,
@@ -1482,6 +1498,208 @@ class ServiceOrderController extends Controller
             'success' => true,
             'price_per_module' => (float) $serviceOrder->price_per_module,
             'message' => 'Precio de mantenimiento actualizado correctamente.',
+        ]);
+    }
+
+    // ========================================================================
+    // NUEVOS ENDPOINTS PARA GESTIÓN DE CUOTAS (PAYMENT INSTALLMENTS)
+    // ========================================================================
+
+    /**
+     * API: Obtiene las cuotas proyectadas de una orden (desde la BD).
+     * GET /api/service-orders/{serviceOrder}/installments
+     */
+    public function getInstallments(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $projection = $serviceOrder->getPaymentProjection();
+
+        return response()->json($projection);
+    }
+
+    /**
+     * API: Actualiza una cuota individual (fecha, monto).
+     * PATCH /api/installments/{installment}
+     */
+    public function updateInstallment(Request $request, PaymentInstallment $installment)
+    {
+        $serviceOrder = $installment->serviceOrder;
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // No permitir editar cuotas ya pagadas
+        if ($installment->payment_id || $installment->status === 'paid' || $installment->status === 'on_time') {
+            return response()->json([
+                'success' => false,
+                'error' => 'No se puede modificar una cuota que ya ha sido pagada.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'projected_date' => 'nullable|date',
+            'amount' => 'nullable|numeric|min:0',
+            'label' => 'nullable|string|max:255',
+        ]);
+
+        $updateData = array_filter($validated, fn($v) => $v !== null);
+        $installment->update($updateData);
+
+        // Recalcular estatus después del cambio
+        $installment->recalculateStatus();
+
+        return response()->json([
+            'success' => true,
+            'installment' => $installment->fresh(),
+            'message' => 'Cuota actualizada correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Marca una cuota como pagada y crea el registro de pago real.
+     * POST /api/installments/{installment}/pay
+     */
+    public function payInstallment(Request $request, PaymentInstallment $installment)
+    {
+        $serviceOrder = $installment->serviceOrder;
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // No permitir pagar una cuota ya pagada
+        if ($installment->payment_id || in_array($installment->status, ['paid', 'on_time'])) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Esta cuota ya ha sido pagada.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date',
+            'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:500',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ]);
+
+        // Crear el pago real
+        $payment = Payment::create([
+            'branch_id' => $branchId,
+            'client_id' => $serviceOrder->client_id,
+            'service_order_id' => $serviceOrder->id,
+            'installment_number' => $installment->installment_number,
+            'amount' => $validated['amount'],
+            'payment_date' => $validated['payment_date'],
+            'method' => $validated['method'],
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        // Adjuntar comprobante si se envió
+        if ($request->hasFile('proof')) {
+            $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+        }
+
+        // Marcar la cuota como pagada
+        $installment->markAsPaid($payment);
+
+        return response()->json([
+            'success' => true,
+            'payment' => $payment,
+            'installment' => $installment->fresh(),
+            'message' => 'Pago registrado y cuota actualizada.',
+        ]);
+    }
+
+    /**
+     * API: Liquida todas las cuotas pendientes de una orden en un solo pago.
+     * POST /api/service-orders/{serviceOrder}/liquidate
+     */
+    public function liquidateOrder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date',
+            'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:500',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ]);
+
+        // Obtener cuotas pendientes
+        $pendingInstallments = $serviceOrder->paymentInstallments()
+            ->whereNull('payment_id')
+            ->whereNotIn('status', ['paid', 'on_time'])
+            ->get();
+
+        if ($pendingInstallments->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No hay cuotas pendientes por liquidar.',
+            ], 422);
+        }
+
+        $totalPending = $pendingInstallments->sum('amount');
+
+        if ($validated['amount'] < $totalPending - 1) {
+            return response()->json([
+                'success' => false,
+                'error' => "El monto mínimo para liquidar es de $" . number_format($totalPending, 2),
+            ], 422);
+        }
+
+        // Crear un solo pago por el total
+        $payment = Payment::create([
+            'branch_id' => $branchId,
+            'client_id' => $serviceOrder->client_id,
+            'service_order_id' => $serviceOrder->id,
+            'amount' => $validated['amount'],
+            'payment_date' => $validated['payment_date'],
+            'method' => $validated['method'],
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? 'Liquidación total',
+        ]);
+
+        if ($request->hasFile('proof')) {
+            $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+        }
+
+        // Distribuir el pago entre todas las cuotas pendientes
+        $remainingAmount = $validated['amount'];
+        foreach ($pendingInstallments as $inst) {
+            if ($remainingAmount <= 0) break;
+            $allocatedAmount = min($inst->amount, $remainingAmount);
+            $inst->update([
+                'status' => 'paid',
+                'paid_amount' => $allocatedAmount,
+                'paid_date' => $validated['payment_date'],
+                'payment_id' => $payment->id,
+            ]);
+            $remainingAmount -= $allocatedAmount;
+        }
+
+        // Si el pago cubre más de lo pendiente, asignar el excedente a la última cuota
+        if ($remainingAmount > 0 && $pendingInstallments->isNotEmpty()) {
+            $lastInst = $pendingInstallments->last();
+            $lastInst->increment('paid_amount', $remainingAmount);
+        }
+
+        return response()->json([
+            'success' => true,
+            'payment' => $payment,
+            'message' => 'Orden liquidada correctamente. Todas las cuotas han sido marcadas como pagadas.',
         ]);
     }
 }

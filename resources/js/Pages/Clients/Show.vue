@@ -54,13 +54,17 @@ const preselectedAmount = ref(null);
 const lockPaymentAmount = ref(false);
 const paymentInstallmentNumber = ref(null);
 const paymentModalTitle = ref('Registrar Abono');
+const preselectedInstallmentId = ref(null);
+const isLiquidating = ref(false);
 
-const openPaymentModal = (orderId = null, amount = null, lock = false, installmentNum = null, title = 'Registrar Abono') => {
+const openPaymentModal = (orderId = null, amount = null, lock = false, installmentNum = null, title = 'Registrar Abono', installmentId = null, liquidate = false) => {
     preselectedOrderId.value = orderId;
     preselectedAmount.value = amount;
     lockPaymentAmount.value = lock;
     paymentInstallmentNumber.value = installmentNum;
     paymentModalTitle.value = title;
+    preselectedInstallmentId.value = installmentId;
+    isLiquidating.value = liquidate;
     showPaymentModal.value = true;
 };
 
@@ -288,9 +292,11 @@ const googleMapsUrl = computed(() => {
             :preselected-amount="preselectedAmount"
             :lock-amount="lockPaymentAmount"
             :installment-number="paymentInstallmentNumber"
+            :installment-id="preselectedInstallmentId"
+            :is-liquidating="isLiquidating"
             :modal-title="paymentModalTitle"
             @paid="handleRefresh"
-            @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null;"
+            @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null; preselectedInstallmentId = null; isLiquidating = false;"
         />
     </AppLayout>
 </template>
