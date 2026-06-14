@@ -56,7 +56,7 @@ class ServiceOrder extends Model implements HasMedia
         // Propuesta comercial y reacondicionamientos
         'payment_method',
         'down_payment',
-        'price_per_module',
+        'price_per_module', // <-- NUEVO costo de mantenimiento por modulo
         'extra_data',
         'requires_pre_installation',
         'pre_installation_details',
@@ -98,6 +98,7 @@ class ServiceOrder extends Model implements HasMedia
     public function items(): HasMany { return $this->hasMany(ServiceOrderItem::class); }
     public function contract(): HasOne { return $this->hasOne(Contract::class); }
     public function payments(): HasMany { return $this->hasMany(Payment::class); }
+    public function paymentInstallments(): HasMany { return $this->hasMany(PaymentInstallment::class); }
     public function tasks(): MorphMany { return $this->morphMany(Task::class, 'taskable'); }
     public function documents(): MorphMany { return $this->morphMany(Document::class, 'documentable'); }
 
@@ -110,6 +111,59 @@ class ServiceOrder extends Model implements HasMedia
         return $this->hasMany(ServiceOrderEvidence::class);
     }
 
+    /**
+     * Genera los registros de cuotas (payment_installments) basados en el plan de pago.
+     * Se llama al crear o actualizar el método de pago.
+     */
+    public function generateInstallments(): void
+    {
+        $method = $this->payment_method;
+        $totalAmount = (float) $this->total_amount;
+        $startDate = $this->created_at ?? now();
+
+        // Limpiar cuotas existentes que aún no estén pagadas
+        $this->paymentInstallments()->whereNull('payment_id')->delete();
+
+        if (!$method || $method === 'Personalizado' || in_array($this->status, ['Cotización', 'Cancelado'])) {
+            return;
+        }
+
+        // El anticipo real está en la tabla payments (es la fuente de verdad).
+        // El campo down_payment es solo metadata; NO se suma para evitar doble conteo.
+        $anticipoTotal = (float) $this->payments()->where('notes', 'Anticipo')->sum('amount');
+        $remainingAmount = $totalAmount - $anticipoTotal;
+
+        $installments = [];
+
+        if ($method === 'Contado') {
+            $amount = max(0, $remainingAmount);
+            if ($amount > 0) {
+                $installments[] = [
+                    'installment_number' => 1,
+                    'label' => 'Pago único',
+                    'projected_date' => $startDate->format('Y-m-d'),
+                    'amount' => round($amount, 2),
+                ];
+            }
+        } elseif (in_array($method, ['3 MSI', '6 MSI', '9 MSI', '12 MSI'])) {
+            $months = (int) explode(' ', $method)[0];
+            $monthlyAmount = $remainingAmount / $months;
+
+            for ($i = 1; $i <= $months; $i++) {
+                $installments[] = [
+                    'installment_number' => $i,
+                    'label' => "Mensualidad {$i} de {$months}",
+                    'projected_date' => $startDate->copy()->addMonths($i)->format('Y-m-d'),
+                    'amount' => round($monthlyAmount, 2),
+                ];
+            }
+        }
+
+        foreach ($installments as $data) {
+            $this->paymentInstallments()->create($data);
+        }
+    }
+
     public function getProgressAttribute()
     {
         $totalTasks = $this->tasks()->count();
@@ -119,213 +173,107 @@ class ServiceOrder extends Model implements HasMedia
     }
 
     /**
-     * Calcula la proyección de pagos basada en el payment_method.
-     * Retorna un array de cuotas proyectadas con su estatus respecto a pagos reales.
+     * Calcula la proyección de pagos basada en los registros de payment_installments.
+     * Ahora lee de la base de datos en lugar de calcular sobre la marcha.
      */
     public function getPaymentProjection(): array
     {
         $method = $this->payment_method;
         $totalAmount = (float) $this->total_amount;
-        $downPayment = (float) ($this->down_payment ?? 0);
-        $startDate = $this->created_at ?? now();
 
-        // Si no hay método de pago o es Cotización/Cancelado, no hay proyección
-        if (!$method || in_array($this->status, ['Cotización', 'Cancelado'])) {
-            return [];
+        if (!$method || $method === 'Personalizado' || in_array($this->status, ['Cotización', 'Cancelado'])) {
+            return [
+                'method' => $method,
+                'has_installments' => false,
+                'installments' => [],
+                'unmatched_payments' => [],
+            ];
         }
 
-        $projections = [];
-
-        if ($method === 'Contado') {
-            $amount = $totalAmount - $downPayment;
-            if ($amount > 0) {
-                $projections[] = [
-                    'installment' => 1,
-                    'label' => 'Pago único',
-                    'projected_date' => $startDate->format('Y-m-d'),
-                    'amount' => round($amount, 2),
-                ];
-            }
-        } elseif (in_array($method, ['3 MSI', '6 MSI', '9 MSI', '12 MSI'])) {
-            $months = (int) explode(' ', $method)[0];
-            $remainingAmount = $totalAmount - $downPayment;
-            $monthlyAmount = $remainingAmount / $months;
-
-            for ($i = 1; $i <= $months; $i++) {
-                $projections[] = [
-                    'installment' => $i,
-                    'label' => "Mensualidad {$i} de {$months}",
-                    'projected_date' => $startDate->copy()->addMonths($i)->format('Y-m-d'),
-                    'amount' => round($monthlyAmount, 2),
-                ];
-            }
-        } elseif ($method === 'Personalizado') {
-            // Sin proyección fija; se devuelve vacío
-            return [];
+        // Cargar relaciones
+        if (!$this->relationLoaded('paymentInstallments')) {
+            $this->load('paymentInstallments.payment');
         }
-
-        // Cargar pagos reales si no están cargados
         if (!$this->relationLoaded('payments')) {
             $this->load('payments');
         }
 
-        $actualPayments = $this->payments->sortBy('payment_date')->values();
-        $usedPaymentIds = [];
+        $downPayment = (float) ($this->down_payment ?? 0);
 
-        // Mapa rápido: pagos con installment_number definido (prioridad máxima)
-        $installmentPayments = $actualPayments->filter(fn($p) => $p->installment_number !== null)
-            ->keyBy('installment_number');
+        // Recalcular estatus de cada cuota
+        $installments = $this->paymentInstallments->sortBy('installment_number')->map(function ($inst) {
+            $inst->recalculateStatus();
+            $inst->refresh();
 
-        // Emparejar cada proyección con pagos reales
-        // NOTA: Un mismo pago puede cubrir múltiples cuotas si el monto es mayor.
-        $paymentCarryOver = null; // ['id', 'remaining_amount', 'date', 'method', 'reference']
+            $projDate = $inst->projected_date instanceof \Carbon\Carbon
+                ? $inst->projected_date
+                : \Carbon\Carbon::parse($inst->projected_date);
 
-        foreach ($projections as &$proj) {
-            $projDate = \Carbon\Carbon::parse($proj['projected_date']);
-            $instNum = $proj['installment'];
-            $matchedPayment = null;
-            $matchedAmount = 0;
+            $now = now()->startOfDay();
+            $daysSinceProjected = (int) $projDate->copy()->startOfDay()->diffInDays($now, false);
 
-            // 1. PRIORIDAD: emparejar por installment_number exacto
-            if (isset($installmentPayments[$instNum]) && !in_array($installmentPayments[$instNum]->id, $usedPaymentIds)) {
-                $p = $installmentPayments[$instNum];
-                $usedPaymentIds[] = $p->id;
-                $matchedPayment = [
-                    'id' => $p->id,
-                    'amount' => (float) $p->amount,
-                    'date' => $p->payment_date->format('Y-m-d'),
-                    'method' => $p->method,
-                    'reference' => $p->reference,
-                ];
-            }
+            $result = [
+                'id' => $inst->id,
+                'installment' => $inst->installment_number,
+                'label' => $inst->label,
+                'projected_date' => $inst->projected_date->format('Y-m-d'),
+                'amount' => (float) $inst->amount,
+                'status' => $inst->status,
+                'status_label' => $this->getStatusLabel($inst->status),
+                'status_color' => $this->getStatusColor($inst->status),
+                'days_since_projected' => max(0, $daysSinceProjected),
+                'payment' => null,
+            ];
 
-            // 2. Intentar usar el carry-over de un pago grande anterior
-            if ($paymentCarryOver && $paymentCarryOver['remaining_amount'] >= $proj['amount']) {
-                $matchedPayment = [
-                    'id' => $paymentCarryOver['id'],
-                    'amount' => $proj['amount'],
-                    'date' => $paymentCarryOver['date'],
-                    'method' => $paymentCarryOver['method'],
-                    'reference' => $paymentCarryOver['reference'],
-                ];
-                $paymentCarryOver['remaining_amount'] -= $proj['amount'];
-                if ($paymentCarryOver['remaining_amount'] < 0.01) {
-                    $paymentCarryOver = null;
-                }
-            }
+            if ($inst->payment || $inst->payment_id) {
+                $payment = $inst->payment;
+                $payDate = $payment ? $payment->payment_date : $inst->paid_date;
+                $payAmount = $payment ? (float) $payment->amount : (float) ($inst->paid_amount ?? 0);
 
-            // 2. Si no hay carry-over, buscar en pagos reales (ventana: 15 días antes a +ilimitado)
-            if (!$matchedPayment) {
-                $bestMatch = null;
-                $bestIdx = null;
+                if ($payDate) {
+                    $payDateCarbon = $payDate instanceof \Carbon\Carbon
+                        ? $payDate
+                        : \Carbon\Carbon::parse($payDate);
 
-                foreach ($actualPayments as $idx => $payment) {
-                    if (in_array($payment->id, $usedPaymentIds)) continue;
-                    $payDate = \Carbon\Carbon::parse($payment->payment_date);
-                    // Permitir hasta 15 días antes de la fecha proyectada
-                    if ($payDate->gte($projDate->copy()->subDays(15))) {
-                        if ($bestMatch === null || $payDate->lt(\Carbon\Carbon::parse($bestMatch->payment_date))) {
-                            $bestMatch = $payment;
-                            $bestIdx = $idx;
-                        }
-                    }
-                }
+                    $daysDiff = (int) $projDate->startOfDay()->diffInDays($payDateCarbon->startOfDay(), false);
 
-                if ($bestMatch) {
-                    $usedPaymentIds[] = $bestMatch->id;
-                    $matchAmount = (float) $bestMatch->amount;
-
-                    // Si el pago cubre más que esta cuota, guardar carry-over
-                    if ($matchAmount > $proj['amount'] + 0.01) {
-                        $paymentCarryOver = [
-                            'id' => $bestMatch->id,
-                            'remaining_amount' => $matchAmount - $proj['amount'],
-                            'date' => $bestMatch->payment_date->format('Y-m-d'),
-                            'method' => $bestMatch->method,
-                            'reference' => $bestMatch->reference,
-                        ];
-                        $matchedAmount = $proj['amount'];
-                    } else {
-                        $matchedAmount = $matchAmount;
-                    }
-
-                    $matchedPayment = [
-                        'id' => $bestMatch->id,
-                        'amount' => $matchedAmount,
-                        'date' => $bestMatch->payment_date->format('Y-m-d'),
-                        'method' => $bestMatch->method,
-                        'reference' => $bestMatch->reference,
+                    $result['payment'] = [
+                        'id' => $payment?->id,
+                        'amount' => $payAmount,
+                        'date' => $payDate instanceof \Carbon\Carbon ? $payDate->format('Y-m-d') : $payDate,
+                        'method' => $payment?->method ?? '-',
+                        'reference' => $payment?->reference ?? '-',
+                        'days_diff' => $daysDiff,
+                    ];
+                } else {
+                    $result['payment'] = [
+                        'id' => $payment?->id,
+                        'amount' => $payAmount,
+                        'date' => $inst->paid_date?->format('Y-m-d'),
+                        'method' => $payment?->method ?? '-',
+                        'reference' => $payment?->reference ?? '-',
+                        'days_diff' => 0,
                     ];
                 }
             }
 
-            if ($matchedPayment) {
-                $payDate = \Carbon\Carbon::parse($matchedPayment['date']);
-                $daysDiff = (int) $projDate->startOfDay()->diffInDays($payDate->startOfDay(), false);
+            return $result;
+        })->values()->toArray();
 
-                // Clasificación: positivo = días después de la fecha proyectada
-                if ($daysDiff <= 5) {
-                    $proj['status'] = 'on_time';
-                    $proj['status_label'] = 'A tiempo';
-                    $proj['status_color'] = 'green';
-                } elseif ($daysDiff <= 10) {
-                    $proj['status'] = 'late';
-                    $proj['status_label'] = 'Pago extemporáneo';
-                    $proj['status_color'] = 'orange';
-                } else {
-                    $proj['status'] = 'defaulted';
-                    $proj['status_label'] = 'Pago incumplido';
-                    $proj['status_color'] = 'red';
-                }
+        // Pagos no emparejados con ninguna cuota
+        $usedPaymentIds = $this->paymentInstallments->whereNotNull('payment_id')
+            ->pluck('payment_id')->toArray();
 
-                $proj['payment'] = [
-                    'id' => $matchedPayment['id'],
-                    'amount' => $matchedPayment['amount'],
-                    'date' => $matchedPayment['date'],
-                    'days_diff' => $daysDiff,
-                    'method' => $matchedPayment['method'],
-                    'reference' => $matchedPayment['reference'],
-                ];
-            } else {
-                // Sin pago asociado: clasificar según qué tan lejos está la fecha proyectada
-                // IMPORTANTE: $projDate->diffInDays(now(), false) da NEGATIVO para fechas futuras,
-                // POSITIVO para fechas pasadas.
-                $now = now()->startOfDay();
-                $projDateStart = $projDate->copy()->startOfDay();
-                $daysSinceProjected = (int) $projDateStart->diffInDays($now, false);
-
-                // Si la fecha proyectada es FUTURA (negativo), nunca marcar como incumplido
-                if ($daysSinceProjected < 0) {
-                    $proj['status'] = 'upcoming';
-                    $proj['status_label'] = 'Próximo';
-                    $proj['status_color'] = 'blue';
-                } elseif ($daysSinceProjected <= 5) {
-                    $proj['status'] = 'pending';
-                    $proj['status_label'] = 'Pendiente';
-                    $proj['status_color'] = 'gray';
-                } elseif ($daysSinceProjected <= 10) {
-                    $proj['status'] = 'late';
-                    $proj['status_label'] = 'Pago extemporáneo';
-                    $proj['status_color'] = 'orange';
-                } else {
-                    $proj['status'] = 'defaulted';
-                    $proj['status_label'] = 'Pago incumplido';
-                    $proj['status_color'] = 'red';
-                }
-
-                $proj['payment'] = null;
-                $proj['days_since_projected'] = max(0, $daysSinceProjected);
-            }
-        }
-
-        // Pagos no emparejados (excedentes o adelantados)
-        $unmatchedPayments = $actualPayments->filter(fn($p) => !in_array($p->id, $usedPaymentIds))->values();
+        $unmatchedPayments = $this->payments
+            ->filter(fn($p) => !in_array($p->id, $usedPaymentIds) && $p->notes !== 'Anticipo')
+            ->values();
 
         return [
             'method' => $method,
+            'has_installments' => true,
             'down_payment' => $downPayment,
             'total_amount' => $totalAmount,
-            'installments' => $projections,
+            'installments' => $installments,
             'unmatched_payments' => $unmatchedPayments->map(fn($p) => [
                 'id' => $p->id,
                 'amount' => (float) $p->amount,
@@ -334,5 +282,36 @@ class ServiceOrder extends Model implements HasMedia
                 'reference' => $p->reference,
             ])->values()->toArray(),
         ];
+    }
+
+    /**
+     * Obtener etiqueta de texto para el estatus.
+     */
+    private function getStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'on_time' => 'A tiempo',
+            'late' => 'Pago extemporáneo',
+            'defaulted' => 'Pago incumplido',
+            'pending' => 'Pendiente',
+            'upcoming' => 'Próximo',
+            'paid' => 'Pagado',
+            default => $status,
+        };
+    }
+
+    /**
+     * Obtener color para el estatus.
+     */
+    private function getStatusColor(string $status): string
+    {
+        return match ($status) {
+            'on_time', 'paid' => 'green',
+            'late' => 'orange',
+            'defaulted' => 'red',
+            'pending' => 'gray',
+            'upcoming' => 'blue',
+            default => 'gray',
+        };
     }
 }

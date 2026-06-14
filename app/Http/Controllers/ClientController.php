@@ -585,6 +585,12 @@ class ClientController extends Controller
 
         $totalAmount = (float) $order->total_amount;
         $downPayment = (float) ($order->down_payment ?? 0);
+
+        // Sumar pagos registrados con concepto "Anticipo" al total del anticipo
+        $order->loadMissing('payments');
+        $anticipoTotal = (float) $order->payments->where('notes', 'Anticipo')->sum('amount');
+        $totalDownPayment = $downPayment + $anticipoTotal;
+
         $startDate = $order->created_at ?? now();
 
         $monthsMap = [
@@ -595,19 +601,23 @@ class ClientController extends Controller
         if ($months === null) return ['has_schedule' => false];
 
         $installmentCount = $months === 0 ? 1 : $months;
-        $remainingAmount = $totalAmount - $downPayment;
+        $remainingAmount = $totalAmount - $totalDownPayment;
         $installmentAmount = $remainingAmount / max(1, $installmentCount);
 
         $summary = ['on_time' => 0, 'late' => 0, 'defaulted' => 0, 'pending' => 0, 'upcoming' => 0];
         $earliestLateDate = null;
+
+        // IDs de pagos de anticipo para excluir del matching
+        $anticipoPaymentIds = $order->payments->where('notes', 'Anticipo')->pluck('id')->toArray();
 
         for ($i = 1; $i <= $installmentCount; $i++) {
             $projDate = $startDate->copy()->addMonths($i === 1 && $months === 0 ? 0 : $i);
             // $projDate->diffInDays(now(), false): NEGATIVO = futuro, POSITIVO = pasado
             $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
 
-            // Verificar si existe un pago real cercano a esta fecha (ventana 15 días antes)
-            $hasPayment = $order->payments->contains(function ($p) use ($projDate) {
+            // Verificar si existe un pago real (NO anticipo) cercano a esta fecha (ventana 15 días antes)
+            $hasPayment = $order->payments->contains(function ($p) use ($projDate, $anticipoPaymentIds) {
+                if (in_array($p->id, $anticipoPaymentIds)) return false;
                 $payDate = \Carbon\Carbon::parse($p->payment_date);
                 return $payDate->gte($projDate->copy()->subDays(15));
             });

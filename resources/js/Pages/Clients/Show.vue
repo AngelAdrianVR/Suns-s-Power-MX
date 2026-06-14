@@ -54,14 +54,25 @@ const preselectedAmount = ref(null);
 const lockPaymentAmount = ref(false);
 const paymentInstallmentNumber = ref(null);
 const paymentModalTitle = ref('Registrar Abono');
+const preselectedInstallmentId = ref(null);
+const isLiquidating = ref(false);
 
-const openPaymentModal = (orderId = null, amount = null, lock = false, installmentNum = null, title = 'Registrar Abono') => {
+const openPaymentModal = (orderId = null, amount = null, lock = false, installmentNum = null, title = 'Registrar Abono', installmentId = null, liquidate = false) => {
     preselectedOrderId.value = orderId;
     preselectedAmount.value = amount;
     lockPaymentAmount.value = lock;
     paymentInstallmentNumber.value = installmentNum;
     paymentModalTitle.value = title;
+    preselectedInstallmentId.value = installmentId;
+    isLiquidating.value = liquidate;
     showPaymentModal.value = true;
+};
+
+// Recarga forzando la URL con el tab actual para garantizar que se refresquen todos los datos
+const handleRefresh = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', activeTab.value);
+    router.get(url.toString(), {}, { preserveScroll: true });
 };
 
 // --- UTILIDADES ---
@@ -231,7 +242,7 @@ const googleMapsUrl = computed(() => {
                                     <n-badge :value="client.service_orders.length" type="info" :max="99" class="scale-75 origin-left" />
                                 </div>
                             </template>
-                            <ClientOrderDetail :client="client" :stats="stats" @open-payment="openPaymentModal" />
+                            <ClientOrderDetail :client="client" :stats="stats" @open-payment="openPaymentModal" @refresh="handleRefresh" />
                         </n-tab-pane>
 
                         <n-tab-pane name="tickets" tab="Tickets">
@@ -281,9 +292,11 @@ const googleMapsUrl = computed(() => {
             :preselected-amount="preselectedAmount"
             :lock-amount="lockPaymentAmount"
             :installment-number="paymentInstallmentNumber"
+            :installment-id="preselectedInstallmentId"
+            :is-liquidating="isLiquidating"
             :modal-title="paymentModalTitle"
-            @paid="router.reload({ preserveScroll: true })"
-            @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null;"
+            @paid="handleRefresh"
+            @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null; preselectedInstallmentId = null; isLiquidating = false;"
         />
     </AppLayout>
 </template>

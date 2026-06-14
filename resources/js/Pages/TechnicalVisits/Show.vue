@@ -1,11 +1,12 @@
 <script setup>
 import { computed, ref, h } from 'vue';
+import CompleteVisitModal from '@/Components/MyComponents/CompleteVisitModal.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { useSecureFile } from '@/Composables/useSecureFile';
 import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import {
-    NButton, NIcon, NTag, NCard, NGrid, NGi, NAvatar, NDivider, NEmpty, NSpin,
+    NButton, NIcon, NTag, NCard, NGrid, NGi, NAvatar, NEmpty, NSpin,
     createDiscreteApi, NTooltip, NInput, NModal, NDatePicker, NDropdown, NImage, NSelect
 } from 'naive-ui';
 import {
@@ -15,7 +16,7 @@ import {
     InformationCircleOutline, CloudDownloadOutline, AttachOutline,
     ImageOutline, DocumentTextOutline as DocIcon, OpenOutline,
     FlashOutline, BatteryFullOutline, CheckmarkCircleOutline, CloseCircleOutline,
-    AlertCircleOutline, HomeOutline, MapOutline, GridOutline, LayersOutline,
+    AlertCircleOutline, HomeOutline, MapOutline,
     CloudUploadOutline, SaveOutline, TrashOutline, EllipsisHorizontal,
     CheckmarkDoneOutline, CameraOutline
 } from '@vicons/ionicons5';
@@ -199,100 +200,12 @@ const quickAction = (action) => {
             onSuccess: () => notification.success({ title: 'Visita Aceptada', content: 'La visita ha sido marcada como aceptada.', duration: 3000 }),
         });
     } else if (action === 'complete') {
-        // Abre el modal de completado paso a paso
-        completeStep.value = 1;
-        taxId.value = '';
-        newServiceOrderId.value = null;
         showCompleteModal.value = true;
     }
 };
 
 // --- MODAL DE COMPLETADO (Convertir a Cliente + Orden de Servicio) ---
 const showCompleteModal = ref(false);
-const completeStep = ref(1);
-const isCompleting = ref(false);
-const taxId = ref(''); // RFC opcional
-const newServiceOrderId = ref(null);
-
-// Propuesta comercial para Step 2 del modal
-const paymentMethod = ref(null);
-const downPayment = ref(null);
-const requiresPreInstallation = ref(false);
-const preInstallationAssignedTo = ref(null);
-const preInstallationDetails = ref('');
-
-const paymentMethodOptions = [
-    { label: 'Contado', value: 'Contado' },
-    { label: '3 MSI', value: '3 MSI' },
-    { label: '6 MSI', value: '6 MSI' },
-    { label: '9 MSI', value: '9 MSI' },
-    { label: '12 MSI', value: '12 MSI' },
-    { label: 'Personalizado', value: 'Personalizado' },
-];
-
-const preInstallationOptions = [
-    { label: "Sun's power mx", value: "Sun's power mx" },
-    { label: 'Cliente', value: 'Cliente' },
-    { label: 'Otro', value: 'Otro' },
-];
-
-const handleCompleteFlow = (createClient) => {
-    isCompleting.value = true;
-    router.post(route('technical-visits.convert-to-client', props.visit.id), {
-        create_client: createClient,
-        tax_id: taxId.value || null,
-    }, {
-        preserveScroll: true,
-        onSuccess: () => {
-            isCompleting.value = false;
-            if (createClient) {
-                // Resetear campos de propuesta comercial al avanzar al paso 2
-                paymentMethod.value = null;
-                downPayment.value = null;
-                requiresPreInstallation.value = false;
-                preInstallationAssignedTo.value = null;
-                preInstallationDetails.value = '';
-                completeStep.value = 2;
-                notification.success({ title: 'Cliente Creado', content: 'Visita terminada y cliente creado exitosamente.', duration: 3000 });
-            } else {
-                showCompleteModal.value = false;
-                notification.success({ title: 'Completado', content: 'Visita marcada como terminada.', duration: 3000 });
-            }
-        },
-        onError: () => {
-            isCompleting.value = false;
-            notification.error({ title: 'Error', content: 'No se pudo completar la operación.', duration: 3000 });
-        },
-    });
-};
-
-const handleCreateServiceOrder = () => {
-    isCompleting.value = true;
-    router.post(route('technical-visits.create-service-order', props.visit.id), {
-        payment_method: paymentMethod.value,
-        down_payment: downPayment.value ? parseFloat(downPayment.value) : null,
-        requires_pre_installation: requiresPreInstallation.value,
-        pre_installation_assigned_to: preInstallationAssignedTo.value,
-        pre_installation_details: preInstallationDetails.value || null,
-    }, {
-        preserveScroll: true,
-        onSuccess: (page) => {
-            isCompleting.value = false;
-            newServiceOrderId.value = page.props.flash?.new_service_order_id || null;
-            completeStep.value = 3;
-            notification.success({ title: 'Orden Creada', content: 'La orden de servicio se generó correctamente.', duration: 4000 });
-        },
-        onError: () => {
-            isCompleting.value = false;
-            notification.error({ title: 'Error', content: 'No se pudo crear la orden de servicio.', duration: 3000 });
-        },
-    });
-};
-
-const goToServiceOrderEdit = (id) => {
-    showCompleteModal.value = false;
-    router.visit(route('service-orders.edit', id || newServiceOrderId.value));
-};
 
 // Modales de Reprogramar y Rechazar
 const showRescheduleModal = ref(false);
@@ -351,18 +264,50 @@ const submitReject = () => {
     });
 };
 
-// Opciones del dropdown de estatus
-const statusDropdownOptions = [
-    { label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
-    { label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) },
-    { label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) },
-    { label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) },
-];
+// Opciones del dropdown de estatus (dinámicas según estado)
+const statusDropdownOptions = computed(() => {
+    const s = props.visit?.status;
+    const items = [];
+    const canConvert = props.visit?.service_order_id === null;
+
+    if (s === 'Terminada') {
+        if (!props.visit?.client_id) {
+            items.push({ label: 'Convertir a Cliente', key: 'convert-client', icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) });
+        }
+        if (props.visit?.client_id && canConvert) {
+            items.push({ label: 'Crear Orden de Servicio', key: 'create-order', icon: () => h(NIcon, null, { default: () => h(HardwareChipOutline) }) });
+        }
+        return items;
+    }
+
+    // Pendiente / Reprogramada: sin Terminar
+    if (s === 'Pendiente' || s === 'Reprogramada') {
+        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+    }
+    // Aceptada: con Terminar
+    else if (s === 'Aceptada') {
+        items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+    }
+    // Rechazada: solo aceptar/reprogramar para revertir
+    else if (s === 'Rechazada') {
+        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+    }
+
+    return items;
+});
 
 const handleStatusSelect = (key) => {
     if (key === 'reschedule') openRescheduleModal();
     else if (key === 'reject') openRejectModal();
-    else if (key === 'accept' || key === 'complete') quickAction(key);
+    else if (key === 'accept') quickAction('accept');
+    else if (key === 'complete') quickAction('complete');
+    else if (key === 'convert-client') showCompleteModal.value = true;
+    else if (key === 'create-order') showCompleteModal.value = true;
 };
 
 // --- UTILIDADES ---
@@ -458,9 +403,10 @@ const salesRepInitials = computed(() => {
                                 <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
                             </n-button>
                         </Link>
-                        <n-dropdown v-if="hasPermission('technical_visits.edit')" trigger="click" :options="statusDropdownOptions" :on-select="handleStatusSelect">
+                        <n-dropdown v-if="hasPermission('technical_visits.edit') && statusDropdownOptions.length > 0" trigger="click" :options="statusDropdownOptions" :on-select="handleStatusSelect">
                             <n-button secondary round type="primary" size="small">
-                                <template #icon><n-icon><EllipsisHorizontal /></n-icon></template> Acciones
+                                <template #icon><n-icon><EllipsisHorizontal /></n-icon></template>
+                                {{ props.visit.status === 'Terminada' ? 'Conversión' : 'Acciones' }}
                             </n-button>
                         </n-dropdown>
                     </div>
@@ -1050,166 +996,12 @@ const salesRepInitials = computed(() => {
             </n-card>
         </n-modal>
 
-        <!-- Modal Completar Visita (Paso a Paso) -->
-        <n-modal v-model:show="showCompleteModal" :mask-closable="false">
-            <n-card
-                style="width: 480px"
-                :title="completeStep === 1 ? 'Completar Visita' : 'Crear Orden de Servicio'"
-                :bordered="false"
-                size="huge"
-                role="dialog"
-                aria-modal="true"
-            >
-                <template #header-extra>
-                    <n-icon size="24" :component="CheckmarkDoneOutline" class="text-green-500" />
-                </template>
-
-                <!-- Paso 1: ¿Convertir a Cliente? -->
-                <div v-if="completeStep === 1">
-                    <div class="text-center mb-6">
-                        <n-icon size="48" :component="BusinessOutline" class="text-indigo-400 mb-3" />
-                        <h3 class="text-lg font-semibold text-gray-800">¿Convertir prospecto en cliente?</h3>
-                        <p class="text-sm text-gray-500 mt-2">
-                            Se creará un nuevo registro de cliente con los datos de esta visita 
-                            (nombre, dirección y contacto).
-                        </p>
-                    </div>
-
-                    <!-- RFC Opcional -->
-                    <div class="mb-6 px-4">
-                        <n-input 
-                            v-model:value="taxId" 
-                            placeholder="RFC del cliente (opcional)" 
-                            maxlength="13"
-                            class="w-full"
-                        >
-                            <template #prefix>
-                                <span class="text-xs text-gray-400 font-mono">RFC</span>
-                            </template>
-                        </n-input>
-                    </div>
-
-                    <div class="flex justify-center gap-4">
-                        <n-button size="large" @click="showCompleteModal = false" :disabled="isCompleting">
-                            Cancelar
-                        </n-button>
-                        <n-button size="large" @click="handleCompleteFlow(false)" :loading="isCompleting">
-                            No, solo terminar
-                        </n-button>
-                        <n-button size="large" type="primary" @click="handleCompleteFlow(true)" :loading="isCompleting">
-                            <template #icon><n-icon><BusinessOutline /></n-icon></template>
-                            Sí, crear cliente
-                        </n-button>
-                    </div>
-                </div>
-
-                <!-- Paso 2: ¿Crear Orden de Servicio? -->
-                <div v-if="completeStep === 2">
-                    <div class="text-center mb-6">
-                        <n-icon size="48" :component="HardwareChipOutline" class="text-green-400 mb-3" />
-                        <h3 class="text-lg font-semibold text-gray-800">¿Crear orden de servicio?</h3>
-                        <p class="text-sm text-gray-500 mt-2">
-                            Se generará una orden de servicio tipo <strong>{{ visit.system_of_interest || 'sin definir' }}</strong>
-                            con tareas, evidencias y productos configurados automáticamente.
-                        </p>
-                    </div>
-
-                    <!-- Propuesta Comercial -->
-                    <div class="bg-gray-50 rounded-xl p-4 mb-6 space-y-4">
-                        <h4 class="text-sm font-bold text-gray-600 flex items-center gap-2">
-                            <n-icon :component="CashOutline" class="text-indigo-500" />
-                            Propuesta Comercial
-                        </h4>
-
-                        <n-form-item label="Método de Pago" label-placement="top" size="small">
-                            <n-select
-                                v-model:value="paymentMethod"
-                                :options="paymentMethodOptions"
-                                placeholder="Seleccionar plan de pago"
-                                clearable
-                            />
-                        </n-form-item>
-
-                        <n-form-item label="Anticipo (MXN)" label-placement="top" size="small">
-                            <n-input
-                                v-model:value="downPayment"
-                                type="number"
-                                placeholder="0.00"
-                                :min="0"
-                                :step="0.01"
-                            >
-                                <template #prefix>$</template>
-                            </n-input>
-                        </n-form-item>
-
-                        <n-divider class="!my-3" />
-
-                        <h4 class="text-sm font-bold text-gray-600 flex items-center gap-2">
-                            <n-icon :component="HomeOutline" class="text-orange-500" />
-                            Acondicionamiento Previo
-                        </h4>
-
-                        <n-form-item label="¿Requiere acondicionamiento previo a la instalación?" label-placement="top" size="small">
-                            <n-switch v-model:value="requiresPreInstallation">
-                                <template #checked>Sí</template>
-                                <template #unchecked>No</template>
-                            </n-switch>
-                        </n-form-item>
-
-                        <template v-if="requiresPreInstallation">
-                            <n-form-item label="¿Quién lo realizará?" label-placement="top" size="small">
-                                <n-select
-                                    v-model:value="preInstallationAssignedTo"
-                                    :options="preInstallationOptions"
-                                    placeholder="Seleccionar responsable"
-                                    clearable
-                                />
-                            </n-form-item>
-
-                            <n-form-item label="Detalles del acondicionamiento" label-placement="top" size="small">
-                                <n-input
-                                    v-model:value="preInstallationDetails"
-                                    type="textarea"
-                                    placeholder="Describir los trabajos de acondicionamiento necesarios..."
-                                    :autosize="{ minRows: 2, maxRows: 4 }"
-                                />
-                            </n-form-item>
-                        </template>
-                    </div>
-
-                    <div class="flex justify-center gap-4">
-                        <n-button size="large" @click="showCompleteModal = false" :disabled="isCompleting">
-                            No, finalizar
-                        </n-button>
-                        <n-button size="large" type="success" @click="handleCreateServiceOrder()" :loading="isCompleting">
-                            <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
-                            Sí, crear orden
-                        </n-button>
-                    </div>
-                </div>
-
-                <!-- Paso 3: Orden Creada Exitosa -->
-                <div v-if="completeStep === 3">
-                    <div class="text-center mb-6">
-                        <n-icon size="48" :component="CheckmarkDoneOutline" class="text-green-500 mb-3" />
-                        <h3 class="text-lg font-semibold text-gray-800">¡Orden de servicio creada exitosamente!</h3>
-                        <p class="text-sm text-gray-500 mt-2">
-                            Algunos campos no pudieron llenarse automáticamente desde la visita técnica.
-                            ¿Quieres completarlos ahora?
-                        </p>
-                    </div>
-                    <div class="flex justify-center gap-4">
-                        <n-button size="large" @click="showCompleteModal = false">
-                            Cerrar
-                        </n-button>
-                        <n-button size="large" type="primary" @click="goToServiceOrderEdit(newServiceOrderId)">
-                            <template #icon><n-icon><CreateOutline /></n-icon></template>
-                            Completar orden
-                        </n-button>
-                    </div>
-                </div>
-            </n-card>
-        </n-modal>
+        <CompleteVisitModal
+            v-model:show="showCompleteModal"
+            :visit-id="visit.id"
+            :system-type="visit.system_of_interest"
+            @completed="console.log('Visita completada')"
+        />
 
     </AppLayout>
 </template>

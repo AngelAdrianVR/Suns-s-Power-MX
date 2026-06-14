@@ -98,6 +98,16 @@ class PaymentController extends Controller
                     ->toMediaCollection('receipts');
             }
 
+            // Vincular el pago con la cuota proyectada si existe installment_number
+            if (!empty($validated['installment_number'])) {
+                $installment = $order->paymentInstallments()
+                    ->where('installment_number', $validated['installment_number'])
+                    ->first();
+                if ($installment && !$installment->payment_id) {
+                    $installment->markAsPaid($payment);
+                }
+            }
+
             return redirect()->back()->with('success', 'Abono registrado y comprobante guardado correctamente.');
         });
     }
@@ -114,8 +124,23 @@ class PaymentController extends Controller
         }
 
         DB::transaction(function () use ($payment) {
-            // Al eliminar el modelo, Media Library se encarga de borrar los archivos adjuntos automáticamente
-            // si está configurado correctamente, de lo contrario se eliminan en cascada.
+            // Desvincular la cuota proyectada si existe
+            $payment->load('serviceOrder.paymentInstallments');
+            if ($payment->serviceOrder) {
+                $installment = $payment->serviceOrder->paymentInstallments()
+                    ->where('payment_id', $payment->id)
+                    ->first();
+                if ($installment) {
+                    $installment->update([
+                        'payment_id' => null,
+                        'status' => 'pending',
+                        'paid_amount' => 0,
+                        'paid_date' => null,
+                    ]);
+                    $installment->recalculateStatus();
+                }
+            }
+
             $payment->delete();
         });
 
