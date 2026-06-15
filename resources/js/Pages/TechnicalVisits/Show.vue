@@ -270,11 +270,13 @@ const statusDropdownOptions = computed(() => {
     const items = [];
     const canConvert = props.visit?.service_order_id === null;
 
+    const can = (perm) => hasPermission(perm);
+
     if (s === 'Terminada') {
-        if (!props.visit?.client_id) {
+        if (!props.visit?.client_id && can('technical_visits.edit')) {
             items.push({ label: 'Convertir a Cliente', key: 'convert-client', icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) });
         }
-        if (props.visit?.client_id && canConvert) {
+        if (props.visit?.client_id && canConvert && can('technical_visits.edit')) {
             items.push({ label: 'Crear Orden de Servicio', key: 'create-order', icon: () => h(NIcon, null, { default: () => h(HardwareChipOutline) }) });
         }
         return items;
@@ -282,20 +284,20 @@ const statusDropdownOptions = computed(() => {
 
     // Pendiente / Reprogramada: sin Terminar
     if (s === 'Pendiente' || s === 'Reprogramada') {
-        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+        if (can('technical_visits.accept')) items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        if (can('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        if (can('technical_visits.reject')) items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
     }
     // Aceptada: con Terminar
     else if (s === 'Aceptada') {
-        items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
-        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+        if (can('technical_visits.complete')) items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+        if (can('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        if (can('technical_visits.reject')) items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
     }
     // Rechazada: solo aceptar/reprogramar para revertir
     else if (s === 'Rechazada') {
-        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+        if (can('technical_visits.accept')) items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+        if (can('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
     }
 
     return items;
@@ -704,8 +706,8 @@ const salesRepInitials = computed(() => {
                                         </div>
                                     </div>
 
-                                    <!-- Botón para subir -->
-                                    <div class="mt-3">
+                                    <!-- Botón para subir (requiere technical_visits.upload_evidence) -->
+                                    <div v-if="hasPermission('technical_visits.upload_evidence')" class="mt-3">
                                         <input type="file" :id="'file-'+item.key" class="hidden" @change="e => handleEvidenceUpload(e, item.key)" accept="image/*,application/pdf" />
                                         <n-button dashed size="small" type="primary" class="w-full" @click="triggerEvidenceInput(item.key)">
                                             <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
@@ -760,7 +762,7 @@ const salesRepInitials = computed(() => {
                                     </div>
 
                                     <input type="file" id="file-additional" class="hidden" @change="handleAdditionalUpload" accept="image/*,application/pdf" />
-                                    <n-button dashed size="small" type="primary" class="w-full" @click="triggerAdditionalInput" v-if="hasPermission('technical_visits.edit')">
+                                    <n-button dashed size="small" type="primary" class="w-full" @click="triggerAdditionalInput" v-if="hasPermission('technical_visits.upload_evidence')">
                                         <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
                                         Subir Archivo Adicional
                                     </n-button>

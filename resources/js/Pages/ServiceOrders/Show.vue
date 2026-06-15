@@ -33,8 +33,23 @@ const props = defineProps({
 const { hasPermission } = usePermissions();
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
 
+// --- CONDICIONAMIENTO PREVIO (debe ir antes de activeTab) ---
+const allConditioningsCompleted = computed(() => {
+    if (!props.order.conditionings?.length) return true;
+    return props.order.conditionings.every(c => c.status === 'Terminado');
+});
+
+const conditioningAttentionType = computed(() => {
+    if (!props.order.requires_pre_installation) return 'none';
+    return allConditioningsCompleted.value ? 'completed' : 'pending';
+});
+
 // --- LÓGICA DE PESTAÑAS Y URL ---
-const activeTab = ref('gantt');
+const activeTab = ref(
+    props.order.requires_pre_installation && !allConditioningsCompleted.value
+        ? 'conditioning'
+        : 'gantt'
+);
 
 onMounted(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -183,6 +198,7 @@ const materialsReported = computed(() => {
     if (hasNoMaterials.value) return true; 
     return props.order.items.every(item => item.used_quantity !== null);
 });
+
 
 const showCompletionModal = ref(false);
 const completionForm = useForm({
@@ -440,7 +456,7 @@ const confirmDelete = () => {
 
                 <!-- Segunda fila: Pago y Acondicionamiento -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <n-card v-if="order.payment_method || order.down_payment || order.price_per_module" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
+                    <n-card v-if="(order.payment_method || order.down_payment || order.price_per_module) && hasPermission('sales.view_sales_amount')" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
                         <!-- Se actualizó el div superior con 'justify-between' para separar el título y el botón -->
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2 text-emerald-800 font-semibold">
@@ -553,7 +569,16 @@ const confirmDelete = () => {
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
                         </n-tab-pane>
 
-                        <n-tab-pane name="conditioning" tab="Acondicionamiento previo">
+                        <n-tab-pane name="conditioning"
+                            :tab-props="conditioningAttentionType !== 'none' ? { class: conditioningAttentionType === 'pending' ? 'conditioning-tab-attention' : 'conditioning-tab-completed' } : undefined">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <n-icon size="18"><HomeOutline /></n-icon>
+                                    <span>Acondicionamiento</span>
+                                    <n-badge v-if="conditioningAttentionType === 'pending'" dot type="error" />
+                                    <n-badge v-if="conditioningAttentionType === 'completed'" dot type="success" />
+                                </div>
+                            </template>
                             <OrderConditioningTab 
                                 :order="order" 
                                 :assignable-users="assignable_users"
@@ -583,7 +608,7 @@ const confirmDelete = () => {
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-100">
-                            <tr v-for="(item, index) in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
+                            <tr v-for="item in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
                                 <td class="px-4 py-2 text-sm text-gray-800">
                                     {{ item.name }} <br><span class="text-[10px] text-gray-400">{{ item.sku }}</span>
                                 </td>
@@ -650,5 +675,27 @@ const confirmDelete = () => {
     color: #92400e !important; 
     border-color: #f59e0b !important;
     transition: all 0.3s ease;
+}
+
+:deep(.conditioning-tab-attention) {
+    position: relative;
+    background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 700 !important;
+    color: #92400e !important;
+    animation: tab-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes tab-glow {
+    0%, 100% { box-shadow: inset 0 -2px 0 0 #f59e0b; }
+    50% { box-shadow: inset 0 -2px 0 0 #f59e0b, 0 0 12px 2px rgba(245, 158, 11, 0.4); }
+}
+
+:deep(.conditioning-tab-completed) {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0) !important;
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 700 !important;
+    color: #065f46 !important;
+    box-shadow: inset 0 -2px 0 0 #10b981;
 }
 </style>

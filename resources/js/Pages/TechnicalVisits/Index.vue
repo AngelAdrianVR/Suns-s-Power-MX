@@ -368,27 +368,43 @@ const createColumns = () => {
 
                     // Pendiente: NO mostrar Terminar
                     if (s === 'Pendiente' || s === 'Reprogramada') {
-                        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-                        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                        if (canEdit && hasPermission('technical_visits.accept')) {
+                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                        }
+                        if (canEdit && hasPermission('technical_visits.reschedule')) {
+                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        }
+                        if (canEdit && hasPermission('technical_visits.reject')) {
+                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                        }
                     }
                     // Aceptada: mostrar Terminar
                     else if (s === 'Aceptada') {
-                        items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
-                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-                        items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                        if (canEdit && hasPermission('technical_visits.complete')) {
+                            items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+                        }
+                        if (canEdit && hasPermission('technical_visits.reschedule')) {
+                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        }
+                        if (canEdit && hasPermission('technical_visits.reject')) {
+                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                        }
                     }
                     // Rechazada: solo opción de Aceptar/Reprogramar para revertir
                     else if (s === 'Rechazada') {
-                        items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-                        items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        if (canEdit && hasPermission('technical_visits.accept')) {
+                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                        }
+                        if (canEdit && hasPermission('technical_visits.reschedule')) {
+                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                        }
                     }
                     // Terminada: acciones de conversión
                     else if (s === 'Terminada') {
-                        if (!visitRow.has_client) {
+                        if (!visitRow.has_client && canEdit) {
                             items.push({ label: 'Convertir a Cliente', key: 'convert-client', icon: () => h(NIcon, null, { default: () => h(BusinessOutline) }) });
                         }
-                        if (visitRow.has_client && !visitRow.has_service_order) {
+                        if (visitRow.has_client && !visitRow.has_service_order && canEdit) {
                             items.push({ label: 'Crear Orden de Servicio', key: 'create-order', icon: () => h(NIcon, null, { default: () => h(HardwareChipOutline) }) });
                         }
                     }
@@ -652,17 +668,18 @@ const rowProps = (row) => ({
                                     <n-dropdown trigger="click" :options="(() => {
                                         const items = [];
                                         const s = visit.status;
+                                        const edit = hasPermission('technical_visits.edit');
                                         if (s === 'Pendiente' || s === 'Reprogramada') {
-                                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-                                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                                            if (edit && hasPermission('technical_visits.accept')) items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                                            if (edit && hasPermission('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                            if (edit && hasPermission('technical_visits.reject')) items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
                                         } else if (s === 'Aceptada') {
-                                            items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
-                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
-                                            items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
+                                            if (edit && hasPermission('technical_visits.complete')) items.push({ label: 'Terminar', key: 'complete', icon: () => h(NIcon, null, { default: () => h(CheckmarkDoneOutline) }) });
+                                            if (edit && hasPermission('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                            if (edit && hasPermission('technical_visits.reject')) items.push({ label: 'Rechazar', key: 'reject', icon: () => h(NIcon, null, { default: () => h(CloseCircleOutline) }) });
                                         } else if (s === 'Rechazada') {
-                                            items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
-                                            items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
+                                            if (edit && hasPermission('technical_visits.accept')) items.push({ label: 'Aceptar', key: 'accept', icon: () => h(NIcon, null, { default: () => h(CheckmarkCircleOutline) }) });
+                                            if (edit && hasPermission('technical_visits.reschedule')) items.push({ label: 'Reprogramar', key: 'reschedule', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) });
                                         }
                                         return items;
                                     })()" :on-select="(key) => { if (key === 'reschedule') openRescheduleModal(visit); else if (key === 'reject') openRejectModal(visit); else quickAction(visit.id, key); }">

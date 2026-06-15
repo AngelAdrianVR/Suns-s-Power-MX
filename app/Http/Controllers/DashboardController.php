@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\PaymentInstallment;
 use App\Models\PurchaseOrder;
 use App\Models\ServiceOrder;
 use App\Models\Task;
@@ -150,6 +151,57 @@ class DashboardController extends Controller
                 : 0,
         ];
 
+        // 6. PAGOS PRÓXIMOS / VENCIDOS
+        $upcomingPayments = PaymentInstallment::with([
+                'serviceOrder.client.contacts',
+                'serviceOrder:id,client_id,branch_id,total_amount,payment_method'
+            ])
+            ->whereHas('serviceOrder', function ($q) use ($branchId) {
+                $q->where('branch_id', $branchId)
+                  ->whereNotIn('status', ['Cancelado', 'Cotización']);
+            })
+            ->whereNull('payment_id')
+            ->whereNotIn('status', ['paid', 'on_time'])
+            ->where(function ($q) {
+                $q->whereBetween('projected_date', [now()->subDays(60), now()->addDays(10)])
+                  ->orWhere('projected_date', '>=', now()->subDays(60));
+            })
+            ->orderBy('projected_date', 'asc')
+            ->take(30)
+            ->get()
+            ->map(function ($inst) {
+                $projDate = Carbon::parse($inst->projected_date)->startOfDay();
+                $daysDiff = (int) $projDate->diffInDays(now()->startOfDay(), false);
+                // daysDiff > 0 = overdue (date in past), daysDiff < 0 = future (days remaining)
+                $isOverdue = $daysDiff >= 0;
+                $client = $inst->serviceOrder->client ?? null;
+                $primaryContact = $client?->contacts->firstWhere('is_primary', true) ?? $client?->contacts->first();
+
+                return [
+                    'id' => $inst->id,
+                    'installment' => $inst->installment_number,
+                    'label' => $inst->label,
+                    'amount' => (float) $inst->amount,
+                    'projected_date' => $inst->projected_date->format('Y-m-d'),
+                    'status' => $inst->status,
+                    'days_until_due' => $isOverdue ? -$daysDiff : -$daysDiff, // Negative=overdue
+                    'is_overdue' => $isOverdue,
+                    'days_abs' => abs($daysDiff),
+                    'client' => $client ? [
+                        'id' => $client->id,
+                        'name' => $client->name,
+                    ] : null,
+                    'service_order_id' => $inst->service_order_id,
+                    'service_order_total' => (float) ($inst->serviceOrder->total_amount ?? 0),
+                    'has_email' => $primaryContact && !empty($primaryContact->email),
+                    'has_phone' => $primaryContact && !empty($primaryContact->phone),
+                    'contact_email' => $primaryContact->email ?? null,
+                    'contact_phone' => $primaryContact->phone ?? null,
+                ];
+            })
+            ->filter(fn($p) => $p['client'] !== null)
+            ->values();
+
         return Inertia::render('Dashboard/Index', [
             'pendingServiceOrders' => $pendingServiceOrders,
             'lowStockProducts' => $lowStockProducts,
@@ -157,7 +209,8 @@ class DashboardController extends Controller
             'clientsWithBalance' => $clientsWithBalance,
             'kpis' => $kpis,
             'weeklyTasks' => $weeklyTasks,
-            'weekDays' => $weekDays,      
+            'weekDays' => $weekDays,
+            'upcomingPayments' => $upcomingPayments,
         ]);
     }
 }

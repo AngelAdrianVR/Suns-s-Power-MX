@@ -181,7 +181,7 @@ class ServiceOrder extends Model implements HasMedia
         $method = $this->payment_method;
         $totalAmount = (float) $this->total_amount;
 
-        if (!$method || $method === 'Personalizado' || in_array($this->status, ['Cotización', 'Cancelado'])) {
+        if (in_array($this->status, ['Cotización', 'Cancelado'])) {
             return [
                 'method' => $method,
                 'has_installments' => false,
@@ -198,66 +198,27 @@ class ServiceOrder extends Model implements HasMedia
             $this->load('payments');
         }
 
+        // Para Personalizado: devolver instalments creados manualmente (si existen)
+        if ($method === 'Personalizado') {
+            $installments = $this->paymentInstallments->sortBy('installment_number')->map(function ($inst) {
+                $inst->recalculateStatus();
+                return $this->formatInstallment($inst);
+            })->values()->toArray();
+
+            return [
+                'method' => $method,
+                'has_installments' => count($installments) > 0,
+                'installments' => $installments,
+                'unmatched_payments' => [],
+            ];
+        }
+
         $downPayment = (float) ($this->down_payment ?? 0);
 
-        // Recalcular estatus de cada cuota
         $installments = $this->paymentInstallments->sortBy('installment_number')->map(function ($inst) {
             $inst->recalculateStatus();
             $inst->refresh();
-
-            $projDate = $inst->projected_date instanceof \Carbon\Carbon
-                ? $inst->projected_date
-                : \Carbon\Carbon::parse($inst->projected_date);
-
-            $now = now()->startOfDay();
-            $daysSinceProjected = (int) $projDate->copy()->startOfDay()->diffInDays($now, false);
-
-            $result = [
-                'id' => $inst->id,
-                'installment' => $inst->installment_number,
-                'label' => $inst->label,
-                'projected_date' => $inst->projected_date->format('Y-m-d'),
-                'amount' => (float) $inst->amount,
-                'status' => $inst->status,
-                'status_label' => $this->getStatusLabel($inst->status),
-                'status_color' => $this->getStatusColor($inst->status),
-                'days_since_projected' => max(0, $daysSinceProjected),
-                'payment' => null,
-            ];
-
-            if ($inst->payment || $inst->payment_id) {
-                $payment = $inst->payment;
-                $payDate = $payment ? $payment->payment_date : $inst->paid_date;
-                $payAmount = $payment ? (float) $payment->amount : (float) ($inst->paid_amount ?? 0);
-
-                if ($payDate) {
-                    $payDateCarbon = $payDate instanceof \Carbon\Carbon
-                        ? $payDate
-                        : \Carbon\Carbon::parse($payDate);
-
-                    $daysDiff = (int) $projDate->startOfDay()->diffInDays($payDateCarbon->startOfDay(), false);
-
-                    $result['payment'] = [
-                        'id' => $payment?->id,
-                        'amount' => $payAmount,
-                        'date' => $payDate instanceof \Carbon\Carbon ? $payDate->format('Y-m-d') : $payDate,
-                        'method' => $payment?->method ?? '-',
-                        'reference' => $payment?->reference ?? '-',
-                        'days_diff' => $daysDiff,
-                    ];
-                } else {
-                    $result['payment'] = [
-                        'id' => $payment?->id,
-                        'amount' => $payAmount,
-                        'date' => $inst->paid_date?->format('Y-m-d'),
-                        'method' => $payment?->method ?? '-',
-                        'reference' => $payment?->reference ?? '-',
-                        'days_diff' => 0,
-                    ];
-                }
-            }
-
-            return $result;
+            return $this->formatInstallment($inst);
         })->values()->toArray();
 
         // Pagos no emparejados con ninguna cuota
@@ -282,6 +243,66 @@ class ServiceOrder extends Model implements HasMedia
                 'reference' => $p->reference,
             ])->values()->toArray(),
         ];
+    }
+
+    /**
+     * Formatea una cuota individual para la respuesta de la API.
+     */
+    private function formatInstallment($inst): array
+    {
+        $projDate = $inst->projected_date instanceof \Carbon\Carbon
+            ? $inst->projected_date
+            : \Carbon\Carbon::parse($inst->projected_date);
+
+        $now = now()->startOfDay();
+        $daysSinceProjected = (int) $projDate->copy()->startOfDay()->diffInDays($now, false);
+
+        $result = [
+            'id' => $inst->id,
+            'installment' => $inst->installment_number,
+            'label' => $inst->label,
+            'projected_date' => $inst->projected_date->format('Y-m-d'),
+            'amount' => (float) $inst->amount,
+            'status' => $inst->status,
+            'status_label' => $this->getStatusLabel($inst->status),
+            'status_color' => $this->getStatusColor($inst->status),
+            'days_since_projected' => max(0, $daysSinceProjected),
+            'payment' => null,
+        ];
+
+        if ($inst->payment || $inst->payment_id) {
+            $payment = $inst->payment;
+            $payDate = $payment ? $payment->payment_date : $inst->paid_date;
+            $payAmount = $payment ? (float) $payment->amount : (float) ($inst->paid_amount ?? 0);
+
+            if ($payDate) {
+                $payDateCarbon = $payDate instanceof \Carbon\Carbon
+                    ? $payDate
+                    : \Carbon\Carbon::parse($payDate);
+
+                $daysDiff = (int) $projDate->startOfDay()->diffInDays($payDateCarbon->startOfDay(), false);
+
+                $result['payment'] = [
+                    'id' => $payment?->id,
+                    'amount' => $payAmount,
+                    'date' => $payDate instanceof \Carbon\Carbon ? $payDate->format('Y-m-d') : $payDate,
+                    'method' => $payment?->method ?? '-',
+                    'reference' => $payment?->reference ?? '-',
+                    'days_diff' => $daysDiff,
+                ];
+            } else {
+                $result['payment'] = [
+                    'id' => $payment?->id,
+                    'amount' => $payAmount,
+                    'date' => $inst->paid_date?->format('Y-m-d'),
+                    'method' => $payment?->method ?? '-',
+                    'reference' => $payment?->reference ?? '-',
+                    'days_diff' => 0,
+                ];
+            }
+        }
+
+        return $result;
     }
 
     /**
