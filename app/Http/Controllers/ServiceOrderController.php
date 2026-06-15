@@ -10,6 +10,7 @@ use App\Models\Client;
 use App\Models\Payment;
 use App\Models\PaymentInstallment;
 use App\Models\EvidenceTemplate;
+use App\Mail\PaymentReminderMail;
 use App\Models\ServiceOrderEvidence;
 use App\Models\SystemType;
 use App\Models\User;
@@ -1354,13 +1355,16 @@ class ServiceOrderController extends Controller
         // Enviar por Email
         if (in_array($channel, ['email', 'both']) && !empty($primaryContact->email)) {
             try {
-                // Usar el sistema de notificaciones de Laravel (mail)
-                Mail::raw($baseMessage, function ($message) use ($primaryContact, $serviceOrder) {
-                    $message->to($primaryContact->email, $primaryContact->name)
-                        ->subject("Recordatorio de Pago - Orden #{$serviceOrder->id} - Sun's Power MX");
-                });
+                Mail::to($primaryContact->email, $primaryContact->name)
+                    ->send(new PaymentReminderMail($serviceOrder, $baseMessage, $installment));
                 $results['email'] = ['sent' => true, 'to' => $primaryContact->email];
             } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Error enviando recordatorio email', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'to' => $primaryContact->email,
+                    'order_id' => $serviceOrder->id,
+                ]);
                 $results['email'] = ['sent' => false, 'error' => $e->getMessage()];
             }
         } elseif (in_array($channel, ['email', 'both'])) {
@@ -1700,6 +1704,62 @@ class ServiceOrderController extends Controller
             'success' => true,
             'payment' => $payment,
             'message' => 'Orden liquidada correctamente. Todas las cuotas han sido marcadas como pagadas.',
+        ]);
+    }
+
+    /**
+     * API: Crea una cuota proyectada manual para plan Personalizado.
+     * POST /api/service-orders/{serviceOrder}/installments
+     */
+    public function storeInstallment(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Solo permitido para plan Personalizado
+        if ($serviceOrder->payment_method !== 'Personalizado') {
+            return response()->json([
+                'success' => false,
+                'error' => 'Solo puedes agregar cuotas manuales en plan Personalizado.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'projected_date' => 'required|date|after_or_equal:today',
+            'amount' => 'required|numeric|min:1',
+            'label' => 'nullable|string|max:255',
+        ]);
+
+        // Calcular saldo pendiente: total_amount - pagos registrados
+        $totalPaid = (float) $serviceOrder->payments()->sum('amount');
+        $remaining = (float) $serviceOrder->total_amount - $totalPaid;
+
+        if ($validated['amount'] > $remaining) {
+            return response()->json([
+                'success' => false,
+                'error' => "El monto (\${$validated['amount']}) excede el saldo pendiente (\$" . number_format($remaining, 2) . ").",
+            ], 422);
+        }
+
+        // Obtener el último número de cuota
+        $lastNumber = (int) $serviceOrder->paymentInstallments()->max('installment_number');
+
+        $installment = $serviceOrder->paymentInstallments()->create([
+            'installment_number' => $lastNumber + 1,
+            'label' => $validated['label'] ?? "Proyección #" . ($lastNumber + 1),
+            'projected_date' => $validated['projected_date'],
+            'amount' => $validated['amount'],
+            'status' => 'pending',
+        ]);
+
+        $installment->recalculateStatus();
+
+        return response()->json([
+            'success' => true,
+            'installment' => $installment->fresh(),
+            'message' => 'Cuota proyectada agregada correctamente.',
         ]);
     }
 }

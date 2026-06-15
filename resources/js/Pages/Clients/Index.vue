@@ -166,19 +166,19 @@ const createColumns = () => [
         width: 190, // Ajusté un poco el ancho
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
-                    trigger: () => h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'success',
-                        class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',
-                        onClick: (e) => { e.stopPropagation(); registerPayment(row); }
-                    }, { icon: () => h(NIcon, { component: CashOutline }) }),
-                    default: () => 'Registrar Abono'
-                }) : null,
+                // row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
+                //     trigger: () => h(NButton, {
+                //         circle: true, size: 'small', quaternary: true, type: 'success',
+                //         class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',
+                //         onClick: (e) => { e.stopPropagation(); registerPayment(row); }
+                //     }, { icon: () => h(NIcon, { component: CashOutline }) }),
+                //     default: () => 'Registrar Abono'
+                // }) : null,
 
                 h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'info',
+                    circle: true, size: 'small', quaternary: true, type: 'success',
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
+                }, { icon: () => h(NIcon, { component: CashOutline }) }),
 
                 hasPermission('clients.edit') ? h(NButton, {
                     circle: true, size: 'small', quaternary: true, type: 'warning',
@@ -362,7 +362,7 @@ const rowProps = (row) => ({
                     </n-tab-pane>
 
                     <!-- Pestaña 2: Cartera de Deuda -->
-                    <n-tab-pane name="debt" tab="Cartera de Deuda">
+                    <n-tab-pane v-if="hasPermission('collection.clients_debt')" name="debt" tab="Cartera de Deuda">
                         <template #tab>
                             <div class="flex items-center gap-1.5">
                                 <n-icon size="18"><DocumentTextOutline /></n-icon>

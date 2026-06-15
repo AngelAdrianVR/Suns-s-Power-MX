@@ -11,6 +11,7 @@ import ServiceOrdersWidget from './Partials/ServiceOrdersWidget.vue';
 import LowStockWidget from './Partials/LowStockWidget.vue';
 import PurchaseOrdersWidget from './Partials/PurchaseOrdersWidget.vue';
 import ClientBalancesWidget from './Partials/ClientBalancesWidget.vue';
+import PaymentRemindersWidget from './Partials/PaymentRemindersWidget.vue';
 
 // Importar componentes del PMS (Asegúrate de que estas rutas existan)
 import TaskCard from '@/Pages/PMS/Components/TaskCard.vue';
@@ -24,6 +25,7 @@ const props = defineProps({
     kpis: Object,
     weeklyTasks: Object,
     weekDays: Array,
+    upcomingPayments: Array,
 });
 
 const { hasPermission } = usePermissions();
@@ -214,6 +216,11 @@ const formatCurrency = (value) => {
                 </div>
                 <!-- FIN SECCIÓN PLAN DE TAREAS -->
 
+                <!-- WIDGET: PAGOS PRÓXIMOS / VENCIDOS -->
+                <div v-if="hasPermission('collection.show')" class="mb-8">
+                    <PaymentRemindersWidget :payments="upcomingPayments" />
+                </div>
+
                 <!-- Grid Principal de Widgets -->
                 <n-grid x-gap="24" y-gap="24" cols="1 1000:2" responsive="screen">
                     
@@ -224,7 +231,7 @@ const formatCurrency = (value) => {
                             <!-- <ServiceOrdersWidget v-if="hasPermission('service_orders.index')" :orders="pendingServiceOrders" /> -->
                             
                              <!-- Widget de Clientes con Deuda (Protegido por el permiso 'clients.view_balance') -->
-                            <ClientBalancesWidget v-if="hasPermission('clients.view_balance')" :clients="clientsWithBalance" />
+                            <!-- <ClientBalancesWidget v-if="hasPermission('clients.view_balance')" :clients="clientsWithBalance" /> -->
                         </div>
                     </n-grid-item>
 

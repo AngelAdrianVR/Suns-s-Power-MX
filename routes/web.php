@@ -136,6 +136,10 @@ Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrd
 Route::get('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'getInstallments'])
     ->name('api.service-orders.installments')
     ->middleware('auth');
+// API: Crear cuota manual (solo Personalizado)
+Route::post('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'storeInstallment'])
+    ->name('api.service-orders.store-installment')
+    ->middleware('auth');
 // API: Actualizar una cuota individual (fecha, monto)
 Route::patch('/api/installments/{installment}', [ServiceOrderController::class, 'updateInstallment'])
     ->name('api.installments.update')

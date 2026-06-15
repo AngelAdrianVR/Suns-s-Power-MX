@@ -165,8 +165,9 @@ const canSendReminder = computed(() => {
 // Solo la PRÓXIMA cuota pendiente/atrasada (la primera que no esté pagada)
 const nextPendingId = computed(() => {
     if (!projectionData.value?.installments?.length) return null;
+    // Una cuota está pagada si tiene payment (objeto) O status paid/on_time
     const found = projectionData.value.installments.find(
-        inst => inst.status !== 'on_time' && inst.status !== 'paid'
+        inst => !inst.payment && inst.status !== 'paid' && inst.status !== 'on_time'
     );
     return found?.id ?? null;
 });
@@ -175,8 +176,9 @@ const isNextPending = (inst) => inst?.id === nextPendingId.value;
 
 const hasLateInstallments = computed(() => {
     if (!projectionData.value?.installments?.length) return false;
+    // Solo considerar no pagadas (sin payment object) y con estatus late/defaulted
     return projectionData.value.installments.some(
-        inst => inst.status === 'late' || inst.status === 'defaulted'
+        inst => !inst.payment && (inst.status === 'late' || inst.status === 'defaulted')
     );
 });
 
@@ -347,7 +349,7 @@ const orderRemaining = computed(() => {
 const totalProjectedPending = computed(() => {
     if (!projectionData.value?.installments?.length) return 0;
     return projectionData.value.installments
-        .filter(inst => inst.status !== 'paid' && inst.status !== 'on_time')
+        .filter(inst => !inst.payment && inst.status !== 'paid' && inst.status !== 'on_time')
         .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0);
 });
 
@@ -390,8 +392,10 @@ const startEditInstallment = (inst) => {
         return;
     }
     editingInstallmentId.value = inst.id;
+    // NDatePicker usa timestamp (ms); convertir string a timestamp
+    const ts = new Date(inst.projected_date + 'T12:00:00').getTime();
     editingInstallmentData.value = {
-        projected_date: inst.projected_date,
+        projected_date: isNaN(ts) ? Date.now() : ts,
         amount: inst.amount,
         label: inst.label,
     };
@@ -406,8 +410,13 @@ const saveInstallment = async () => {
     if (!editingInstallmentId.value) return;
     isSavingInstallment.value = true;
     try {
+        // Convertir timestamp de NDatePicker a string YYYY-MM-DD
+        const dateVal = editingInstallmentData.value.projected_date;
+        const projectedDate = typeof dateVal === 'number'
+            ? new Date(dateVal).toISOString().split('T')[0]
+            : dateVal;
         await axios.patch(route('api.installments.update', editingInstallmentId.value), {
-            projected_date: editingInstallmentData.value.projected_date,
+            projected_date: projectedDate,
             amount: editingInstallmentData.value.amount,
             label: editingInstallmentData.value.label,
         });
@@ -438,6 +447,59 @@ const paySingleInstallment = async (inst) => {
     } catch (error) {
         const msg = error.response?.data?.error || 'No se pudo registrar el pago.';
         notification.error({ title: 'Error', content: msg, duration: 4000 });
+    }
+};
+
+// --- MODAL: AGREGAR PROYECCIÓN DE PAGO (Personalizado) ---
+const showAddProjectionModal = ref(false);
+const projectionForm = ref({
+    projected_date: new Date().toISOString().split('T')[0],
+    amount: null,
+    label: '',
+});
+const savingProjection = ref(false);
+
+const openAddProjectionModal = () => {
+    projectionForm.value = {
+        projected_date: new Date().toISOString().split('T')[0],
+        amount: null,
+        label: '',
+    };
+    showAddProjectionModal.value = true;
+};
+
+const saveProjection = async () => {
+    if (!projectionForm.value.amount || projectionForm.value.amount <= 0) {
+        notification.warning({ title: 'Atención', content: 'Ingresa un monto válido.', duration: 3000 });
+        return;
+    }
+    if (!projectionForm.value.projected_date) {
+        notification.warning({ title: 'Atención', content: 'Selecciona una fecha.', duration: 3000 });
+        return;
+    }
+    // Validar que la fecha no sea anterior a hoy
+    const today = new Date().toISOString().split('T')[0];
+    if (projectionForm.value.projected_date < today) {
+        notification.warning({ title: 'Atención', content: 'La fecha debe ser igual o posterior a hoy.', duration: 3000 });
+        return;
+    }
+
+    savingProjection.value = true;
+    try {
+        const payload = {
+            projected_date: projectionForm.value.projected_date,
+            amount: projectionForm.value.amount,
+            label: projectionForm.value.label || null,
+        };
+        await axios.post(route('api.service-orders.store-installment', selectedOrderId.value), payload);
+        notification.success({ title: 'Agregado', content: 'Proyección de pago registrada.', duration: 3000 });
+        showAddProjectionModal.value = false;
+        await refreshProjection();
+    } catch (error) {
+        const msg = error.response?.data?.error || 'No se pudo agregar la proyección.';
+        notification.error({ title: 'Error', content: msg, duration: 4000 });
+    } finally {
+        savingProjection.value = false;
     }
 };
 </script>
@@ -614,19 +676,30 @@ const paySingleInstallment = async (inst) => {
                                 Todo pagado
                             </n-tag>
                             <n-button
-                            v-if="canRemindNext && (canSendReminder.email || canSendReminder.whatsapp)"
-                            size="tiny" type="warning" secondary round
-                            @click="openReminderModal()"
-                        >
-                            <template #icon><n-icon><SendOutline /></n-icon></template>
-                            Recordar pago
-                        </n-button>
+                                v-if="canRemindNext && (canSendReminder.email || canSendReminder.whatsapp)"
+                                size="tiny" type="warning" secondary round
+                                @click="openReminderModal()"
+                            >
+                                <template #icon><n-icon><SendOutline /></n-icon></template>
+                                Recordar pago
+                            </n-button>
+                        </div>
                     </div>
 
-                    <!-- Proyección Personalizado: mostrar solo pagos reales -->
-                    <n-alert v-if="selectedOrder.payment_method === 'Personalizado'" type="info" :bordered="false" class="mb-3">
-                        Plan de pago <strong>personalizado</strong>. No hay fechas fijas proyectadas. Los pagos se registran según lo acordado.
-                    </n-alert>
+                    <!-- Proyección Personalizado: proyecciones manuales -->
+                    <div v-if="selectedOrder.payment_method === 'Personalizado'" class="mb-3">
+                        <n-alert type="info" :bordered="false" class="mb-2">
+                            Plan de pago <strong>personalizado</strong>. Puedes registrar proyecciones de pago manualmente.
+                        </n-alert>
+                        <n-button
+                            v-if="hasPermission('collection.create') && orderRemaining > 1"
+                            size="tiny" secondary type="primary" round
+                            @click="openAddProjectionModal"
+                        >
+                            <template #icon><n-icon><CalendarOutline /></n-icon></template>
+                            Agregar proyección de pago
+                        </n-button>
+                    </div>
 
                     <!-- Barra de total cuotas pendientes -->
                     <div v-if="projectionData?.installments?.length && planExpanded" class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 mb-2 border border-gray-200">
@@ -661,9 +734,9 @@ const paySingleInstallment = async (inst) => {
                                         >
                                             {{ isNextPending(inst) ? inst.status_label : (inst.status === 'paid' || inst.status === 'on_time' ? 'Pagado' : inst.status_label) }}
                                         </n-tag>
-                                        <!-- Botón editar cuota (solo cuota pendiente que toca pagar) -->
+                                        <!-- Botón editar cuota (requiere payments.edit) -->
                                         <n-button
-                                            v-if="isNextPending(inst) && hasPermission('collection.create')"
+                                            v-if="isNextPending(inst) && hasPermission('payments.edit')"
                                             size="tiny" text type="primary"
                                             @click="startEditInstallment(inst)"
                                         >
@@ -672,16 +745,16 @@ const paySingleInstallment = async (inst) => {
                                     </div>
                                 </template>
 
-                                <!-- MODO EDICIÓN -->
-                                <template v-if="editingInstallmentId === inst.id">
+                                <!-- MODO EDICIÓN (requiere payments.edit) -->
+                                <template v-if="editingInstallmentId === inst.id && hasPermission('payments.edit')">
                                     <div class="space-y-2 text-sm">
                                         <div class="flex items-center gap-2">
                                             <span class="text-gray-500 w-24">Fecha:</span>
-                                            <n-input
+                                            <n-date-picker
                                                 v-model:value="editingInstallmentData.projected_date"
-                                                size="tiny"
                                                 type="date"
-                                                class="w-40"
+                                                size="small"
+                                                class="w-36"
                                             />
                                         </div>
                                         <div class="flex items-center gap-2">
@@ -745,7 +818,7 @@ const paySingleInstallment = async (inst) => {
                                             <!-- Botones de acción solo para la siguiente cuota pendiente -->
                                             <div v-if="isNextPending(inst)" class="flex gap-1 mt-1 flex-wrap">
                                                 <n-button
-                                                    v-if="hasPermission('collection.create')"
+                                                    v-if="hasPermission('collection.fast_payment')"
                                                     size="tiny" quaternary type="success"
                                                     @click="paySingleInstallment(inst)"
                                                 >
@@ -867,7 +940,7 @@ const paySingleInstallment = async (inst) => {
                         <span v-if="!canSendReminder.whatsapp" class="text-xs ml-2">(sin teléfono registrado)</span>
                     </n-button>
 
-                    <n-button
+                    <!-- <n-button
                         block
                         type="primary"
                         :disabled="sendingReminder || (!canSendReminder.email && !canSendReminder.whatsapp)"
@@ -877,7 +950,7 @@ const paySingleInstallment = async (inst) => {
                     >
                         <template #icon><n-icon><SendOutline /></n-icon></template>
                         Enviar por Ambos Canales
-                    </n-button>
+                    </n-button> -->
                 </n-space>
             </n-card>
         </n-modal>
@@ -908,6 +981,59 @@ const paySingleInstallment = async (inst) => {
                     <div class="flex justify-end gap-3">
                         <n-button @click="showPaymentMethodModal = false">Cancelar</n-button>
                         <n-button type="primary" @click="savePaymentMethod" :loading="savingPaymentMethod">Guardar</n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
+        <!-- MODAL AGREGAR PROYECCIÓN DE PAGO (Personalizado) -->
+        <n-modal v-model:show="showAddProjectionModal" :mask-closable="false">
+            <n-card
+                style="width: 420px"
+                title="Agregar Proyección de Pago"
+                :bordered="false"
+                size="small"
+            >
+                <n-alert type="info" :bordered="false" class="mb-4">
+                    Saldo pendiente: <strong>{{ formatCurrency(orderRemaining) }}</strong><br/>
+                    Los montos no deben superar este saldo.
+                </n-alert>
+                <n-form>
+                    <n-form-item label="Fecha programada" required>
+                        <n-input
+                            v-model:value="projectionForm.projected_date"
+                            type="date"
+                            class="w-full"
+                            :min="new Date().toISOString().split('T')[0]"
+                        />
+                    </n-form-item>
+                    <n-form-item label="Monto" required>
+                        <n-input-number
+                            v-model:value="projectionForm.amount"
+                            :min="1"
+                            :precision="2"
+                            :max="orderRemaining"
+                            class="w-full"
+                            placeholder="0.00"
+                        >
+                            <template #prefix>$</template>
+                        </n-input-number>
+                    </n-form-item>
+                    <n-form-item label="Descripción (opcional)">
+                        <n-input
+                            v-model:value="projectionForm.label"
+                            placeholder="Ej: Segunda quincena de julio"
+                            :maxlength="255"
+                        />
+                    </n-form-item>
+                </n-form>
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="showAddProjectionModal = false">Cancelar</n-button>
+                        <n-button type="primary" @click="saveProjection" :loading="savingProjection">
+                            <template #icon><n-icon><CalendarOutline /></n-icon></template>
+                            Agregar
+                        </n-button>
                     </div>
                 </template>
             </n-card>

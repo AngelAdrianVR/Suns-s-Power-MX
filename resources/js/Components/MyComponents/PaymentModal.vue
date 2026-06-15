@@ -330,7 +330,6 @@ const closeModal = () => {
                                 class="w-full"
                                 size="medium"
                                 placeholder="0.00"
-                                :disabled="lockAmount"
                             >
                                 <template #prefix>$</template>
                             </NInputNumber>
