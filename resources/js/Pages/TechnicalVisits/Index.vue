@@ -15,6 +15,7 @@ import {
     OpenOutline, InformationCircleOutline, CheckmarkCircleOutline, CheckmarkDoneOutline,
     EllipsisHorizontal
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     visits: Object, // Paginado
@@ -495,14 +496,17 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión de levantamientos y prospectos</p>
                 </div>
-                <Link v-if="hasPermission('technical_visits.create')" :href="route('technical-visits.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
-                        Agendar Visita
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <PermissionTooltip permission="technical_visits.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('technical_visits.create')" :href="route('technical-visits.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                            </template>
+                            Agendar Visita
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 
@@ -659,6 +663,7 @@ const rowProps = (row) => ({
                                     <template #icon><n-icon :component="EyeOutline" /></template>
                                 </n-button>
 
+                                <PermissionTooltip permission="technical_visits.edit" placement="bottom" :size="12" />
                                 <n-button v-if="hasPermission('technical_visits.edit')" circle size="small" quaternary type="warning" @click.stop="goToEdit(visit.id)">
                                     <template #icon><n-icon :component="CreateOutline" /></template>
                                 </n-button>
@@ -709,6 +714,7 @@ const rowProps = (row) => ({
                                     </n-tooltip>
                                 </template>
 
+                                <PermissionTooltip permission="technical_visits.delete" placement="bottom" :size="12" />
                                 <n-button v-if="hasPermission('technical_visits.delete')" circle size="small" quaternary type="error" @click.stop="confirmDelete(visit)">
                                     <template #icon><n-icon :component="TrashOutline" /></template>
                                 </n-button>

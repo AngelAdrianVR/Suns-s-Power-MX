@@ -5,6 +5,7 @@ import { useSecureFile } from '@/Composables/useSecureFile';
 import { router, Link } from '@inertiajs/vue3';
 import { NButton, NIcon, NDataTable, NTooltip, createDiscreteApi } from 'naive-ui';
 import { TrashOutline, AttachOutline, CashOutline, CheckmarkCircleOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: Object,
@@ -116,10 +117,13 @@ const paymentColumns = [
                 <h3 class="text-base sm:text-lg font-bold text-gray-800">Cobranza</h3>
                 <p class="text-xs sm:text-sm text-gray-500">Abonos y pagos</p>
             </div>
-            <n-button v-if="hasPermission('collection.create')" type="success" secondary round size="small" class="w-full sm:w-auto" @click="emit('open-payment')" :disabled="stats.balance <= 0">
-                <template #icon><n-icon><CashOutline /></n-icon></template>
-                Registrar Abono
-            </n-button>
+            <div class="flex items-center gap-1">
+                <PermissionTooltip permission="collection.create" placement="bottom" :size="12" />
+                <n-button v-if="hasPermission('collection.create')" type="success" secondary round size="small" class="w-full sm:w-auto" @click="emit('open-payment')" :disabled="stats.balance <= 0">
+                    <template #icon><n-icon><CashOutline /></n-icon></template>
+                    Registrar Abono
+                </n-button>
+            </div>
         </div>
 
         <div class="flex justify-between items-center mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100">

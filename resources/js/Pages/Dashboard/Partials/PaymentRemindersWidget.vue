@@ -8,6 +8,7 @@ import {
     AlertCircleOutline, TimeOutline, CheckmarkCircleOutline,
     MailOutline, LogoWhatsapp 
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -87,9 +88,12 @@ const sendReminder = async (channel) => {
 <template>
     <n-card title="Pagos Próximos / Vencidos" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
         <template #header-extra>
-            <Link v-if="hasPermission('clients.index')" :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Ver clientes
-            </Link>
+            <div class="flex items-center gap-2">
+                <PermissionTooltip permission="collection.show" placement="bottom" :size="13" />
+                <Link v-if="hasPermission('clients.index')" :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Ver clientes
+                </Link>
+            </div>
         </template>
 
         <div v-if="payments.length > 0" class="max-h-[450px] overflow-auto">

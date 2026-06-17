@@ -1,6 +1,7 @@
 <script setup>
 import { NCard, NTimeline, NTimelineItem, NEmpty, NTime } from 'naive-ui';
 import { Link } from '@inertiajs/vue3';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 defineProps({
     orders: Array
@@ -10,9 +11,12 @@ defineProps({
 <template>
     <n-card title="Compras por Recibir" size="medium" class="shadow-sm rounded-2xl border-none">
         <template #header-extra>
-            <Link :href="route('purchases.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Compras
-            </Link>
+            <div class="flex items-center gap-2">
+                <PermissionTooltip permission="purchases.index" placement="bottom" :size="13" />
+                <Link :href="route('purchases.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Compras
+                </Link>
+            </div>
         </template>
 
         <div v-if="orders.length > 0" class="px-2">

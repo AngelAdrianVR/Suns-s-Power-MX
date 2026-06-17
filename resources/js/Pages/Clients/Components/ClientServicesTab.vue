@@ -4,6 +4,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { router, Link } from '@inertiajs/vue3';
 import { NButton, NIcon, NTag, NDataTable, NTooltip } from 'naive-ui';
 import { AddOutline, EyeOutline, AlertCircleOutline, CashOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: Object
@@ -121,17 +122,20 @@ const serviceColumns = [
                 <h3 class="text-base sm:text-lg font-bold text-gray-800">Órdenes de Servicio</h3>
                 <p class="text-xs sm:text-sm text-gray-500">Historial de servicios y planes de pago</p>
             </div>
-            <n-button 
-                v-if="hasPermission('service_orders.create')"
-                type="primary" 
-                round 
-                size="small" 
-                class="w-full sm:w-auto" 
-                @click="createServiceOrder"
-            >
-                <template #icon><n-icon><AddOutline /></n-icon></template>
-                Nueva Orden
-            </n-button>
+            <div class="flex items-center gap-1">
+                <PermissionTooltip permission="service_orders.create" placement="bottom" :size="12" />
+                <n-button 
+                    v-if="hasPermission('service_orders.create')"
+                    type="primary" 
+                    round 
+                    size="small" 
+                    class="w-full sm:w-auto" 
+                    @click="createServiceOrder"
+                >
+                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                    Nueva Orden
+                </n-button>
+            </div>
         </div>
 
         <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">

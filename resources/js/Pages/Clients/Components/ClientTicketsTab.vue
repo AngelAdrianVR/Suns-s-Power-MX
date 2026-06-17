@@ -4,6 +4,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { router } from '@inertiajs/vue3';
 import { NButton, NIcon, NTag, NDataTable, NEmpty } from 'naive-ui';
 import { AddOutline, EyeOutline, AlertCircleOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: Object
@@ -88,17 +89,20 @@ const ticketColumns = [
                 <h3 class="text-base sm:text-lg font-bold text-gray-800">Soporte</h3>
                 <p class="text-xs sm:text-sm text-gray-500">Tickets e incidencias reportadas</p>
             </div>
-            <n-button 
-                v-if="hasPermission('tickets.create')"
-                type="primary" 
-                round 
-                size="small" 
-                class="w-full sm:w-auto" 
-                @click="createTicket"
-            >
-                <template #icon><n-icon><AddOutline /></n-icon></template>
-                Nuevo Ticket
-            </n-button>
+            <div class="flex items-center gap-1">
+                <PermissionTooltip permission="tickets.create" placement="bottom" :size="12" />
+                <n-button 
+                    v-if="hasPermission('tickets.create')"
+                    type="primary" 
+                    round 
+                    size="small" 
+                    class="w-full sm:w-auto" 
+                    @click="createTicket"
+                >
+                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                    Nuevo Ticket
+                </n-button>
+            </div>
         </div>
 
         <div class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">

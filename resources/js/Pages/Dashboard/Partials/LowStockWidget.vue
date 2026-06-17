@@ -1,6 +1,7 @@
 <script setup>
-import { NCard, NTable, NTag, NEmpty, NProgress } from 'naive-ui';
+import { NCard, NTable, NTag, NEmpty, NProgress, NSpace } from 'naive-ui';
 import { Link } from '@inertiajs/vue3';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 defineProps({
     products: Array
@@ -10,10 +11,12 @@ defineProps({
 <template>
     <n-card title="Alertas de Inventario" size="medium" class="shadow-sm rounded-2xl border-none">
         <template #header-extra>
-            <!-- CORRECCIÓN: La ruta correcta según tu web.php es 'products.index' -->
-             <Link :href="route('products.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Gestión
-            </Link>
+            <div class="flex items-center gap-2">
+                <PermissionTooltip permission="warehouse.alarms_stock" placement="bottom" :size="13" />
+                <Link :href="route('products.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Gestión
+                </Link>
+            </div>
         </template>
 
         <n-table :single-line="false" size="small" :bordered="false" v-if="products.length > 0">

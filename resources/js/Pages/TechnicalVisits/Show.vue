@@ -20,6 +20,7 @@ import {
     CloudUploadOutline, SaveOutline, TrashOutline, EllipsisHorizontal,
     CheckmarkDoneOutline, CameraOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     visit: Object,
@@ -400,11 +401,13 @@ const salesRepInitials = computed(() => {
                         </n-button>
                     </Link>
                     <div class="flex items-center gap-2">
+                        <PermissionTooltip permission="technical_visits.edit" placement="bottom" :size="13" />
                         <Link v-if="hasPermission('technical_visits.edit')" :href="route('technical-visits.edit', visit.id)">
                             <n-button secondary round type="warning" size="small">
                                 <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
                             </n-button>
                         </Link>
+                        <PermissionTooltip permission="technical_visits.edit" placement="bottom" :size="13" />
                         <n-dropdown v-if="hasPermission('technical_visits.edit') && statusDropdownOptions.length > 0" trigger="click" :options="statusDropdownOptions" :on-select="handleStatusSelect">
                             <n-button secondary round type="primary" size="small">
                                 <template #icon><n-icon><EllipsisHorizontal /></n-icon></template>
@@ -708,6 +711,9 @@ const salesRepInitials = computed(() => {
 
                                     <!-- Botón para subir (requiere technical_visits.upload_evidence) -->
                                     <div v-if="hasPermission('technical_visits.upload_evidence')" class="mt-3">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <PermissionTooltip permission="technical_visits.upload_evidence" placement="top" :size="12" />
+                                        </div>
                                         <input type="file" :id="'file-'+item.key" class="hidden" @change="e => handleEvidenceUpload(e, item.key)" accept="image/*,application/pdf" />
                                         <n-button dashed size="small" type="primary" class="w-full" @click="triggerEvidenceInput(item.key)">
                                             <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
@@ -761,6 +767,9 @@ const salesRepInitials = computed(() => {
                                         </div>
                                     </div>
 
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <PermissionTooltip permission="technical_visits.upload_evidence" placement="top" :size="12" />
+                                    </div>
                                     <input type="file" id="file-additional" class="hidden" @change="handleAdditionalUpload" accept="image/*,application/pdf" />
                                     <n-button dashed size="small" type="primary" class="w-full" @click="triggerAdditionalInput" v-if="hasPermission('technical_visits.upload_evidence')">
                                         <template #icon><n-icon><CloudUploadOutline /></n-icon></template>

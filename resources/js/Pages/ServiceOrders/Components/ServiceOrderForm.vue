@@ -14,6 +14,7 @@ import {
     HardwareChipOutline, AddOutline, CreateOutline, TrashOutline, 
     CheckmarkCircleOutline, CloseOutline, HomeOutline, BuildOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -515,6 +516,7 @@ const removeConditioningTask = (index) => {
                                         />
                                     </div>
 
+                                    <PermissionTooltip permission="system_type.create" placement="bottom" :size="13" />
                                     <n-tooltip trigger="hover">
                                         <template #trigger>
                                             <n-button 
@@ -847,6 +849,7 @@ const removeConditioningTask = (index) => {
     <!-- MODAL: GESTIÓN DE TIPOS DE SISTEMA -->
     <n-modal v-model:show="showSystemModal" preset="card" class="max-w-md" title="Gestionar Tipos de Sistema">
         <div v-if="hasPermission('system_type.create')" class="flex gap-2 mb-6">
+            <PermissionTooltip permission="system_type.create" placement="top" :size="13" />
             <n-input v-model:value="systemForm.name" placeholder="Nuevo tipo (ej. Interconectado)" @keyup.enter="handleAddSystem" />
             <n-button type="primary" class="bg-indigo-600" @click="handleAddSystem" :loading="systemForm.processing" :disabled="!systemForm.name">
                 Agregar
@@ -861,9 +864,11 @@ const removeConditioningTask = (index) => {
 
                 <div class="flex gap-1">
                     <template v-if="editingSystemId !== sys.id">
+                        <PermissionTooltip permission="system_type.edit" placement="top" :size="11" />
                         <n-button v-if="hasPermission('system_type.edit')" circle quaternary size="small" type="info" @click="startEditSystem(sys)">
                             <template #icon><n-icon><CreateOutline/></n-icon></template>
                         </n-button>
+                        <PermissionTooltip permission="system_type.delete" placement="top" :size="11" />
                         <n-popconfirm v-if="hasPermission('system_type.delete')" @positive-click="handleDeleteSystem(sys.id)" positive-text="Sí, eliminar" negative-text="Cancelar">
                             <template #trigger>
                                 <n-button circle quaternary size="small" type="error">

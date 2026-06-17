@@ -4,6 +4,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { NCard, NList, NListItem, NAvatar, NEmpty, NButton, NIcon, NTooltip } from 'naive-ui';
 import { Link, router } from '@inertiajs/vue3';
 import { CashOutline, EyeOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; 
 
 defineProps({
@@ -44,10 +45,13 @@ const goToShow = (id) => {
 <template>
     <n-card title="Cuentas por Cobrar" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
         <template #header-extra>
-            <!-- Ocultamos también este enlace si el usuario no tiene permisos de ver el índice de clientes -->
-            <Link v-if="hasPermission('clients.index')" :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Clientes
-            </Link>
+            <div class="flex items-center gap-2">
+                <PermissionTooltip permission="clients.view_balance" placement="bottom" :size="13" />
+                <!-- Ocultamos también este enlace si el usuario no tiene permisos de ver el índice de clientes -->
+                <Link v-if="hasPermission('clients.index')" :href="route('clients.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Clientes
+                </Link>
+            </div>
         </template>
 
         <div v-if="clients.length > 0">

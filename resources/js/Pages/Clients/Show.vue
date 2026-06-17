@@ -20,6 +20,7 @@ import {
     CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline,
     TicketOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: { type: Object, required: true },
@@ -120,11 +121,14 @@ const googleMapsUrl = computed(() => {
                         </n-button>
                     </Link>
                     
-                    <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
-                        <n-button secondary round type="warning" size="small">
-                            <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
-                        </n-button>
-                    </Link>
+                    <div class="flex items-center gap-2">
+                        <PermissionTooltip permission="clients.edit" placement="bottom" :size="13" />
+                        <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
+                            <n-button secondary round type="warning" size="small">
+                                <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
+                            </n-button>
+                        </Link>
+                    </div>
                 </div>
 
                 <!-- CABECERA PRINCIPAL -->
@@ -181,7 +185,10 @@ const googleMapsUrl = computed(() => {
                             </div>
                         </div>
 
-                        <div v-if="hasPermission('clients.view_balance')" class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <div v-if="hasPermission('clients.view_balance')" class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto relative">
+                            <div class="absolute -top-2 -right-2 z-10">
+                                <PermissionTooltip permission="clients.view_balance" placement="left" :size="12" />
+                            </div>
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
