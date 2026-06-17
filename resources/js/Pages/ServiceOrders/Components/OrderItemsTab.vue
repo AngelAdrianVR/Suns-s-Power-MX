@@ -7,6 +7,7 @@ import {
     NFormItem, NSelect, NInputNumber, createDiscreteApi, NTag
 } from 'naive-ui';
 import { AddOutline, RemoveCircleOutline, AlertCircleOutline, ChevronUpOutline, ChevronDownOutline, SwapVerticalOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     order: Object,
@@ -68,12 +69,15 @@ const removeProduct = (itemId) => {
                 <p class="text-sm text-gray-500">Lista de productos que se descontarán del inventario para esta instalación.</p>
             </div>
             
-            <n-button 
-                v-if="hasPermission('service_orders.edit') && !['Completado', 'Facturado'].includes(order.status)" 
-                type="primary" class="bg-indigo-600" @click="showProductModal = true">
-                <template #icon><n-icon><AddOutline /></n-icon></template>
-                Asignar Material Extra
-            </n-button>
+            <div class="flex items-center gap-1">
+                <PermissionTooltip permission="service_orders.edit" placement="bottom" :size="12" />
+                <n-button 
+                    v-if="hasPermission('service_orders.edit') && !['Completado', 'Facturado'].includes(order.status)" 
+                    type="primary" class="bg-indigo-600" @click="showProductModal = true">
+                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                    Asignar Material Extra
+                </n-button>
+            </div>
         </div>
 
         <div class="overflow-x-auto rounded-xl border border-gray-200">
@@ -83,7 +87,12 @@ const removeProduct = (itemId) => {
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-xl">Producto / SKU</th>
                         <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Cant. Asignada</th>
                         <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Cant. Usada Real</th>
-                        <th v-if="can_view_financials" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Precio Ref.</th>
+                        <th v-if="can_view_financials" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                            <div class="flex items-center justify-end gap-1">
+                                Precio Ref.
+                                <PermissionTooltip permission="sales.view_sales_amount" placement="top" :size="10" />
+                            </div>
+                        </th>
                         <th v-if="can_view_financials" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Subtotal</th>
                         <th v-if="!['Completado', 'Facturado'].includes(order.status)" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tr-xl w-24">Acción</th>
                     </tr>

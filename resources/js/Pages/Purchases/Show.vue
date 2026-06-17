@@ -12,13 +12,14 @@ import {
     CloseCircleOutline, DocumentTextOutline, TimeOutline, AirplaneOutline,
     StorefrontOutline, ImageOutline, PersonOutline, CallOutline, GlobeOutline // Agregados
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import { h } from 'vue';
 
 export default {
     components: {
         AppLayout, Link, NCard, NIcon, NSteps, NStep, NTag, NButton, 
         NDivider, NDataTable, NResult, NAlert, NDescriptions, NDescriptionsItem, NAvatar,
-        NModal, NImage,
+        NModal, NImage, PermissionTooltip,
         // Iconos
         ArrowBackOutline, PrintOutline, CubeOutline, CheckmarkCircleOutline,
         CloseCircleOutline, DocumentTextOutline, TimeOutline, AirplaneOutline, 
@@ -204,6 +205,7 @@ export default {
 
                             <div class="flex flex-wrap gap-3 justify-end items-center">
                                 <template v-if="order.status === 'Borrador'">
+                                    <PermissionTooltip permission="purchases.edit" placement="top" :size="12" />
                                     <Link v-if="hasPermission('purchases.edit')" :href="route('purchases.edit', order.id)">
                                         <n-button secondary>Editar</n-button>
                                     </Link>
@@ -214,6 +216,7 @@ export default {
                                 </template>
 
                                 <template v-if="order.status === 'Solicitada'">
+                                    <PermissionTooltip permission="purchases.approve" placement="top" :size="12" />
                                     <n-button v-if="hasPermission('purchases.approve')" type="error" ghost @click="changeStatus('Cancelada')" :loading="loadingAction">
                                         <template #icon><n-icon><CloseCircleOutline /></n-icon></template>
                                         Cancelar
@@ -225,6 +228,7 @@ export default {
                                 </template>
 
                                 <template v-if="order.status === 'Cancelada'">
+                                    <PermissionTooltip permission="purchases.edit" placement="top" :size="12" />
                                     <n-button v-if="hasPermission('purchases.edit')" secondary type="warning" @click="changeStatus('Borrador')" :loading="loadingAction">
                                         Reactivar
                                     </n-button>

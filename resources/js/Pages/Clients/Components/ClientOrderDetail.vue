@@ -16,8 +16,9 @@ import {
     MailOutline, LogoWhatsapp, CashOutline, EyeOutline,
     SendOutline, AttachOutline, CalendarOutline,
     CreateOutline, SaveOutline, CloseOutline,
-    PencilOutline
+    PencilOutline, TrashOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: Object,
@@ -28,7 +29,7 @@ const emit = defineEmits(['open-payment', 'refresh']);
 
 const { hasPermission } = usePermissions();
 const { openFileWithRetry } = useSecureFile();
-const { notification } = createDiscreteApi(['notification']);
+const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
 // --- Estado ---
 const selectedOrderId = ref(null);
@@ -299,6 +300,29 @@ const sendReminder = async (channel) => {
     }
 };
 
+// --- Eliminar pago ---
+const handleDeletePayment = (payment) => {
+    dialog.warning({
+        title: 'Eliminar Abono',
+        content: `¿Estás seguro de eliminar el abono de ${formatCurrency(payment.amount)} del ${formatDate(payment.payment_date)}?. Esto ajustará el saldo pendiente de la orden y eliminará la relación con la cuota si aplica.`,
+        positiveText: 'Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: () => {
+            router.delete(route('payments.destroy', payment.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    notification.success({ title: 'Eliminado', content: 'Abono eliminado correctamente.', duration: 3000 });
+                    refreshProjection();
+                    emit('refresh');
+                },
+                onError: () => {
+                    notification.error({ title: 'Error', content: 'No se pudo eliminar el abono.', duration: 3000 });
+                }
+            });
+        }
+    });
+};
+
 // --- Columnas de pagos realizados ---
 const paymentColumns = [
     { title: 'Fecha', key: 'payment_date', width: 125, render: (row) => formatDate(row.payment_date) },
@@ -331,6 +355,25 @@ const paymentColumns = [
                 });
             }
             return null;
+        }
+    },
+    {
+        title: '',
+        key: 'actions',
+        width: 100,
+        align: 'center',
+        render(row) {
+            if (!hasPermission('payments.delete')) return null;
+            return h('div', { class: 'flex items-center justify-center gap-0.5' }, [
+                h(PermissionTooltip, { permission: 'payments.delete', placement: 'left', size: 11 }),
+                h(NButton, {
+                    circle: true, size: 'small', quaternary: true, type: 'error',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        handleDeletePayment(row);
+                    }
+                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+            ]);
         }
     },
 ];
@@ -520,15 +563,18 @@ const saveProjection = async () => {
                     class="w-full"
                 />
             </div>
-            <n-button
-                v-if="hasPermission('service_orders.create')"
-                type="primary" round size="small"
-                @click="router.visit(route('service-orders.create', { client_id: client.id }))"
-                class="w-full sm:w-auto mt-2 sm:mt-0"
-            >
-                <template #icon><n-icon><ConstructOutline /></n-icon></template>
-                Nueva Orden
-            </n-button>
+            <div class="flex items-center gap-1 mt-2 sm:mt-0">
+                <PermissionTooltip permission="service_orders.create" placement="bottom" :size="12" />
+                <n-button
+                    v-if="hasPermission('service_orders.create')"
+                    type="primary" round size="small"
+                    @click="router.visit(route('service-orders.create', { client_id: client.id }))"
+                    class="w-full sm:w-auto"
+                >
+                    <template #icon><n-icon><ConstructOutline /></n-icon></template>
+                    Nueva Orden
+                </n-button>
+            </div>
         </div>
 
         <!-- SIN ÓRDENES -->
@@ -648,12 +694,15 @@ const saveProjection = async () => {
                             <template #icon><n-icon><EyeOutline /></n-icon></template>
                             Ver Orden Completa
                         </n-button>
-                        <n-button v-if="hasPermission('collection.create') && orderRemaining > 1"
-                            size="tiny" type="success" secondary round
-                            @click="openGeneralPayment()">
-                            <template #icon><n-icon><CashOutline /></n-icon></template>
-                            {{ selectedOrder.payment_method === 'Personalizado' ? 'Registrar Abono' : 'Liquidar Servicio' }}
-                        </n-button>
+                        <div class="flex items-center gap-1">
+                            <PermissionTooltip permission="collection.create" placement="top" :size="11" />
+                            <n-button v-if="hasPermission('collection.create') && orderRemaining > 1"
+                                size="tiny" type="success" secondary round
+                                @click="openGeneralPayment()">
+                                <template #icon><n-icon><CashOutline /></n-icon></template>
+                                {{ selectedOrder.payment_method === 'Personalizado' ? 'Registrar Abono' : 'Liquidar Servicio' }}
+                            </n-button>
+                        </div>
                     </div>
                 </n-card>
 
@@ -691,14 +740,17 @@ const saveProjection = async () => {
                         <n-alert type="info" :bordered="false" class="mb-2">
                             Plan de pago <strong>personalizado</strong>. Puedes registrar proyecciones de pago manualmente.
                         </n-alert>
-                        <n-button
-                            v-if="hasPermission('collection.create') && orderRemaining > 1"
-                            size="tiny" secondary type="primary" round
-                            @click="openAddProjectionModal"
-                        >
-                            <template #icon><n-icon><CalendarOutline /></n-icon></template>
-                            Agregar proyección de pago
-                        </n-button>
+                        <div class="flex items-center gap-1">
+                            <PermissionTooltip permission="collection.create" placement="top" :size="11" />
+                            <n-button
+                                v-if="hasPermission('collection.create') && orderRemaining > 1"
+                                size="tiny" secondary type="primary" round
+                                @click="openAddProjectionModal"
+                            >
+                                <template #icon><n-icon><CalendarOutline /></n-icon></template>
+                                Agregar proyección de pago
+                            </n-button>
+                        </div>
                     </div>
 
                     <!-- Barra de total cuotas pendientes -->
@@ -735,6 +787,7 @@ const saveProjection = async () => {
                                             {{ isNextPending(inst) ? inst.status_label : (inst.status === 'paid' || inst.status === 'on_time' ? 'Pagado' : inst.status_label) }}
                                         </n-tag>
                                         <!-- Botón editar cuota (requiere payments.edit) -->
+                                        <PermissionTooltip permission="payments.edit" placement="top" :size="10" />
                                         <n-button
                                             v-if="isNextPending(inst) && hasPermission('payments.edit')"
                                             size="tiny" text type="primary"
@@ -817,6 +870,7 @@ const saveProjection = async () => {
                                             </div>
                                             <!-- Botones de acción solo para la siguiente cuota pendiente -->
                                             <div v-if="isNextPending(inst)" class="flex gap-1 mt-1 flex-wrap">
+                                                <PermissionTooltip permission="collection.fast_payment" placement="top" :size="10" />
                                                 <n-button
                                                     v-if="hasPermission('collection.fast_payment')"
                                                     size="tiny" quaternary type="success"
@@ -825,6 +879,7 @@ const saveProjection = async () => {
                                                     <template #icon><n-icon><CashOutline /></n-icon></template>
                                                     Pago rápido
                                                 </n-button>
+                                                <PermissionTooltip permission="collection.create" placement="top" :size="10" />
                                                 <n-button
                                                     v-if="hasPermission('collection.create')"
                                                     size="tiny" quaternary type="primary"

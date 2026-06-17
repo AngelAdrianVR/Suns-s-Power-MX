@@ -11,6 +11,7 @@ import {
     CartOutline, CalendarOutline, CloseCircleOutline, CheckmarkCircleOutline,
     EllipsisVertical, TimeOutline, PersonOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     orders: Object,
@@ -215,9 +216,13 @@ const createColumns = () => [
         render: (row) => h('span', { class: 'font-bold text-gray-800' }, formatCurrency(row.total_cost) + ' ' + row.currency)
     },
     {
-        title: '',
+        title: () => h('div', { class: 'flex items-center gap-1' }, [
+            h(PermissionTooltip, { permission: 'purchases.edit', placement: 'top', size: 12 }),
+            h(PermissionTooltip, { permission: 'purchases.approve', placement: 'top', size: 12 }),
+            h(PermissionTooltip, { permission: 'purchases.delete', placement: 'top', size: 12 }),
+        ]),
         key: 'actions',
-        width: 140,
+        width: 150,
         render(row) {
             const buttons = [];
 
@@ -291,12 +296,15 @@ const rowProps = (row) => ({
                     <p class="text-sm text-gray-500 mt-1">Administra tus adquisiciones y recepciones de stock</p>
                 </div>
                 <!-- Botón Crear: Protegido por purchases.create -->
-                <Link v-if="hasPermission('purchases.create')" :href="route('purchases.create')" class="w-full md:w-auto">
-                    <n-button type="primary" round size="large" class="shadow-md w-full md:w-auto">
-                        <template #icon><n-icon><AddOutline /></n-icon></template>
-                        Nueva Orden
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <PermissionTooltip permission="purchases.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('purchases.create')" :href="route('purchases.create')" class="w-full md:w-auto">
+                        <n-button type="primary" round size="large" class="shadow-md w-full md:w-auto">
+                            <template #icon><n-icon><AddOutline /></n-icon></template>
+                            Nueva Orden
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 
@@ -401,6 +409,7 @@ const rowProps = (row) => ({
                                     </n-button>
                                     
                                     <!-- Editar: Protegido por purchases.edit -->
+                                    <PermissionTooltip permission="purchases.edit" placement="bottom" :size="11" />
                                     <n-button 
                                         v-if="!['Recibida', 'Cancelada'].includes(order.status) && hasPermission('purchases.edit')"
                                         circle size="small" quaternary type="warning" @click.stop="goToEdit(order.id)"

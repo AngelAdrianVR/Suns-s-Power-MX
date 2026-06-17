@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, h } from 'vue';
+import { ref, watch, h, onMounted } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -14,6 +14,7 @@ import {
     PersonOutline, CallOutline, MailOutline, WalletOutline, CashOutline, AlertCircleOutline,
     LocationOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     clients: Object, 
@@ -81,6 +82,27 @@ const confirmDelete = (client) => {
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
+
+// --- Sincronizar pestaña activa con la URL ---
+const currentTab = ref('list');
+
+onMounted(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab) {
+        currentTab.value = tab;
+    }
+});
+
+watch(currentTab, (newTab) => {
+    const url = new URL(window.location.href);
+    if (newTab === 'list') {
+        url.searchParams.delete('tab');
+    } else {
+        url.searchParams.set('tab', newTab);
+    }
+    window.history.replaceState({}, '', url);
+});
 
 // --- Configuración de Columnas ---
 const createColumns = () => [
@@ -180,15 +202,21 @@ const createColumns = () => [
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
                 }, { icon: () => h(NIcon, { component: CashOutline }) }),
 
-                hasPermission('clients.edit') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'warning',
-                    onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
+                hasPermission('clients.edit') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'clients.edit', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'warning',
+                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
+                ]) : null,
 
-                hasPermission('clients.delete') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'error',
-                    onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
+                hasPermission('clients.delete') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'clients.delete', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'error',
+                        onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                ]) : null
             ]);
         }
     }
@@ -222,6 +250,7 @@ const rowProps = (row) => ({
                     <p class="text-sm text-gray-500 mt-1">Gestión de expedientes y estado de cuenta por sucursal</p>
                 </div>
                 <div class="flex items-center gap-3">
+                    <PermissionTooltip permission="clients.create" placement="bottom" :size="14" />
                     <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
                         <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
                             <template #icon><n-icon><AddOutline /></n-icon></template>
@@ -236,7 +265,7 @@ const rowProps = (row) => ({
             <div class="max-w-[90rem] mx-auto sm:px-6 lg:px-8">
 
                 <!-- PESTAÑAS -->
-                <n-tabs type="line" animated default-value="list" class="custom-tabs">
+                <n-tabs type="line" animated v-model:value="currentTab" class="custom-tabs">
 
                     <!-- Pestaña 1: Listado de Clientes -->
                     <n-tab-pane name="list" tab="Clientes">
@@ -330,9 +359,11 @@ const rowProps = (row) => ({
                                         </div>
                                     </div>
                                     <div class="absolute top-4 right-4 flex flex-col gap-2">
+                                        <PermissionTooltip permission="clients.edit" placement="left" :size="11" />
                                         <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
                                             <n-icon size="20"><CreateOutline /></n-icon>
                                         </button>
+                                        <PermissionTooltip permission="clients.delete" placement="left" :size="11" />
                                         <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full">
                                             <n-icon size="20"><TrashOutline /></n-icon>
                                         </button>
@@ -349,6 +380,9 @@ const rowProps = (row) => ({
                                     </div>
                                 </div>
                                 <div v-if="client.has_debt && hasPermission('collection.create')" class="mt-2">
+                                     <div class="flex items-center gap-1">
+                                         <PermissionTooltip permission="collection.create" placement="top" :size="11" />
+                                     </div>
                                      <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
                                         <template #icon><n-icon :component="CashOutline" /></template>
                                         Registrar Abono
@@ -362,11 +396,12 @@ const rowProps = (row) => ({
                     </n-tab-pane>
 
                     <!-- Pestaña 2: Cartera de Deuda -->
-                    <n-tab-pane v-if="hasPermission('collection.clients_debt')" name="debt" tab="Cartera de Deuda">
+                    <n-tab-pane v-if="hasPermission('collection.clients_debt')" name="debt">
                         <template #tab>
                             <div class="flex items-center gap-1.5">
                                 <n-icon size="18"><DocumentTextOutline /></n-icon>
                                 <span>Cartera de Deuda</span>
+                                <PermissionTooltip permission="collection.clients_debt" placement="top" :size="11" />
                             </div>
                         </template>
                         <ClientDebtTab />

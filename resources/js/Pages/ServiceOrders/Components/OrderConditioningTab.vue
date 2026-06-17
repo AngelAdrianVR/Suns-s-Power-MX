@@ -11,6 +11,7 @@ import {
     CloudUploadOutline, PersonOutline, CloseOutline, ImageOutline,
     VideocamOutline, DocumentTextOutline, ConstructOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     order: Object,
@@ -142,10 +143,13 @@ const conditioningTasks = computed(() => props.order?.conditionings || []);
                 <n-icon :component="ConstructOutline" class="text-orange-500" />
                 Tareas de Acondicionamiento Previo
             </h4>
-            <n-button size="small" type="primary" secondary @click="openAddModal" v-if="hasPermission('service_orders.edit')">
-                <template #icon><n-icon><AddOutline /></n-icon></template>
-                Agregar Tarea
-            </n-button>
+            <div class="flex items-center gap-1">
+                <PermissionTooltip permission="service_orders.edit" placement="bottom" :size="12" />
+                <n-button size="small" type="primary" secondary @click="openAddModal" v-if="hasPermission('service_orders.edit')">
+                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                    Agregar Tarea
+                </n-button>
+            </div>
         </div>
 
         <n-empty v-if="!conditioningTasks.length" description="Sin tareas de acondicionamiento registradas." />
@@ -160,6 +164,7 @@ const conditioningTasks = computed(() => props.order?.conditionings || []);
                         <n-tag :type="getCategoryType(cond.category)" size="small" round :bordered="false">
                             {{ cond.category }}
                         </n-tag>
+                        <PermissionTooltip permission="service_orders.edit" placement="top" :size="11" />
                         <n-select
                             v-if="hasPermission('service_orders.edit')"
                             :value="cond.status"
@@ -198,6 +203,7 @@ const conditioningTasks = computed(() => props.order?.conditionings || []);
                         No asignar si el cliente lo hace
                     </small>
 
+                    <PermissionTooltip permission="service_orders.edit" placement="bottom" :size="11" />
                     <n-popconfirm @positive-click="deleteConditioning(cond.id)" v-if="hasPermission('service_orders.edit')">
                         <template #trigger>
                             <n-button size="tiny" quaternary type="error">
@@ -241,6 +247,9 @@ const conditioningTasks = computed(() => props.order?.conditionings || []);
 
                 <!-- Upload de evidencia -->
                 <div v-if="(cond.media?.length || 0) < 3 && hasPermission('service_orders.edit')">
+                    <div class="flex items-center gap-1 mb-1">
+                        <PermissionTooltip permission="service_orders.edit" placement="top" :size="11" />
+                    </div>
                     <n-upload
                         :show-file-list="false"
                         accept="image/*,video/*"

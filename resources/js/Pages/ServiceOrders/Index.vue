@@ -13,6 +13,7 @@ import {
     CheckmarkCircleOutline, ChevronDownOutline, FlashOutline, PricetagOutline,
     HardwareChipOutline // Icono para el tipo de sistema
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     orders: Object, // Paginado
@@ -274,9 +275,12 @@ const createColumns = () => {
 
     if (hasPermission('sales.view_sales_amount')) {
         columns.push({
-            title: 'Total',
+            title: () => h('div', { class: 'flex items-center gap-1' }, [
+                h('span', 'Total'),
+                h(PermissionTooltip, { permission: 'sales.view_sales_amount', placement: 'top', size: 13 })
+            ]),
             key: 'total_amount',
-            width: 120,
+            width: 130,
             align: 'right',
             render(row) {
                 return h('span', { class: 'font-mono text-gray-700 font-medium' }, formatCurrency(row.total_amount));
@@ -285,9 +289,12 @@ const createColumns = () => {
     }
 
     columns.push({
-        title: '',
+        title: () => h('div', { class: 'flex items-center gap-1' }, [
+            h(PermissionTooltip, { permission: 'service_orders.edit', placement: 'top', size: 13 }),
+            h(PermissionTooltip, { permission: 'service_orders.delete', placement: 'top', size: 13 }),
+        ]),
         key: 'actions',
-        width: 140,
+        width: 150,
         render(row) {
             const canEdit = hasPermission('service_orders.edit');
             const canDelete = hasPermission('service_orders.delete');
@@ -347,14 +354,17 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión operativa e instalaciones</p>
                 </div>
-                <Link v-if="hasPermission('service_orders.create')" :href="route('service-orders.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
-                        Nueva Orden
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <PermissionTooltip permission="service_orders.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('service_orders.create')" :href="route('service-orders.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                            </template>
+                            Nueva Orden
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 

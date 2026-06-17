@@ -16,6 +16,7 @@ import {
     GlobeOutline, BriefcaseOutline, Star, CopyOutline, LogoWhatsapp,
     CardOutline, LocationOutline, DocumentTextOutline, ReceiptOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     supplier: Object,
@@ -215,12 +216,15 @@ const formatCurrency = (amount, currency) => {
                         </div>
 
                         <!-- Botón Editar -->
-                        <Link v-if="hasPermission('suppliers.edit')" :href="route('suppliers.edit', supplier.id)">
-                            <n-button secondary round type="warning">
-                                <template #icon><n-icon><CreateOutline /></n-icon></template>
-                                Editar Datos
-                            </n-button>
-                        </Link>
+                        <div class="flex items-center gap-2">
+                            <PermissionTooltip permission="suppliers.edit" placement="bottom" :size="13" />
+                            <Link v-if="hasPermission('suppliers.edit')" :href="route('suppliers.edit', supplier.id)">
+                                <n-button secondary round type="warning">
+                                    <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                    Editar Datos
+                                </n-button>
+                            </Link>
+                        </div>
                     </div>
                 </div>
 
@@ -419,7 +423,8 @@ const formatCurrency = (amount, currency) => {
                         </div>
                         
                         <!-- Botón Acción -->
-                        <div v-if="assigned_products.length > 0 && hasPermission('suppliers.edit')">
+                        <div v-if="assigned_products.length > 0 && hasPermission('suppliers.edit')" class="flex items-center gap-2">
+                            <PermissionTooltip permission="suppliers.edit" placement="bottom" :size="13" />
                             <n-button type="info" round ghost @click="openProductEditor">
                                 <template #icon><n-icon><CreateOutline /></n-icon></template>
                                 Administrar Productos
@@ -438,10 +443,13 @@ const formatCurrency = (amount, currency) => {
                             <p class="text-gray-500 max-w-md mb-8">
                                 Asigna productos a este proveedor para agilizar tus compras y controlar costos.
                             </p>
-                            <n-button v-if="hasPermission('suppliers.edit')" type="primary" size="large" round @click="openProductEditor">
-                                <template #icon><n-icon><AddOutline /></n-icon></template>
-                                Asignar Productos Ahora
-                            </n-button>
+                            <div class="flex items-center gap-2">
+                                <PermissionTooltip permission="suppliers.edit" placement="bottom" :size="13" />
+                                <n-button v-if="hasPermission('suppliers.edit')" type="primary" size="large" round @click="openProductEditor">
+                                    <template #icon><n-icon><AddOutline /></n-icon></template>
+                                    Asignar Productos Ahora
+                                </n-button>
+                            </div>
                         </div>
 
                         <!-- CASO 2: Lista de Productos (Grid) -->
@@ -478,6 +486,7 @@ const formatCurrency = (amount, currency) => {
 
                                 <!-- Botón rápido de desvincular -->
                                 <div v-if="hasPermission('suppliers.edit')" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                    <PermissionTooltip permission="suppliers.edit" placement="top" :size="10" />
                                     <n-tooltip trigger="hover">
                                         <template #trigger>
                                             <n-button circle size="tiny" type="info" secondary @click="openEditModal(product)">

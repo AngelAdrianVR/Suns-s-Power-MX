@@ -5,6 +5,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { useSecureFile } from '@/Composables/useSecureFile';
 import { NButton, NIcon, NTag, NDataTable, NTooltip, createDiscreteApi } from 'naive-ui';
 import { CloudDownloadOutline, TrashOutline, CloudUploadOutline } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: Object
@@ -129,6 +130,9 @@ const handleFileChange = (event) => {
 
         <input type="file" ref="fileInput" class="hidden" multiple @change="handleFileChange">
 
+        <div class="flex items-center gap-1 mb-2">
+            <PermissionTooltip permission="clients.edit" placement="top" :size="12" />
+        </div>
         <div 
             v-if="hasPermission('clients.edit')" 
             @click="triggerFileInput"

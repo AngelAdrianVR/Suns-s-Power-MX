@@ -5,7 +5,7 @@ import axios from 'axios';
 import {
     NDataTable, NTag, NIcon, NButton, NModal, NCard, NTimeline,
     NTimelineItem, NSelect, NBadge, NAlert, NEmpty, NSpin,
-    NPagination, createDiscreteApi, NTooltip
+    NPagination, createDiscreteApi, NTooltip, NDivider
 } from 'naive-ui';
 import {
     EyeOutline, CashOutline, AlertCircleOutline,
@@ -25,7 +25,7 @@ const currentPage = ref(1);
 
 // --- Filtros ---
 const paymentMethodFilter = ref(null);
-const delinquencyFilter = ref(null); // 'late' (6-10 días) o 'defaulted' (11+ días)
+const delinquencyFilter = ref(null);
 
 const paymentMethodOptions = [
     { label: 'Todos los planes', value: null },
@@ -74,13 +74,46 @@ const handlePageChange = (page) => fetchReport(page);
 
 // --- Los filtros ahora son server-side, la data ya viene filtrada ---
 
-// --- Modal de proyección ---
+// --- Modal de proyección con timeline ---
 const showProjectionModal = ref(false);
 const projectionClient = ref(null);
+const loadingProjections = ref(false);
+const projectionOrders = ref([]); // Array de órdenes con sus installments cargados
 
-const openProjection = (client) => {
+const paymentStatusStyle = (status) => {
+    const map = {
+        on_time: { color: '#10b981', bg: '#d1fae5', label: 'A tiempo' },
+        late: { color: '#f59e0b', bg: '#fef3c7', label: 'Extemporáneo' },
+        defaulted: { color: '#ef4444', bg: '#fee2e2', label: 'Incumplido' },
+        pending: { color: '#6b7280', bg: '#f3f4f6', label: 'Pendiente' },
+        upcoming: { color: '#3b82f6', bg: '#dbeafe', label: 'Próximo' },
+        paid: { color: '#10b981', bg: '#d1fae5', label: 'Pagado' },
+    };
+    return map[status] || map.pending;
+};
+
+const openProjection = async (client) => {
     projectionClient.value = client;
     showProjectionModal.value = true;
+    loadingProjections.value = true;
+    projectionOrders.value = [];
+
+    try {
+        const orders = client.orders || [];
+        const results = await Promise.allSettled(
+            orders.map(order =>
+                axios.get(route('api.service-orders.installments', order.id))
+                    .then(res => ({ ...order, installments: res.data.installments || [], unmatched: res.data.unmatched_payments || [] }))
+            )
+        );
+        projectionOrders.value = results
+            .filter(r => r.status === 'fulfilled')
+            .map(r => r.value);
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudieron cargar las proyecciones.' });
+    } finally {
+        loadingProjections.value = false;
+    }
 };
 
 const goToShow = (id) => router.visit(route('clients.show', id));
@@ -250,49 +283,105 @@ const columns = [
             </div>
         </div>
 
-        <!-- Modal de Proyección de Pagos (solo lectura) -->
+        <!-- Modal de Proyección de Pagos con Timeline -->
         <n-modal v-model:show="showProjectionModal">
             <n-card
-                style="width: 600px; max-height: 80vh;"
+                style="width: 700px; max-height: 85vh; overflow-y: auto;"
                 :title="projectionClient?.name || 'Proyección de Pagos'"
                 :bordered="false"
                 size="small"
+                closable
+                @close="showProjectionModal = false"
             >
-                <div v-if="projectionClient" class="space-y-4">
+                <div v-if="loadingProjections" class="py-12 flex justify-center">
+                    <n-spin size="medium" />
+                </div>
+
+                <div v-else-if="projectionOrders.length === 0" class="py-8">
+                    <n-empty description="No se pudieron cargar las proyecciones." />
+                </div>
+
+                <div v-else class="space-y-6">
                     <n-alert type="info" :bordered="false">
-                        Saldo total: <strong>{{ formatCurrency(projectionClient.balance) }}</strong>
-                        &mdash; {{ projectionClient.orders?.length || 0 }} órdenes con deuda
+                        <template #header>
+                            Saldo total: <strong>{{ formatCurrency(projectionClient?.balance) }}</strong>
+                            &mdash; {{ projectionOrders.length }} orden(es) con deuda
+                        </template>
                     </n-alert>
 
-                    <div v-for="order in projectionClient.orders" :key="order.id"
-                         class="border rounded-lg p-3" :class="order.is_overdue ? 'border-red-200 bg-red-50/30' : 'border-gray-200'">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="font-bold text-sm">OS #{{ order.id }}</span>
-                            <div class="flex gap-2">
-                                <n-tag :type="order.status === 'Aceptado' ? 'info' : order.status === 'En Proceso' ? 'warning' : 'default'"
-                                    size="tiny" round :bordered="false">{{ order.status }}</n-tag>
-                                <n-tag :type="order.is_overdue ? 'error' : 'success'" size="tiny" round :bordered="false">
-                                    {{ order.is_overdue ? 'Vencida' : 'Vigente' }}
-                                </n-tag>
+                    <div v-for="order in projectionOrders" :key="order.id"
+                         class="border rounded-xl p-4"
+                         :class="order.is_overdue ? 'border-red-200 bg-red-50/20' : 'border-gray-200'">
+
+                        <div class="flex justify-between items-center mb-3">
+                            <div>
+                                <span class="font-bold text-gray-800">OS #{{ order.id }}</span>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <n-tag :type="order.status === 'Aceptado' ? 'info' : order.status === 'En Proceso' ? 'warning' : 'default'"
+                                        size="tiny" round :bordered="false">{{ order.status }}</n-tag>
+                                    <n-tag :type="order.is_overdue ? 'error' : 'success'" size="tiny" round :bordered="false">
+                                        {{ order.is_overdue ? 'Vencida' : 'Vigente' }}
+                                    </n-tag>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-gray-400">Plan: <strong>{{ paymentPlanLabel(order.payment_method) }}</strong></div>
+                                <div class="text-xs text-gray-400">Restante: <strong class="text-amber-600">{{ formatCurrency(order.remaining) }}</strong></div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
-                            <div>Plan: <strong>{{ paymentPlanLabel(order.payment_method) }}</strong></div>
-                            <div>Total: <strong>{{ formatCurrency(order.total_amount) }}</strong></div>
-                            <div>Pagado: <strong class="text-emerald-600">{{ formatCurrency(order.paid) }}</strong></div>
-                            <div>Restante: <strong :class="order.is_overdue ? 'text-red-600' : 'text-amber-600'">{{ formatCurrency(order.remaining) }}</strong></div>
-                            <div v-if="order.liquidation_deadline" class="col-span-2">
-                                Límite: <strong :class="order.is_overdue ? 'text-red-600' : ''">{{ formatDate(order.liquidation_deadline) }}</strong>
-                                <span v-if="order.days_since_projected != null" class="ml-1">
-                                    (<strong :class="order.days_since_projected >= 11 ? 'text-red-600' : order.days_since_projected >= 6 ? 'text-amber-600' : ''">
-                                        {{ order.days_since_projected }} días
-                                    </strong>)
-                                </span>
-                            </div>
+
+                        <!-- Timeline de cuotas (solo lectura) -->
+                        <div v-if="order.installments && order.installments.length > 0" class="bg-white rounded-lg border border-gray-100 p-3">
+                            <n-timeline>
+                                <n-timeline-item
+                                    v-for="inst in order.installments"
+                                    :key="inst.id || inst.installment"
+                                    :type="inst.status === 'defaulted' ? 'error' : inst.status === 'late' ? 'warning' : inst.status === 'on_time' || inst.status === 'paid' ? 'success' : 'info'"
+                                >
+                                    <template #header>
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="font-semibold text-gray-800 text-sm">{{ inst.label }}</span>
+                                            <n-tag
+                                                :type="inst.status === 'defaulted' ? 'error' : inst.status === 'late' ? 'warning' : inst.status === 'on_time' || inst.status === 'paid' ? 'success' : 'info'"
+                                                size="tiny" round :bordered="false"
+                                            >
+                                                {{ inst.status === 'paid' || inst.status === 'on_time' ? 'Pagado' : inst.status_label || inst.status }}
+                                            </n-tag>
+                                        </div>
+                                    </template>
+                                    <div class="space-y-1 text-sm">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-500">Fecha:</span>
+                                            <span class="font-medium">{{ formatDate(inst.projected_date) }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-500">Monto:</span>
+                                            <span class="font-bold">{{ formatCurrency(inst.amount) }}</span>
+                                        </div>
+                                        <div v-if="inst.payment" class="flex justify-between text-emerald-600">
+                                            <span>Pagado:</span>
+                                            <span>{{ formatCurrency(inst.payment.amount) }} — {{ formatDate(inst.payment.date) }}</span>
+                                        </div>
+                                        <div v-else-if="inst.days_since_projected > 0" class="text-xs" :class="inst.status === 'defaulted' ? 'text-red-500 font-bold' : 'text-amber-500'">
+                                            {{ inst.days_since_projected }} día(s) de retraso
+                                        </div>
+                                    </div>
+                                </n-timeline-item>
+                            </n-timeline>
                         </div>
-                        <p class="text-xs text-gray-400 italic">
-                            Para registrar un pago, ve a la pestaña <strong>Servicios</strong> en el perfil del cliente.
-                        </p>
+                        <div v-else class="text-center py-4 text-gray-400 text-xs">
+                            Sin cuotas proyectadas para esta orden.
+                        </div>
+
+                        <!-- Pagos no emparejados -->
+                        <div v-if="order.unmatched && order.unmatched.length > 0" class="mt-2">
+                            <n-alert type="warning" :bordered="false" class="text-xs">
+                                <template #header>Pagos adicionales no programados ({{ order.unmatched.length }})</template>
+                                <div v-for="up in order.unmatched" :key="up.id" class="text-xs mt-1">
+                                    {{ formatCurrency(up.amount) }} — {{ formatDate(up.date) }} ({{ up.method }})
+                                </div>
+                            </n-alert>
+                        </div>
                     </div>
                 </div>
 

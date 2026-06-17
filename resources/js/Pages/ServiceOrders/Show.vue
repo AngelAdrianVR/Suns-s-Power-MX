@@ -20,6 +20,7 @@ import {
     CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
     HardwareChipOutline, HomeOutline, SaveOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     order: Object,
@@ -338,6 +339,7 @@ const confirmDelete = () => {
                             <n-tag v-else :type="getStatusType(order.status)" round size="small" :bordered="false">
                                 {{ order.status }}
                             </n-tag>
+                            <PermissionTooltip permission="service_orders.change_status" placement="right" :size="12" />
                             <span class="text-xs text-gray-400 border-l pl-2 ml-2 border-gray-300">
                                 Creado {{ formatDate(order.created_at) }}
                             </span>
@@ -363,6 +365,7 @@ const confirmDelete = () => {
                         {{ hasNoMaterials ? 'Sin materiales para conciliar' : (materialsReported ? 'Material Conciliado' : 'Conciliar Material') }}
                     </n-button>
 
+                    <PermissionTooltip permission="service_orders.edit" placement="bottom" :size="13" />
                     <n-button 
                         v-if="hasPermission('service_orders.edit')" 
                         quaternary type="warning" 
@@ -370,6 +373,7 @@ const confirmDelete = () => {
                     >
                         <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
                     </n-button>
+                    <PermissionTooltip permission="service_orders.delete" placement="bottom" :size="13" />
                     <n-button 
                         v-if="hasPermission('service_orders.delete') && !['Completado', 'Facturado'].includes(order.status)" 
                         quaternary type="error" 
@@ -406,8 +410,9 @@ const confirmDelete = () => {
                                     </div>
                                 </div>
                             </n-grid-item>
-                            <n-grid-item v-if="can_view_financials">
+                            <n-grid-item v-if="can_view_financials && hasPermission('sales.view_sales_amount')">
                                 <div class="p-2 border-l border-gray-100">
+                                    <PermissionTooltip permission="sales.view_sales_amount" placement="right" :size="12" />
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
                                     <n-statistic :value="formattedTotal">
                                         <template #prefix>$</template>
@@ -461,6 +466,7 @@ const confirmDelete = () => {
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2 text-emerald-800 font-semibold">
                                 <n-icon :component="CashOutline" /> Plan de Pago
+                                <PermissionTooltip permission="sales.view_sales_amount" placement="top" :size="12" />
                             </div>
                             
                             <!-- Nuevo botón de navegación -->
@@ -546,13 +552,20 @@ const confirmDelete = () => {
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4" :value="activeTab" @update:value="handleTabChange">
                         
-                        <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt" tab="Cronograma y Tareas">
+                        <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <span>Cronograma y Tareas</span>
+                                    <PermissionTooltip permission="tasks.view_board" placement="top" :size="12" />
+                                </div>
+                            </template>
                             <div class="py-4 space-y-6">
                                 <TaskGanttChart :tasks="diagram_data" :order-id="order.id" :assignable-users="assignable_users" />
                             </div>
                         </n-tab-pane>
 
                         <n-tab-pane name="items" tab="Materiales y Productos">
+                            <PermissionTooltip permission="sales.view_sales_amount" placement="right" :size="12" />
                              <OrderItemsTab 
                                 :order="order" 
                                 :available_products="available_products" 
