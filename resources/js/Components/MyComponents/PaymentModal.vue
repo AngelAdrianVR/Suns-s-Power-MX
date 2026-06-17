@@ -20,9 +20,37 @@ const props = defineProps({
         type: Object,
         default: null
     },
+    preselectedOrderId: {
+        type: Number,
+        default: null
+    },
+    preselectedAmount: {
+        type: Number,
+        default: null
+    },
+    lockAmount: {
+        type: Boolean,
+        default: false
+    },
+    installmentNumber: {
+        type: Number,
+        default: null
+    },
+    installmentId: {
+        type: Number,
+        default: null
+    },
+    isLiquidating: {
+        type: Boolean,
+        default: false
+    },
+    modalTitle: {
+        type: String,
+        default: 'Registrar Abono'
+    },
 });
 
-const emit = defineEmits(['update:show', 'close']);
+const emit = defineEmits(['update:show', 'close', 'paid']);
 const { notification } = createDiscreteApi(['notification']);
 
 const loadingOrders = ref(false);
@@ -68,6 +96,9 @@ watch(() => props.show, async (newValue) => {
         form.reset();
         form.client_id = props.client.id;
         form.payment_date = Date.now();
+        // Reset preselected values for next open
+        form.service_order_id = null;
+        form.amount = 0;
         serviceOrders.value = [];
         loadingOrders.value = true;
         fetchError.value = null;
@@ -76,7 +107,14 @@ watch(() => props.show, async (newValue) => {
             const response = await axios.get(route('api.clients.pending-orders', props.client.id));
             serviceOrders.value = response.data;
             
-            if (serviceOrders.value.length === 1) {
+            // Priorizar preselectedOrderId si viene
+            if (props.preselectedOrderId) {
+                const found = serviceOrders.value.find(o => o.id === props.preselectedOrderId);
+                if (found) {
+                    form.service_order_id = found.id;
+                    form.amount = props.preselectedAmount ?? found.pending_balance;
+                }
+            } else if (serviceOrders.value.length === 1) {
                 form.service_order_id = serviceOrders.value[0].id;
                 form.amount = serviceOrders.value[0].pending_balance;
             }
@@ -88,10 +126,10 @@ watch(() => props.show, async (newValue) => {
     }
 });
 
-// Auto-llenar monto al cambiar de orden
+// Auto-llenar monto al cambiar de orden (solo si no está bloqueado)
 watch(() => form.service_order_id, (newId) => {
     const order = serviceOrders.value.find(o => o.id === newId);
-    if (order) {
+    if (order && !props.lockAmount) {
         form.amount = order.pending_balance;
     }
 });
@@ -105,7 +143,7 @@ const handleFileChange = (options) => {
     }
 };
 
-const submit = () => {
+const submit = async () => {
     if (!form.service_order_id) {
         notification.warning({ title: 'Atención', content: 'Debes seleccionar una orden de servicio.', duration: 3000 });
         return;
@@ -114,6 +152,66 @@ const submit = () => {
         notification.warning({ title: 'Atención', content: 'El monto debe ser mayor a cero.', duration: 3000 });
         return;
     }
+
+    const paymentDate = new Date(form.payment_date).toISOString().split('T')[0];
+
+    // --- FLUJO: Liquidar toda la orden (nuevo endpoint) ---
+    if (props.isLiquidating) {
+        try {
+            const formData = new FormData();
+            formData.append('amount', form.amount);
+            formData.append('payment_date', paymentDate);
+            formData.append('method', form.method);
+            formData.append('reference', form.reference || '');
+            formData.append('notes', form.notes || 'Liquidación total');
+            if (form.proof) {
+                formData.append('proof', form.proof);
+            }
+
+            await axios.post(route('api.service-orders.liquidate', form.service_order_id), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            notification.success({ title: 'Liquidado', content: 'Orden liquidada correctamente. Todas las cuotas han sido marcadas como pagadas.', duration: 3000 });
+            emit('paid');
+            closeModal();
+            return;
+        } catch (error) {
+            const msg = error.response?.data?.error || 'No se pudo liquidar la orden.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+            return;
+        }
+    }
+
+    // --- FLUJO: Pago de cuota específica (nuevo endpoint) ---
+    if (props.installmentId) {
+        try {
+            const formData = new FormData();
+            formData.append('amount', form.amount);
+            formData.append('payment_date', paymentDate);
+            formData.append('method', form.method);
+            formData.append('reference', form.reference || '');
+            formData.append('notes', form.notes || `Pago de mensualidad`);
+            if (form.proof) {
+                formData.append('proof', form.proof);
+            }
+
+            await axios.post(route('api.installments.pay', props.installmentId), formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            notification.success({ title: 'Pagado', content: 'Pago registrado y cuota actualizada.', duration: 3000 });
+            emit('paid');
+            closeModal();
+            return;
+        } catch (error) {
+            const msg = error.response?.data?.error || 'No se pudo registrar el pago.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+            return;
+        }
+    }
+
+    // --- FLUJO: Pago tradicional (store original) ---
     if (!form.proof) {
         notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.', duration: 3000 });
         return;
@@ -125,11 +223,13 @@ const submit = () => {
 
     form.transform((data) => ({
         ...data,
-        payment_date: new Date(data.payment_date).toISOString().split('T')[0]
+        installment_number: props.installmentNumber,
+        payment_date: paymentDate
     })).post(route('payments.store'), {
         preserveScroll: true,
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Abono registrado correctamente.', duration: 3000 });
+            emit('paid');
             closeModal();
         },
         onError: () => {
@@ -148,7 +248,7 @@ const closeModal = () => {
     <NModal :show="show" @update:show="(val) => emit('update:show', val)">
         <NCard 
             style="width: 650px; border-radius: 0.75rem;" 
-            :title="`Registrar Abono`"
+            :title="modalTitle"
             :bordered="false"
             size="small"
             role="dialog"

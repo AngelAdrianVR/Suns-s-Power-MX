@@ -1,6 +1,7 @@
 <script setup>
 import { NCard, NList, NListItem, NTag, NEmpty, NButton } from 'naive-ui';
 import { Link } from '@inertiajs/vue3';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 defineProps({
     orders: Array
@@ -19,9 +20,12 @@ const getStatusType = (status) => {
 <template>
     <n-card title="Órdenes de Servicio" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
         <template #header-extra>
-            <Link :href="route('service-orders.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-                Ver todas
-            </Link>
+            <div class="flex items-center gap-2">
+                <PermissionTooltip permission="service_orders.index" placement="bottom" :size="13" />
+                <Link :href="route('service-orders.index')" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    Ver todas
+                </Link>
+            </div>
         </template>
         
         <div v-if="orders.length > 0">

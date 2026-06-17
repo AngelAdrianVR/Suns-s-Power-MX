@@ -3,7 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { Head, router } from '@inertiajs/vue3';
 import { ref, watch, computed, reactive } from 'vue';
-import { NGrid, NGridItem, NStatistic, NIcon, NButton } from 'naive-ui';
+import { NGrid, NGridItem, NStatistic, NIcon, NButton, NSpace } from 'naive-ui';
 import { ArrowForwardOutline, RefreshOutline } from '@vicons/ionicons5';
 
 // Importar Componentes Modulares
@@ -11,6 +11,10 @@ import ServiceOrdersWidget from './Partials/ServiceOrdersWidget.vue';
 import LowStockWidget from './Partials/LowStockWidget.vue';
 import PurchaseOrdersWidget from './Partials/PurchaseOrdersWidget.vue';
 import ClientBalancesWidget from './Partials/ClientBalancesWidget.vue';
+import PaymentRemindersWidget from './Partials/PaymentRemindersWidget.vue';
+
+// Componente para mostrar permisos requeridos
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 // Importar componentes del PMS (Asegúrate de que estas rutas existan)
 import TaskCard from '@/Pages/PMS/Components/TaskCard.vue';
@@ -24,6 +28,7 @@ const props = defineProps({
     kpis: Object,
     weeklyTasks: Object,
     weekDays: Array,
+    upcomingPayments: Array,
 });
 
 const { hasPermission } = usePermissions();
@@ -160,7 +165,10 @@ const formatCurrency = (value) => {
                         </n-statistic>
                     </div>
 
-                    <div v-if="hasPermission('sales.view_sales_amount')" class="bg-white overflow-hidden shadow-sm sm:rounded-2xl p-6 transition-transform hover:scale-[1.01]">
+                    <div v-if="hasPermission('sales.view_sales_amount')" class="bg-white overflow-hidden shadow-sm sm:rounded-2xl p-6 transition-transform hover:scale-[1.01] relative">
+                        <div class="absolute top-2 right-2">
+                            <PermissionTooltip permission="sales.view_sales_amount" placement="left" :size="14" />
+                        </div>
                         <n-statistic label="Ventas del Mes" :value="formatCurrency(kpis.monthly_sales)">
                         </n-statistic>
                     </div>
@@ -170,10 +178,13 @@ const formatCurrency = (value) => {
                 <div class="mb-10 flex flex-col">
                     <div class="lg:flex justify-between items-center mb-4 px-2">
                         <h3 class="text-lg font-bold text-gray-800 mb-2 lg:mb-0">Mi Plan de Tareas Semanal</h3>
-                        <n-button v-if="hasPermission('pms.index')" type="primary" secondary size="small" @click="redirectToPms">
-                            Gestionar plan de tareas
-                            <template #icon><n-icon><ArrowForwardOutline/></n-icon></template>
-                        </n-button>
+                        <div class="flex items-center gap-2">
+                            <PermissionTooltip permission="pms.index" placement="bottom" :size="14" />
+                            <n-button v-if="hasPermission('pms.index')" type="primary" secondary size="small" @click="redirectToPms">
+                                Gestionar plan de tareas
+                                <template #icon><n-icon><ArrowForwardOutline/></n-icon></template>
+                            </n-button>
+                        </div>
                     </div>
                     
                     <!-- Contenedor con Scroll Horizontal nativo para UX Móvil (Snap) -->
@@ -214,6 +225,14 @@ const formatCurrency = (value) => {
                 </div>
                 <!-- FIN SECCIÓN PLAN DE TAREAS -->
 
+                <!-- WIDGET: PAGOS PRÓXIMOS / VENCIDOS -->
+                <div v-if="hasPermission('collection.show')" class="mb-8 relative">
+                    <div class="absolute top-3 right-3 z-10">
+                        <PermissionTooltip permission="collection.show" placement="left" :size="14" />
+                    </div>
+                    <PaymentRemindersWidget :payments="upcomingPayments" />
+                </div>
+
                 <!-- Grid Principal de Widgets -->
                 <n-grid x-gap="24" y-gap="24" cols="1 1000:2" responsive="screen">
                     
@@ -221,10 +240,20 @@ const formatCurrency = (value) => {
                     <n-grid-item>
                         <div class="flex flex-col gap-6">
                             <!-- Widget de Servicios -->
-                            <!-- <ServiceOrdersWidget v-if="hasPermission('service_orders.index')" :orders="pendingServiceOrders" /> -->
+                            <!-- <div class="relative">
+                                <div class="absolute -top-2 -right-2 z-10">
+                                    <PermissionTooltip permission="service_orders.index" placement="left" :size="14" />
+                                </div>
+                                <ServiceOrdersWidget v-if="hasPermission('service_orders.index')" :orders="pendingServiceOrders" />
+                            </div> -->
                             
                              <!-- Widget de Clientes con Deuda (Protegido por el permiso 'clients.view_balance') -->
-                            <ClientBalancesWidget v-if="hasPermission('clients.view_balance')" :clients="clientsWithBalance" />
+                            <!-- <div class="relative">
+                                <div class="absolute -top-2 -right-2 z-10">
+                                    <PermissionTooltip permission="clients.view_balance" placement="left" :size="14" />
+                                </div>
+                                <ClientBalancesWidget v-if="hasPermission('clients.view_balance')" :clients="clientsWithBalance" />
+                            </div> -->
                         </div>
                     </n-grid-item>
 
@@ -232,10 +261,20 @@ const formatCurrency = (value) => {
                     <n-grid-item>
                         <div class="flex flex-col gap-6">
                             <!-- Widget de Stock Bajo -->
-                            <LowStockWidget v-if="hasPermission('warehouse.alarms_stock')" :products="lowStockProducts"  />
+                            <div class="relative">
+                                <div class="absolute -top-2 -right-2 z-10">
+                                    <PermissionTooltip permission="warehouse.alarms_stock" placement="left" :size="14" />
+                                </div>
+                                <LowStockWidget v-if="hasPermission('warehouse.alarms_stock')" :products="lowStockProducts" />
+                            </div>
                             
                             <!-- Widget de Compras Pendientes -->
-                            <PurchaseOrdersWidget v-if="hasPermission('purchases.index')" :orders="pendingPurchaseOrders" />
+                            <div class="relative">
+                                <div class="absolute -top-2 -right-2 z-10">
+                                    <PermissionTooltip permission="purchases.index" placement="left" :size="14" />
+                                </div>
+                                <PurchaseOrdersWidget v-if="hasPermission('purchases.index')" :orders="pendingPurchaseOrders" />
+                            </div>
                         </div>
                     </n-grid-item>
 

@@ -61,6 +61,13 @@ class HandleInertiaRequests extends Middleware
                 ? Branch::select('id', 'name')->where('is_active', true)->get() 
                 : [],
 
+            // Compartir datos flasheados (success, error, new_service_order_id, etc.)
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'error' => $request->session()->get('error'),
+                'new_service_order_id' => $request->session()->get('new_service_order_id'),
+            ],
+
             // Inyectamos las últimas notificaciones
             'notifications' => $user 
                 ? $user->notifications()->latest()->take(20)->get() 

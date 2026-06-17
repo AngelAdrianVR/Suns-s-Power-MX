@@ -5,9 +5,8 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
 
-// Importación de Componentes Hijos (ajusta la ruta según lo necesites)
-import ClientServicesTab from './Components/ClientServicesTab.vue';
-import ClientPaymentsTab from './Components/ClientPaymentsTab.vue';
+// Importación de Componentes Hijos
+import ClientOrderDetail from './Components/ClientOrderDetail.vue';
 import ClientContactsTab from './Components/ClientContactsTab.vue';
 import ClientDocumentsTab from './Components/ClientDocumentsTab.vue';
 import ClientTicketsTab from './Components/ClientTicketsTab.vue';
@@ -17,10 +16,11 @@ import {
 } from 'naive-ui';
 import { 
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
-    ConstructOutline, WalletOutline, PeopleOutline, DocumentTextOutline,
+    ConstructOutline, PeopleOutline, DocumentTextOutline,
     CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline,
     TicketOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     client: { type: Object, required: true },
@@ -50,13 +50,30 @@ const handleTabChange = (name) => {
 
 // --- MODALES ---
 const showPaymentModal = ref(false);
+const preselectedOrderId = ref(null);
+const preselectedAmount = ref(null);
+const lockPaymentAmount = ref(false);
+const paymentInstallmentNumber = ref(null);
+const paymentModalTitle = ref('Registrar Abono');
+const preselectedInstallmentId = ref(null);
+const isLiquidating = ref(false);
 
-const openPaymentModal = () => {
-    if (props.stats.balance <= 1) {
-        notification.success({ title: 'Sin Deuda', content: 'Este cliente está al corriente.', duration: 3000 });
-        return;
-    }
+const openPaymentModal = (orderId = null, amount = null, lock = false, installmentNum = null, title = 'Registrar Abono', installmentId = null, liquidate = false) => {
+    preselectedOrderId.value = orderId;
+    preselectedAmount.value = amount;
+    lockPaymentAmount.value = lock;
+    paymentInstallmentNumber.value = installmentNum;
+    paymentModalTitle.value = title;
+    preselectedInstallmentId.value = installmentId;
+    isLiquidating.value = liquidate;
     showPaymentModal.value = true;
+};
+
+// Recarga forzando la URL con el tab actual para garantizar que se refresquen todos los datos
+const handleRefresh = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', activeTab.value);
+    router.get(url.toString(), {}, { preserveScroll: true });
 };
 
 // --- UTILIDADES ---
@@ -104,11 +121,14 @@ const googleMapsUrl = computed(() => {
                         </n-button>
                     </Link>
                     
-                    <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
-                        <n-button secondary round type="warning" size="small">
-                            <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
-                        </n-button>
-                    </Link>
+                    <div class="flex items-center gap-2">
+                        <PermissionTooltip permission="clients.edit" placement="bottom" :size="13" />
+                        <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
+                            <n-button secondary round type="warning" size="small">
+                                <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
+                            </n-button>
+                        </Link>
+                    </div>
                 </div>
 
                 <!-- CABECERA PRINCIPAL -->
@@ -165,7 +185,10 @@ const googleMapsUrl = computed(() => {
                             </div>
                         </div>
 
-                        <div v-if="hasPermission('clients.view_balance')" class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <div v-if="hasPermission('clients.view_balance')" class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto relative">
+                            <div class="absolute -top-2 -right-2 z-10">
+                                <PermissionTooltip permission="clients.view_balance" placement="left" :size="12" />
+                            </div>
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
@@ -221,12 +244,12 @@ const googleMapsUrl = computed(() => {
                             <template #tab>
                                 <div class="flex items-center gap-1.5">
                                     <n-icon size="18"><ConstructOutline /></n-icon> 
-                                    <span class="hidden sm:inline">Órdenes</span>
+                                    <span class="hidden sm:inline">Órdenes y Pagos</span>
                                     <span class="sm:hidden text-xs">Servicios</span>
                                     <n-badge :value="client.service_orders.length" type="info" :max="99" class="scale-75 origin-left" />
                                 </div>
                             </template>
-                            <ClientServicesTab :client="client" />
+                            <ClientOrderDetail :client="client" :stats="stats" @open-payment="openPaymentModal" @refresh="handleRefresh" />
                         </n-tab-pane>
 
                         <n-tab-pane name="tickets" tab="Tickets">
@@ -239,17 +262,6 @@ const googleMapsUrl = computed(() => {
                                 </div>
                             </template>
                             <ClientTicketsTab :client="client" />
-                        </n-tab-pane>
-
-                        <n-tab-pane v-if="hasPermission('clients.view_balance')" name="payments" tab="Pagos">
-                            <template #tab>
-                                <div class="flex items-center gap-1.5">
-                                    <n-icon size="18"><WalletOutline /></n-icon> 
-                                    <span class="hidden sm:inline">Pagos</span>
-                                    <span class="sm:hidden text-xs">Pagos</span>
-                                </div>
-                            </template>
-                            <ClientPaymentsTab :client="client" :stats="stats" @open-payment="openPaymentModal" />
                         </n-tab-pane>
 
                         <n-tab-pane name="contacts" tab="Contactos">
@@ -283,7 +295,15 @@ const googleMapsUrl = computed(() => {
         <PaymentModal 
             v-model:show="showPaymentModal" 
             :client="client"
-            @close="showPaymentModal = false"
+            :preselected-order-id="preselectedOrderId"
+            :preselected-amount="preselectedAmount"
+            :lock-amount="lockPaymentAmount"
+            :installment-number="paymentInstallmentNumber"
+            :installment-id="preselectedInstallmentId"
+            :is-liquidating="isLiquidating"
+            :modal-title="paymentModalTitle"
+            @paid="handleRefresh"
+            @close="showPaymentModal = false; preselectedOrderId = null; preselectedAmount = null; lockPaymentAmount = false; paymentInstallmentNumber = null; preselectedInstallmentId = null; isLiquidating = false;"
         />
     </AppLayout>
 </template>

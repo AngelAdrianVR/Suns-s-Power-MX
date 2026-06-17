@@ -10,6 +10,7 @@ import {
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     StorefrontOutline, PersonOutline, CallOutline, MailOutline, CubeOutline 
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     suppliers: Object,
@@ -156,16 +157,22 @@ const createColumns = () => [
                 }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
 
                 // Botón Editar: Protegido por suppliers.edit
-                hasPermission('suppliers.edit') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'warning',
-                    onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
+                hasPermission('suppliers.edit') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'suppliers.edit', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'warning',
+                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
+                ]) : null,
 
                 // Botón Eliminar: Protegido por suppliers.delete
-                hasPermission('suppliers.delete') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'error',
-                    onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
+                hasPermission('suppliers.delete') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'suppliers.delete', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'error',
+                        onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                ]) : null
             ]);
         }
     }
@@ -198,14 +205,17 @@ const rowProps = (row) => {
                     <p class="text-sm text-gray-500 mt-1">Gestiona tus aliados comerciales por sucursal</p>
                 </div>
                 <!-- Botón Crear: Protegido por suppliers.create -->
-                <Link v-if="hasPermission('suppliers.create')" :href="route('suppliers.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
-                        Nuevo Proveedor
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <PermissionTooltip permission="suppliers.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('suppliers.create')" :href="route('suppliers.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                            </template>
+                            Nuevo Proveedor
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 
@@ -299,6 +309,7 @@ const rowProps = (row) => {
 
                             <!-- Menú de Acciones (Botones flotantes) -->
                             <div class="absolute top-4 right-4 flex flex-col gap-2">
+                                <PermissionTooltip permission="suppliers.edit" placement="left" :size="11" />
                                 <button 
                                     v-if="hasPermission('suppliers.edit')"
                                     @click.stop="goToEdit(supplier.id)"
@@ -306,6 +317,7 @@ const rowProps = (row) => {
                                 >
                                     <n-icon size="20"><CreateOutline /></n-icon>
                                 </button>
+                                <PermissionTooltip permission="suppliers.delete" placement="left" :size="11" />
                                 <button 
                                     v-if="hasPermission('suppliers.delete')"
                                     @click.stop="confirmDelete(supplier)"

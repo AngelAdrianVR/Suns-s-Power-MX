@@ -1,17 +1,20 @@
 <script setup>
-import { ref, watch, h } from 'vue';
+import { ref, watch, h, onMounted } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import PaymentModal from '@/Components/MyComponents/PaymentModal.vue'; 
+import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
+import ClientDebtTab from './Components/ClientDebtTab.vue'; 
 import { 
-    NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NTooltip 
+    NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NTooltip,
+    NTabs, NTabPane, NBadge
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
     PersonOutline, CallOutline, MailOutline, WalletOutline, CashOutline, AlertCircleOutline,
-    LocationOutline // Importamos icono para dirección
+    LocationOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     clients: Object, 
@@ -80,6 +83,27 @@ const formatCurrency = (amount) => {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
 
+// --- Sincronizar pestaña activa con la URL ---
+const currentTab = ref('list');
+
+onMounted(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab) {
+        currentTab.value = tab;
+    }
+});
+
+watch(currentTab, (newTab) => {
+    const url = new URL(window.location.href);
+    if (newTab === 'list') {
+        url.searchParams.delete('tab');
+    } else {
+        url.searchParams.set('tab', newTab);
+    }
+    window.history.replaceState({}, '', url);
+});
+
 // --- Configuración de Columnas ---
 const createColumns = () => [
     {
@@ -103,6 +127,9 @@ const createColumns = () => [
                 h('span', { class: 'font-bold text-gray-800 text-sm' }, row.name),
                 row.tax_id 
                     ? h('span', { class: 'text-xs text-gray-400 font-mono mt-0.5' }, `RFC: ${row.tax_id}`)
+                    : null,
+                row.type === 'Prospecto' 
+                    ? h('span', { class: 'text-xs text-yellow-600 font-medium mt-0.5' }, 'Prospecto') 
                     : null
             ]);
         }
@@ -161,29 +188,35 @@ const createColumns = () => [
         width: 190, // Ajusté un poco el ancho
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
-                row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
-                    trigger: () => h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'success',
-                        class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',
-                        onClick: (e) => { e.stopPropagation(); registerPayment(row); }
-                    }, { icon: () => h(NIcon, { component: CashOutline }) }),
-                    default: () => 'Registrar Abono'
-                }) : null,
+                // row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
+                //     trigger: () => h(NButton, {
+                //         circle: true, size: 'small', quaternary: true, type: 'success',
+                //         class: 'bg-emerald-50 hover:bg-emerald-100 mr-2',
+                //         onClick: (e) => { e.stopPropagation(); registerPayment(row); }
+                //     }, { icon: () => h(NIcon, { component: CashOutline }) }),
+                //     default: () => 'Registrar Abono'
+                // }) : null,
 
                 h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'info',
+                    circle: true, size: 'small', quaternary: true, type: 'success',
                     onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(EyeOutline) }) }),
+                }, { icon: () => h(NIcon, { component: CashOutline }) }),
 
-                hasPermission('clients.edit') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'warning',
-                    onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }) : null,
+                hasPermission('clients.edit') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'clients.edit', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'warning',
+                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
+                ]) : null,
 
-                hasPermission('clients.delete') ? h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'error',
-                    onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }) : null
+                hasPermission('clients.delete') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'clients.delete', placement: 'top', size: 11 }),
+                    h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'error',
+                        onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                ]) : null
             ]);
         }
     }
@@ -216,140 +249,165 @@ const rowProps = (row) => ({
                     </h2>
                     <p class="text-sm text-gray-500 mt-1">Gestión de expedientes y estado de cuenta por sucursal</p>
                 </div>
-                <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon><n-icon><AddOutline /></n-icon></template>
-                        Nuevo Cliente
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-3">
+                    <PermissionTooltip permission="clients.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('clients.create')" :href="route('clients.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon><n-icon><AddOutline /></n-icon></template>
+                            Nuevo Cliente
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 
         <div class="py-8 min-h-screen">
             <div class="max-w-[90rem] mx-auto sm:px-6 lg:px-8">
-                
-                <!-- Barra de Filtros -->
-                <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                    
-                    <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-grow max-w-4xl">
-                        <!-- Filtro 1: Buscador General -->
-                        <n-input 
-                            v-model:value="search" 
-                            type="text" 
-                            placeholder="Buscar: Nombre, RFC, Email..." 
-                            class="w-full md:w-64 shadow-sm"
-                            clearable
-                            round
-                            size="large"
-                        >
-                            <template #prefix>
-                                <n-icon :component="SearchOutline" class="text-gray-400" />
-                            </template>
-                        </n-input>
 
-                        <!-- Filtro 2: Buscador Dirección (NUEVO) -->
-                        <n-input 
-                            v-model:value="addressSearch" 
-                            type="text" 
-                            placeholder="Filtrar por Colonia, Estado, Municipio..." 
-                            class="w-full md:w-80 shadow-sm"
-                            clearable
-                            round
-                            size="large"
-                        >
-                            <template #prefix>
-                                <n-icon :component="LocationOutline" class="text-indigo-400" />
-                            </template>
-                        </n-input>
-                    </div>
+                <!-- PESTAÑAS -->
+                <n-tabs type="line" animated v-model:value="currentTab" class="custom-tabs">
 
-                </div>
-
-                <!-- TABLA (Escritorio) -->
-                <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
-                    <n-data-table
-                        :columns="columns"
-                        :data="clients.data"
-                        :pagination="false"
-                        :bordered="false"
-                        single-column
-                        :row-props="rowProps"
-                        class="custom-table"
-                    />
-                    <div class="p-4 flex justify-end border-t border-gray-100" v-if="clients.total > 0">
-                        <n-pagination
-                            :page="clients.current_page"
-                            :page-count="clients.last_page"
-                            :on-update:page="handlePageChange"
-                        />
-                    </div>
-                </div>
-
-                <!-- CARDS (Móvil) -->
-                <div class="md:hidden space-y-4 px-4 sm:px-0">
-                    <div v-if="clients.data.length === 0" class="flex justify-center mt-10">
-                        <n-empty description="No se encontraron clientes" />
-                    </div>
-
-                    <div 
-                        v-for="client in clients.data" 
-                        :key="client.id" 
-                        class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 relative overflow-hidden active:bg-gray-50 transition-colors"
-                        @click="goToShow(client.id)"
-                    >
-                        <div class="flex items-start gap-4">
-                            <div class="flex-shrink-0">
-                                <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center border border-indigo-100">
-                                    <n-icon size="24"><PersonOutline /></n-icon>
-                                </div>
+                    <!-- Pestaña 1: Listado de Clientes -->
+                    <n-tab-pane name="list" tab="Clientes">
+                        <template #tab>
+                            <div class="flex items-center gap-1.5">
+                                <n-icon size="18"><PersonOutline /></n-icon>
+                                <span>Clientes</span>
                             </div>
-                            <div class="flex-grow min-w-0 pr-8">
-                                <h3 class="text-lg font-bold text-gray-800 leading-tight truncate">
-                                    {{ client.name }}
-                                </h3>
-                                <div v-if="client.contact_person" class="text-sm text-gray-500 mt-0.5">
-                                    {{ client.contact_person }}
-                                </div>
-                                <!-- Mostrar dirección en móvil también -->
-                                <div class="mt-2 text-xs text-gray-400 flex items-start gap-1">
-                                    <n-icon class="mt-0.5"><LocationOutline/></n-icon>
-                                    <span class="line-clamp-2">{{ client.full_address || 'Sin dirección' }}</span>
-                                </div>
-                            </div>
-                            
-                            <!-- Botones acción móvil -->
-                            <div class="absolute top-4 right-4 flex flex-col gap-2">
-                                <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
-                                    <n-icon size="20"><CreateOutline /></n-icon>
-                                </button>
-                                <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full">
-                                    <n-icon size="20"><TrashOutline /></n-icon>
-                                </button>
+                        </template>
+
+                        <!-- Barra de Filtros -->
+                        <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                            <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-grow max-w-4xl">
+                                <n-input 
+                                    v-model:value="search" 
+                                    type="text" 
+                                    placeholder="Buscar: Nombre, RFC, Email..." 
+                                    class="w-full md:w-64 shadow-sm"
+                                    clearable
+                                    round
+                                    size="large"
+                                >
+                                    <template #prefix>
+                                        <n-icon :component="SearchOutline" class="text-gray-400" />
+                                    </template>
+                                </n-input>
+                                <n-input 
+                                    v-model:value="addressSearch" 
+                                    type="text" 
+                                    placeholder="Filtrar por Colonia, Estado, Municipio..." 
+                                    class="w-full md:w-80 shadow-sm"
+                                    clearable
+                                    round
+                                    size="large"
+                                >
+                                    <template #prefix>
+                                        <n-icon :component="LocationOutline" class="text-indigo-400" />
+                                    </template>
+                                </n-input>
                             </div>
                         </div>
 
-                        <div class="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
-                            <span class="text-xs text-gray-400 font-mono">ID: {{ client.id }}</span>
+                        <!-- TABLA (Escritorio) -->
+                        <div class="hidden md:block bg-white/80 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+                            <n-data-table
+                                :columns="columns"
+                                :data="clients.data"
+                                :pagination="false"
+                                :bordered="false"
+                                single-column
+                                :row-props="rowProps"
+                                class="custom-table"
+                            />
+                            <div class="p-4 flex justify-end border-t border-gray-100" v-if="clients.total > 0">
+                                <n-pagination
+                                    :page="clients.current_page"
+                                    :page-count="clients.last_page"
+                                    :on-update:page="handlePageChange"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- CARDS (Móvil) -->
+                        <div class="md:hidden space-y-4 px-4 sm:px-0">
+                            <div v-if="clients.data.length === 0" class="flex justify-center mt-10">
+                                <n-empty description="No se encontraron clientes" />
+                            </div>
+
                             <div 
-                                class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold"
-                                :class="client.has_debt ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'"
+                                v-for="client in clients.data" 
+                                :key="client.id" 
+                                class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 relative overflow-hidden active:bg-gray-50 transition-colors"
+                                @click="goToShow(client.id)"
                             >
-                                <n-icon :component="client.has_debt ? AlertCircleOutline : WalletOutline"/>
-                                <span>{{ client.has_debt ? `Debe: ${formatCurrency(client.balance)}` : 'Al corriente' }}</span>
+                                <div class="flex items-start gap-4">
+                                    <div class="flex-shrink-0">
+                                        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center border border-indigo-100">
+                                            <n-icon size="24"><PersonOutline /></n-icon>
+                                        </div>
+                                    </div>
+                                    <div class="flex-grow min-w-0 pr-8">
+                                        <h3 class="text-lg font-bold text-gray-800 leading-tight truncate">
+                                            {{ client.name }}
+                                        </h3>
+                                        <div v-if="client.contact_person" class="text-sm text-gray-500 mt-0.5">
+                                            {{ client.contact_person }}
+                                        </div>
+                                        <div class="mt-2 text-xs text-gray-400 flex items-start gap-1">
+                                            <n-icon class="mt-0.5"><LocationOutline/></n-icon>
+                                            <span class="line-clamp-2">{{ client.full_address || 'Sin dirección' }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="absolute top-4 right-4 flex flex-col gap-2">
+                                        <PermissionTooltip permission="clients.edit" placement="left" :size="11" />
+                                        <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
+                                            <n-icon size="20"><CreateOutline /></n-icon>
+                                        </button>
+                                        <PermissionTooltip permission="clients.delete" placement="left" :size="11" />
+                                        <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full">
+                                            <n-icon size="20"><TrashOutline /></n-icon>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
+                                    <span class="text-xs text-gray-400 font-mono">ID: {{ client.id }}</span>
+                                    <div 
+                                        class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold"
+                                        :class="client.has_debt ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'"
+                                    >
+                                        <n-icon :component="client.has_debt ? AlertCircleOutline : WalletOutline"/>
+                                        <span>{{ client.has_debt ? `Debe: ${formatCurrency(client.balance)}` : 'Al corriente' }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="client.has_debt && hasPermission('collection.create')" class="mt-2">
+                                     <div class="flex items-center gap-1">
+                                         <PermissionTooltip permission="collection.create" placement="top" :size="11" />
+                                     </div>
+                                     <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
+                                        <template #icon><n-icon :component="CashOutline" /></template>
+                                        Registrar Abono
+                                     </n-button>
+                                </div>
+                            </div>
+                             <div class="flex justify-center mt-6" v-if="clients.total > 0">
+                                <n-pagination simple :page="clients.current_page" :page-count="clients.last_page" :on-update:page="handlePageChange" />
                             </div>
                         </div>
-                        
-                        <div v-if="client.has_debt && hasPermission('collection.create')" class="mt-2">
-                             <n-button block type="success" ghost size="small" @click.stop="registerPayment(client)">
-                                <template #icon><n-icon :component="CashOutline" /></template>
-                                Registrar Abono
-                             </n-button>
-                        </div>
-                    </div>
-                     <div class="flex justify-center mt-6" v-if="clients.total > 0">
-                        <n-pagination simple :page="clients.current_page" :page-count="clients.last_page" :on-update:page="handlePageChange" />
-                    </div>
-                </div>
+                    </n-tab-pane>
+
+                    <!-- Pestaña 2: Cartera de Deuda -->
+                    <n-tab-pane v-if="hasPermission('collection.clients_debt')" name="debt">
+                        <template #tab>
+                            <div class="flex items-center gap-1.5">
+                                <n-icon size="18"><DocumentTextOutline /></n-icon>
+                                <span>Cartera de Deuda</span>
+                                <PermissionTooltip permission="collection.clients_debt" placement="top" :size="11" />
+                            </div>
+                        </template>
+                        <ClientDebtTab />
+                    </n-tab-pane>
+
+                </n-tabs>
 
             </div>
         </div>

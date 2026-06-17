@@ -3,6 +3,7 @@
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EvidenceTemplateController;
 use App\Http\Controllers\NotificationController;
@@ -24,6 +25,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
 use App\Http\Controllers\SystemTypeProductController;
+use App\Http\Controllers\TechnicalVisitController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -115,6 +117,46 @@ Route::post('/service-order-evidences/{evidence}/media', [ServiceOrderController
 // Regresamos a POST la original por si en un futuro decides colocar un botón en el sistema para dispararla
 Route::post('/ordenes-servicio/sync-evidences', [ServiceOrderController::class, 'syncEvidences'])->name('service-orders.sync-evidences')->middleware('auth');
 
+// API: Proyección de pagos y recordatorios
+Route::get('/api/service-orders/{serviceOrder}/payment-projection', [ServiceOrderController::class, 'paymentProjection'])
+    ->name('api.service-orders.payment-projection')
+    ->middleware('auth');
+Route::post('/api/service-orders/{serviceOrder}/send-reminder', [ServiceOrderController::class, 'sendPaymentReminder'])
+    ->name('api.service-orders.send-reminder')
+    ->middleware('auth');
+// Actualizar método de pago de una orden
+Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderController::class, 'updatePaymentMethod'])
+    ->name('api.service-orders.update-payment-method')
+    ->middleware('auth');
+// Actualizar precio de mantenimiento por módulo
+Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
+    ->name('api.service-orders.update-maintenance-price')
+    ->middleware('auth');
+// API: Obtener cuotas proyectadas desde la BD
+Route::get('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'getInstallments'])
+    ->name('api.service-orders.installments')
+    ->middleware('auth');
+// API: Crear cuota manual (solo Personalizado)
+Route::post('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'storeInstallment'])
+    ->name('api.service-orders.store-installment')
+    ->middleware('auth');
+// API: Actualizar una cuota individual (fecha, monto)
+Route::patch('/api/installments/{installment}', [ServiceOrderController::class, 'updateInstallment'])
+    ->name('api.installments.update')
+    ->middleware('auth');
+// API: Pagar una cuota específica
+Route::post('/api/installments/{installment}/pay', [ServiceOrderController::class, 'payInstallment'])
+    ->name('api.installments.pay')
+    ->middleware('auth');
+// API: Liquidar todas las cuotas pendientes de una orden
+Route::post('/api/service-orders/{serviceOrder}/liquidate', [ServiceOrderController::class, 'liquidateOrder'])
+    ->name('api.service-orders.liquidate')
+    ->middleware('auth');
+// API: Reporte de cartera de deuda
+Route::get('/api/clients/debt-report', [ClientController::class, 'apiDebtReport'])
+    ->name('api.clients.debt-report')
+    ->middleware('auth');
+
 Route::resource('ordenes-servicio', ServiceOrderController::class)->names('service-orders')->parameters(['ordenes-servicio' => 'serviceOrder'])->middleware('auth');
 Route::post('/service-orders/{serviceOrder}/items', [ServiceOrderController::class, 'addItems'])->name('service-orders.add-items'); 
 Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'removeItem'])->name('service-orders.remove-item');
@@ -122,6 +164,50 @@ Route::delete('/service-orders/items/{item}', [ServiceOrderController::class, 'r
 Route::post('service-orders/{serviceOrder}/confirm-installation', [ServiceOrderController::class, 'confirmInstallation'])
     ->name('service-orders.confirm-installation')
     ->middleware('auth');
+
+// --- RUTAS DE ACONDICIONAMIENTO PREVIO (CONDITIONINGS) ---
+Route::post('service-orders/{serviceOrder}/conditionings', [ServiceOrderController::class, 'storeConditioning'])
+    ->name('service-orders.conditionings.store')
+    ->middleware('auth');
+Route::patch('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'updateConditioning'])
+    ->name('service-orders.conditionings.update')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}', [ServiceOrderController::class, 'destroyConditioning'])
+    ->name('service-orders.conditionings.destroy')
+    ->middleware('auth');
+Route::post('service-orders/conditionings/{conditioning}/media', [ServiceOrderController::class, 'uploadConditioningMedia'])
+    ->name('service-orders.conditionings.media.upload')
+    ->middleware('auth');
+Route::delete('service-orders/conditionings/{conditioning}/media/{media}', [ServiceOrderController::class, 'deleteConditioningMedia'])
+    ->name('service-orders.conditionings.media.delete')
+    ->middleware('auth');
+
+
+// ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
+Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
+// Acciones rápidas desde el índice (Reprogramar / Rechazar / Aceptar / Terminar)
+Route::patch('/visitas-tecnicas/{technicalVisit}/quick-update', [TechnicalVisitController::class, 'quickUpdate'])->name('technical-visits.quick-update')->middleware('auth');
+// Actualizar notas internas desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-notes', [TechnicalVisitController::class, 'updateNotes'])->name('technical-visits.update-notes')->middleware('auth');
+// Actualizar voltaje desde el Show
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-voltage', [TechnicalVisitController::class, 'updateVoltage'])->name('technical-visits.update-voltage')->middleware('auth');
+// Subir evidencias del checklist
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-evidence', [TechnicalVisitController::class, 'uploadEvidence'])->name('technical-visits.upload-evidence')->middleware('auth');
+// Subir archivos adicionales
+Route::post('/visitas-tecnicas/{technicalVisit}/upload-additional', [TechnicalVisitController::class, 'uploadAdditionalEvidence'])->name('technical-visits.upload-additional')->middleware('auth');
+// Actualizar sistema de interés inline
+Route::patch('/visitas-tecnicas/{technicalVisit}/update-system-type', [TechnicalVisitController::class, 'updateSystemType'])->name('technical-visits.update-system-type')->middleware('auth');
+// Convertir prospecto de visita a cliente + crear orden de servicio
+Route::post('/visitas-tecnicas/{technicalVisit}/convert-to-client', [TechnicalVisitController::class, 'convertToClient'])->name('technical-visits.convert-to-client')->middleware('auth');
+// Crear orden de servicio desde visita técnica
+Route::post('/visitas-tecnicas/{technicalVisit}/create-service-order', [TechnicalVisitController::class, 'createServiceOrder'])->name('technical-visits.create-service-order')->middleware('auth');
+
+
+// ---------------------------------- RUTAS DE CONTACTOS (CRUD) ----------------------------------
+Route::post('/contactos', [ContactController::class, 'store'])->name('contacts.store')->middleware('auth');
+Route::patch('/contactos/{contact}', [ContactController::class, 'update'])->name('contacts.update')->middleware('auth');
+Route::delete('/contactos/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy')->middleware('auth');
+
 
 // ---------------------------- RUTAS DE ALMACÉN E INVENTARIO --------------------------------
 Route::middleware('auth')->group(function () {
@@ -175,6 +261,10 @@ Route::get('/suppliers/{supplier}/assigned-products', [SupplierController::class
 
 
 // ---------------------------- Rutas de Clientes --------------------------------
+// Reporte de cartera de deuda (DEBE ir antes del resource para no colisionar con {cliente})
+Route::get('/clientes/reporte-cartera', [ClientController::class, 'debtReport'])
+    ->name('clients.debt-report')
+    ->middleware('auth');
 Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)

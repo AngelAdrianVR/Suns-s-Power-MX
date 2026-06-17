@@ -12,6 +12,7 @@ import {
     CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline, AddOutline,
     DocumentTextOutline 
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     order: Object
@@ -242,6 +243,9 @@ const isImage = (file) => {
             </h3>
 
             <div v-if="hasPermission('service_orders.edit')" class="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 mb-6 flex flex-col items-center justify-center">
+                <div class="flex items-center gap-1 mb-2">
+                    <PermissionTooltip permission="service_orders.edit" placement="top" :size="12" />
+                </div>
                 <input type="file" ref="fileInput" class="hidden" @change="handleFileChange" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"/>
                 <n-button dashed type="primary" size="large" @click="triggerFileInput" class="h-16 w-full md:w-1/3">
                     Subir Archivo Extra
@@ -257,6 +261,7 @@ const isImage = (file) => {
                             <n-spin v-else size="small" />
                             <span class="text-xs text-indigo-600 font-bold">Ver Documento</span>
                         </div>
+                        <PermissionTooltip permission="service_orders.edit" placement="left" :size="11" />
                         <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true })">
                             <template #trigger>
                                 <button class="absolute top-2 right-2 bg-white/90 p-1 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 z-10">

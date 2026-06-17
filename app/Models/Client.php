@@ -36,6 +36,9 @@ class Client extends Model implements HasMedia
         
         'coordinates',
         'notes',
+        'type', // 'Prospecto' o 'Cliente'
+        'lead_source'
+        
         // 'email',          <-- ELIMINADO (Ahora en tabla contacts)
         // 'phone',          <-- ELIMINADO
         // 'email_secondary',<-- ELIMINADO

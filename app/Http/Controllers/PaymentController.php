@@ -66,7 +66,7 @@ class PaymentController extends Controller
             'method' => 'required|string|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:500',
-            // NUEVO: Validación de archivo obligatorio
+            'installment_number' => 'nullable|integer|min:1',
             'proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240', 
         ]);
 
@@ -83,6 +83,7 @@ class PaymentController extends Controller
             $payment = Payment::create([
                 'client_id' => $validated['client_id'],
                 'service_order_id' => $validated['service_order_id'],
+                'installment_number' => $validated['installment_number'] ?? null,
                 'amount' => $validated['amount'],
                 'payment_date' => $validated['payment_date'],
                 'method' => $validated['method'],
@@ -95,6 +96,16 @@ class PaymentController extends Controller
             if ($request->hasFile('proof')) {
                 $payment->addMediaFromRequest('proof')
                     ->toMediaCollection('receipts');
+            }
+
+            // Vincular el pago con la cuota proyectada si existe installment_number
+            if (!empty($validated['installment_number'])) {
+                $installment = $order->paymentInstallments()
+                    ->where('installment_number', $validated['installment_number'])
+                    ->first();
+                if ($installment && !$installment->payment_id) {
+                    $installment->markAsPaid($payment);
+                }
             }
 
             return redirect()->back()->with('success', 'Abono registrado y comprobante guardado correctamente.');
@@ -113,8 +124,23 @@ class PaymentController extends Controller
         }
 
         DB::transaction(function () use ($payment) {
-            // Al eliminar el modelo, Media Library se encarga de borrar los archivos adjuntos automáticamente
-            // si está configurado correctamente, de lo contrario se eliminan en cascada.
+            // Desvincular la cuota proyectada si existe
+            $payment->load('serviceOrder.paymentInstallments');
+            if ($payment->serviceOrder) {
+                $installment = $payment->serviceOrder->paymentInstallments()
+                    ->where('payment_id', $payment->id)
+                    ->first();
+                if ($installment) {
+                    $installment->update([
+                        'payment_id' => null,
+                        'status' => 'pending',
+                        'paid_amount' => 0,
+                        'paid_date' => null,
+                    ]);
+                    $installment->recalculateStatus();
+                }
+            }
+
             $payment->delete();
         });
 

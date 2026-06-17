@@ -4,9 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\ServiceOrder;
 use App\Models\ServiceOrderItem;
+use App\Models\ServiceOrderConditioning;
 use App\Models\Product;
 use App\Models\Client;
+use App\Models\Payment;
+use App\Models\PaymentInstallment;
 use App\Models\EvidenceTemplate;
+use App\Mail\PaymentReminderMail;
 use App\Models\ServiceOrderEvidence;
 use App\Models\SystemType;
 use App\Models\User;
@@ -16,6 +20,7 @@ use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
@@ -206,13 +211,55 @@ class ServiceOrderController extends Controller
             'installation_country' => 'nullable|string|max:100',
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
-            'notes' => 'nullable|string'
+            'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'price_per_module' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $validated['branch_id'] = $branchId;
         
         DB::transaction(function () use ($validated, $branchId, $userId) {
-            $serviceOrder = ServiceOrder::create($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder = ServiceOrder::create(collect($validated)->except(['conditionings'])->toArray());
+
+            // Guardar tareas de acondicionamiento previo
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Crear pago de anticipo si aplica
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
+
+            // Generar cuotas proyectadas (payment_installments) según el plan de pago
+            $serviceOrder->generateInstallments();
 
             if (!empty($validated['system_type'])) {
                 // 1. Evidencias
@@ -349,6 +396,7 @@ class ServiceOrderController extends Controller
             'items' => fn($q) => $q->with('product.category')->orderBy('order', 'asc'), 
             'tasks' => fn($q) => $q->with(['assignees', 'comments.user', 'requiredEvidences.media'])->orderBy('order', 'asc'),
             'evidences' => fn($q) => $q->with('media')->orderBy('order', 'asc'),
+            'conditionings' => fn($q) => $q->with(['media', 'user'])->orderBy('id', 'asc'),
             'media'
         ]);
 
@@ -454,6 +502,8 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         if ($serviceOrder->branch_id !== $branchId) return inertia('Forbidden403');
 
+        $serviceOrder->load(['conditionings.media']);
+
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
@@ -495,12 +545,56 @@ class ServiceOrderController extends Controller
             'installation_lat' => 'nullable|numeric',
             'installation_lng' => 'nullable|numeric',
             'notes' => 'nullable|string',
+            // Propuesta comercial
+            'payment_method' => 'nullable|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+            'price_per_module' => 'nullable|numeric|min:0',
+            'requires_pre_installation' => 'boolean',
+            'pre_installation_details' => 'nullable|string',
+            'pre_installation_assigned_to' => 'nullable|in:Sun\'s power mx,Cliente,Otro',
+            // Acondicionamiento previo: listado de tareas
+            'conditionings' => 'nullable|array',
+            'conditionings.*.category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'conditionings.*.task' => 'required|string|max:255',
+            'conditionings.*.user_id' => 'nullable|exists:users,id',
+            'conditionings.*.notes' => 'nullable|string',
         ]);
 
         $oldSystemType = $serviceOrder->system_type;
 
         DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
-            $serviceOrder->update($validated);
+            $conditionings = $validated['conditionings'] ?? [];
+            $serviceOrder->update(collect($validated)->except(['conditionings'])->toArray());
+
+            // Sincronizar tareas de acondicionamiento previo: borrar existentes y recrear
+            $serviceOrder->conditionings()->delete();
+            foreach ($conditionings as $cond) {
+                $serviceOrder->conditionings()->create([
+                    'category' => $cond['category'],
+                    'task' => $cond['task'],
+                    'user_id' => $cond['user_id'] ?? null,
+                    'status' => 'Pendiente',
+                    'notes' => $cond['notes'] ?? null,
+                ]);
+            }
+
+            // Sincronizar pago de anticipo: eliminar anterior y crear nuevo si aplica
+            $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
+            $downPayment = $validated['down_payment'] ?? null;
+            if ($downPayment && $downPayment > 0) {
+                Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $validated['client_id'],
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+            }
+
+            // Regenerar cuotas proyectadas si cambió el método de pago, total o anticipo
+            $serviceOrder->generateInstallments();
 
             if (isset($validated['system_type']) && $oldSystemType !== $validated['system_type']) {
                 $serviceOrder->tasks()->where('status', 'Pendiente')->delete();
@@ -1093,5 +1187,579 @@ class ServiceOrderController extends Controller
         self::syncSystemTypeData($branchId);
 
         return back()->with('success', "Sincronización de tareas, evidencias y productos completada en base a las plantillas.");
+    }
+
+    // ================================================================
+    // CRUD DE ACONDICIONAMIENTO PREVIO (Conditionings)
+    // ================================================================
+
+    public function storeConditioning(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'required|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'required|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'notes' => 'nullable|string',
+        ]);
+
+        $serviceOrder->conditionings()->create([
+            'category' => $validated['category'],
+            'task' => $validated['task'],
+            'user_id' => $validated['user_id'] ?? null,
+            'status' => 'Pendiente',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return back()->with('success', 'Tarea de acondicionamiento agregada.');
+    }
+
+    public function updateConditioning(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $validated = $request->validate([
+            'category' => 'nullable|in:Instalación Eléctrica,Área de Instalación',
+            'task' => 'nullable|string|max:255',
+            'user_id' => 'nullable|exists:users,id',
+            'status' => 'nullable|in:Pendiente,En proceso,Terminado',
+            'notes' => 'nullable|string',
+        ]);
+
+        $conditioning->update(array_filter($validated, fn($v) => $v !== null));
+
+        return back()->with('success', 'Tarea de acondicionamiento actualizada.');
+    }
+
+    public function destroyConditioning(ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $conditioning->delete();
+
+        return back()->with('success', 'Tarea de acondicionamiento eliminada.');
+    }
+
+    public function uploadConditioningMedia(Request $request, ServiceOrderConditioning $conditioning)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $request->validate([
+            'file' => 'required|file|max:81920', // 80 MB
+        ]);
+
+        // Limitar a 3 imágenes por tarea
+        if ($conditioning->getMedia('evidence')->count() >= 3) {
+            return back()->with('error', 'Máximo 3 evidencias por tarea de acondicionamiento.');
+        }
+
+        $conditioning->addMediaFromRequest('file')->toMediaCollection('evidence');
+
+        return back()->with('success', 'Evidencia subida correctamente.');
+    }
+
+    public function deleteConditioningMedia(ServiceOrderConditioning $conditioning, $mediaId)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($conditioning->serviceOrder->branch_id !== $branchId) return back()->with('error', 'No autorizado.');
+
+        $media = $conditioning->getMedia('evidence')->where('id', $mediaId)->first();
+        if ($media) {
+            $media->delete();
+            return back()->with('success', 'Evidencia eliminada.');
+        }
+
+        return back()->with('error', 'Archivo no encontrado.');
+    }
+
+    /**
+     * API: Obtiene la proyección de pagos de una orden de servicio.
+     * GET /api/service-orders/{serviceOrder}/payment-projection
+     */
+    public function paymentProjection(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Cargar relaciones necesarias
+        $serviceOrder->load(['payments' => function ($q) {
+            $q->orderBy('payment_date');
+        }, 'client.contacts']);
+
+        $projection = $serviceOrder->getPaymentProjection();
+
+        // Agregar información del cliente para recordatorios
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        return response()->json([
+            'service_order' => [
+                'id' => $serviceOrder->id,
+                'status' => $serviceOrder->status,
+                'total_amount' => (float) $serviceOrder->total_amount,
+                'payment_method' => $serviceOrder->payment_method,
+                'down_payment' => (float) ($serviceOrder->down_payment ?? 0),
+                'price_per_module' => (float) ($serviceOrder->price_per_module ?? 0),
+                'created_at' => $serviceOrder->created_at->format('Y-m-d'),
+            ],
+            'projection' => $projection,
+            'reminder_info' => [
+                'has_email' => $primaryContact && !empty($primaryContact->email),
+                'has_phone' => $primaryContact && !empty($primaryContact->phone),
+                'email' => $primaryContact->email ?? null,
+                'phone' => $primaryContact->phone ?? null,
+                'contact_name' => $primaryContact->name ?? null,
+            ],
+        ]);
+    }
+
+    /**
+     * API: Envía recordatorio de pago al cliente (email y/o WhatsApp).
+     * POST /api/service-orders/{serviceOrder}/send-reminder
+     */
+    public function sendPaymentReminder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'channel' => 'required|in:email,whatsapp,both',
+            'installment' => 'nullable|integer|min:1',
+            'message' => 'nullable|string|max:500',
+        ]);
+
+        $channel = $request->input('channel');
+        $installment = $request->input('installment');
+        $customMessage = $request->input('message');
+
+        $serviceOrder->load('client.contacts');
+        $primaryContact = $serviceOrder->client->contacts->firstWhere('is_primary', true)
+            ?? $serviceOrder->client->contacts->first();
+
+        if (!$primaryContact) {
+            return response()->json(['error' => 'El cliente no tiene contactos registrados.'], 422);
+        }
+
+        $results = [];
+        $baseMessage = $customMessage ?: $this->buildDefaultReminderMessage($serviceOrder, $installment);
+
+        // Enviar por Email
+        if (in_array($channel, ['email', 'both']) && !empty($primaryContact->email)) {
+            try {
+                Mail::to($primaryContact->email, $primaryContact->name)
+                    ->send(new PaymentReminderMail($serviceOrder, $baseMessage, $installment));
+                $results['email'] = ['sent' => true, 'to' => $primaryContact->email];
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Error enviando recordatorio email', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'to' => $primaryContact->email,
+                    'order_id' => $serviceOrder->id,
+                ]);
+                $results['email'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['email', 'both'])) {
+            $results['email'] = ['sent' => false, 'error' => 'El contacto no tiene email registrado.'];
+        }
+
+        // Enviar por WhatsApp
+        if (in_array($channel, ['whatsapp', 'both']) && !empty($primaryContact->phone)) {
+            try {
+                $phone = preg_replace('/[^0-9]/', '', $primaryContact->phone);
+                // Asegurar formato internacional (MX: +52)
+                if (strlen($phone) === 10) {
+                    $phone = '52' . $phone;
+                }
+                $whatsappUrl = "https://wa.me/{$phone}?text=" . urlencode($baseMessage);
+
+                // Si hay integración con API de WhatsApp Business, se usaría aquí.
+                // Por ahora devolvemos la URL para que el frontend la abra.
+                $results['whatsapp'] = [
+                    'sent' => true,
+                    'url' => $whatsappUrl,
+                    'phone' => $primaryContact->phone,
+                ];
+            } catch (\Exception $e) {
+                $results['whatsapp'] = ['sent' => false, 'error' => $e->getMessage()];
+            }
+        } elseif (in_array($channel, ['whatsapp', 'both'])) {
+            $results['whatsapp'] = ['sent' => false, 'error' => 'El contacto no tiene teléfono registrado.'];
+        }
+
+        $allSent = collect($results)->every(fn($r) => $r['sent'] ?? false);
+
+        return response()->json([
+            'success' => $allSent,
+            'results' => $results,
+            'message' => $allSent ? 'Recordatorio enviado correctamente.' : 'Algunos canales no pudieron enviarse.',
+        ]);
+    }
+
+    /**
+     * Construye el mensaje predeterminado de recordatorio de pago.
+     * Solo incluye datos de la mensualidad específica (sin número de servicio).
+     */
+    private function buildDefaultReminderMessage(ServiceOrder $serviceOrder, ?int $installment = null): string
+    {
+        $clientName = $serviceOrder->client->name;
+        $projection = $serviceOrder->getPaymentProjection();
+        $installments = $projection['installments'] ?? [];
+
+        $msg = "Estimado(a) {$clientName},\n\n";
+        $msg .= "Le recordamos que tiene un pago pendiente con Sun's Power MX.\n\n";
+
+        if ($installment && isset($installments[$installment - 1])) {
+            $inst = $installments[$installment - 1];
+            $msg .= "Mensualidad: {$inst['label']}\n";
+            $msg .= "Monto: \$" . number_format($inst['amount'], 2) . " MXN\n";
+            $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($inst['projected_date'])->format('d/m/Y') . "\n\n";
+        } else {
+            // Buscar la primera cuota pendiente/atrasada
+            $nextPending = collect($installments)->first(fn($i) => in_array($i['status'], ['pending', 'late', 'defaulted', 'upcoming']));
+            if ($nextPending) {
+                $msg .= "Mensualidad: {$nextPending['label']}\n";
+                $msg .= "Monto: \$" . number_format($nextPending['amount'], 2) . " MXN\n";
+                $msg .= "Fecha esperada: " . \Carbon\Carbon::parse($nextPending['projected_date'])->format('d/m/Y') . "\n\n";
+            }
+        }
+
+        $msg .= "Por favor, realice su pago a la brevedad para mantener su servicio al corriente.\n\n";
+        $msg .= "Si ya realizó su pago, haga caso omiso a este mensaje.\n\n";
+        $msg .= "Atentamente,\nSun's Power MX";
+
+        return $msg;
+    }
+
+    /**
+     * API: Actualiza el método de pago de una orden de servicio.
+     * PATCH /api/service-orders/{serviceOrder}/payment-method
+     */
+    public function updatePaymentMethod(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Validar que no existan pagos de mensualidades (solo se permite anticipo)
+        $hasInstallmentPayments = $serviceOrder->payments()
+            ->where(function ($q) {
+                $q->where('notes', '!=', 'Anticipo')
+                  ->orWhereNull('notes');
+            })
+            ->exists();
+        if ($hasInstallmentPayments) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No se puede modificar el plan de pago porque ya existen mensualidades pagadas.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
+            'down_payment' => 'nullable|numeric|min:0',
+        ]);
+
+        $serviceOrder->update($validated);
+
+        // Regenerar cuotas proyectadas según el nuevo plan
+        $serviceOrder->generateInstallments();
+
+        return response()->json([
+            'success' => true,
+            'payment_method' => $serviceOrder->payment_method,
+            'message' => 'Plan de pago actualizado correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Actualiza el precio de mantenimiento por módulo.
+     * PATCH /api/service-orders/{serviceOrder}/maintenance-price
+     */
+    public function updateMaintenancePrice(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'price_per_module' => 'nullable|numeric|min:0',
+        ]);
+
+        $serviceOrder->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'price_per_module' => (float) $serviceOrder->price_per_module,
+            'message' => 'Precio de mantenimiento actualizado correctamente.',
+        ]);
+    }
+
+    // ========================================================================
+    // NUEVOS ENDPOINTS PARA GESTIÓN DE CUOTAS (PAYMENT INSTALLMENTS)
+    // ========================================================================
+
+    /**
+     * API: Obtiene las cuotas proyectadas de una orden (desde la BD).
+     * GET /api/service-orders/{serviceOrder}/installments
+     */
+    public function getInstallments(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $projection = $serviceOrder->getPaymentProjection();
+
+        return response()->json($projection);
+    }
+
+    /**
+     * API: Actualiza una cuota individual (fecha, monto).
+     * PATCH /api/installments/{installment}
+     */
+    public function updateInstallment(Request $request, PaymentInstallment $installment)
+    {
+        $serviceOrder = $installment->serviceOrder;
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // No permitir editar cuotas ya pagadas
+        if ($installment->payment_id || $installment->status === 'paid' || $installment->status === 'on_time') {
+            return response()->json([
+                'success' => false,
+                'error' => 'No se puede modificar una cuota que ya ha sido pagada.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'projected_date' => 'nullable|date',
+            'amount' => 'nullable|numeric|min:0',
+            'label' => 'nullable|string|max:255',
+        ]);
+
+        $updateData = array_filter($validated, fn($v) => $v !== null);
+        $installment->update($updateData);
+
+        // Recalcular estatus después del cambio
+        $installment->recalculateStatus();
+
+        return response()->json([
+            'success' => true,
+            'installment' => $installment->fresh(),
+            'message' => 'Cuota actualizada correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Marca una cuota como pagada y crea el registro de pago real.
+     * POST /api/installments/{installment}/pay
+     */
+    public function payInstallment(Request $request, PaymentInstallment $installment)
+    {
+        $serviceOrder = $installment->serviceOrder;
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // No permitir pagar una cuota ya pagada
+        if ($installment->payment_id || in_array($installment->status, ['paid', 'on_time'])) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Esta cuota ya ha sido pagada.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date',
+            'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:500',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ]);
+
+        // Crear el pago real
+        $payment = Payment::create([
+            'branch_id' => $branchId,
+            'client_id' => $serviceOrder->client_id,
+            'service_order_id' => $serviceOrder->id,
+            'installment_number' => $installment->installment_number,
+            'amount' => $validated['amount'],
+            'payment_date' => $validated['payment_date'],
+            'method' => $validated['method'],
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        // Adjuntar comprobante si se envió
+        if ($request->hasFile('proof')) {
+            $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+        }
+
+        // Marcar la cuota como pagada
+        $installment->markAsPaid($payment);
+
+        return response()->json([
+            'success' => true,
+            'payment' => $payment,
+            'installment' => $installment->fresh(),
+            'message' => 'Pago registrado y cuota actualizada.',
+        ]);
+    }
+
+    /**
+     * API: Liquida todas las cuotas pendientes de una orden en un solo pago.
+     * POST /api/service-orders/{serviceOrder}/liquidate
+     */
+    public function liquidateOrder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date',
+            'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:500',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+        ]);
+
+        // Obtener cuotas pendientes
+        $pendingInstallments = $serviceOrder->paymentInstallments()
+            ->whereNull('payment_id')
+            ->whereNotIn('status', ['paid', 'on_time'])
+            ->get();
+
+        if ($pendingInstallments->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No hay cuotas pendientes por liquidar.',
+            ], 422);
+        }
+
+        $totalPending = $pendingInstallments->sum('amount');
+
+        if ($validated['amount'] < $totalPending - 1) {
+            return response()->json([
+                'success' => false,
+                'error' => "El monto mínimo para liquidar es de $" . number_format($totalPending, 2),
+            ], 422);
+        }
+
+        // Crear un solo pago por el total
+        $payment = Payment::create([
+            'branch_id' => $branchId,
+            'client_id' => $serviceOrder->client_id,
+            'service_order_id' => $serviceOrder->id,
+            'amount' => $validated['amount'],
+            'payment_date' => $validated['payment_date'],
+            'method' => $validated['method'],
+            'reference' => $validated['reference'] ?? null,
+            'notes' => $validated['notes'] ?? 'Liquidación total',
+        ]);
+
+        if ($request->hasFile('proof')) {
+            $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+        }
+
+        // Distribuir el pago entre todas las cuotas pendientes
+        $remainingAmount = $validated['amount'];
+        foreach ($pendingInstallments as $inst) {
+            if ($remainingAmount <= 0) break;
+            $allocatedAmount = min($inst->amount, $remainingAmount);
+            $inst->update([
+                'status' => 'paid',
+                'paid_amount' => $allocatedAmount,
+                'paid_date' => $validated['payment_date'],
+                'payment_id' => $payment->id,
+            ]);
+            $remainingAmount -= $allocatedAmount;
+        }
+
+        // Si el pago cubre más de lo pendiente, asignar el excedente a la última cuota
+        if ($remainingAmount > 0 && $pendingInstallments->isNotEmpty()) {
+            $lastInst = $pendingInstallments->last();
+            $lastInst->increment('paid_amount', $remainingAmount);
+        }
+
+        return response()->json([
+            'success' => true,
+            'payment' => $payment,
+            'message' => 'Orden liquidada correctamente. Todas las cuotas han sido marcadas como pagadas.',
+        ]);
+    }
+
+    /**
+     * API: Crea una cuota proyectada manual para plan Personalizado.
+     * POST /api/service-orders/{serviceOrder}/installments
+     */
+    public function storeInstallment(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Solo permitido para plan Personalizado
+        if ($serviceOrder->payment_method !== 'Personalizado') {
+            return response()->json([
+                'success' => false,
+                'error' => 'Solo puedes agregar cuotas manuales en plan Personalizado.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'projected_date' => 'required|date|after_or_equal:today',
+            'amount' => 'required|numeric|min:1',
+            'label' => 'nullable|string|max:255',
+        ]);
+
+        // Calcular saldo pendiente: total_amount - pagos registrados
+        $totalPaid = (float) $serviceOrder->payments()->sum('amount');
+        $remaining = (float) $serviceOrder->total_amount - $totalPaid;
+
+        if ($validated['amount'] > $remaining) {
+            return response()->json([
+                'success' => false,
+                'error' => "El monto (\${$validated['amount']}) excede el saldo pendiente (\$" . number_format($remaining, 2) . ").",
+            ], 422);
+        }
+
+        // Obtener el último número de cuota
+        $lastNumber = (int) $serviceOrder->paymentInstallments()->max('installment_number');
+
+        $installment = $serviceOrder->paymentInstallments()->create([
+            'installment_number' => $lastNumber + 1,
+            'label' => $validated['label'] ?? "Proyección #" . ($lastNumber + 1),
+            'projected_date' => $validated['projected_date'],
+            'amount' => $validated['amount'],
+            'status' => 'pending',
+        ]);
+
+        $installment->recalculateStatus();
+
+        return response()->json([
+            'success' => true,
+            'installment' => $installment->fresh(),
+            'message' => 'Cuota proyectada agregada correctamente.',
+        ]);
     }
 }

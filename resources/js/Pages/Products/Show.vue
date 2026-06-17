@@ -15,6 +15,7 @@ import {
     TimeOutline, SwapHorizontalOutline, BuildOutline, ClipboardOutline, CalendarOutline, AttachOutline, 
     DocumentTextOutline, CloudDownloadOutline, ImageOutline, TrashOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 defineOptions({
     name: 'ProductShow'
@@ -314,6 +315,7 @@ const handleImageError = (e) => {
                                 <h3 class="font-bold text-lg text-gray-800 flex items-center gap-2">
                                     <n-icon class="text-indigo-500"><LocationOutline /></n-icon>
                                     Inventario
+                                    <PermissionTooltip permission="products.adjust_stock" placement="right" :size="13" />
                                 </h3>
                                 <n-button v-if="hasPermission('products.adjust_stock')" size="small" secondary circle type="info" @click="openAdjustmentModal">
                                     <template #icon><n-icon><ClipboardOutline /></n-icon></template>
@@ -336,9 +338,12 @@ const handleImageError = (e) => {
                                     </div>
                                 </div>
                             </div>
-                            <n-button v-if="hasPermission('products.edit')" type="warning" block secondary class="mt-4" @click="goToEdit">
-                                Editar Producto
-                            </n-button>
+                            <div class="flex items-center gap-2 mt-4 w-full">
+                                <PermissionTooltip permission="products.edit" placement="top" :size="14" />
+                                <n-button v-if="hasPermission('products.edit')" type="warning" block secondary class="flex-1" @click="goToEdit">
+                                    Editar Producto
+                                </n-button>
+                            </div>
                         </div>
                     </div>
 
@@ -373,7 +378,13 @@ const handleImageError = (e) => {
                                 </span>
                                 <template #suffix>MXN</template>
                             </n-statistic>
-                            <n-statistic v-if="hasPermission('products.view_costs')" label="Precio de compra" class="mb-6">
+                            <n-statistic v-if="hasPermission('products.view_costs')" class="mb-6">
+                                <template #label>
+                                    <div class="flex items-center gap-1.5">
+                                        Precio de compra
+                                        <PermissionTooltip permission="products.view_costs" placement="top" :size="12" />
+                                    </div>
+                                </template>
                                 <template #prefix>$</template>
                                 <span class="text-xl font-bold text-emerald-600">
                                     <n-number-animation 

@@ -9,6 +9,7 @@ import {
 import { 
     SearchOutline, AddOutline, CreateOutline, TrashOutline, CubeOutline, LocationOutline, AlertCircleOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 // Props desde el controlador
 const props = defineProps({
@@ -164,9 +165,15 @@ const createColumns = () => [
         }
     },
     {
-        title: hasPermission('products.view_costs') ? 'Costo' : '',
+        title: () => {
+            if (!hasPermission('products.view_costs')) return '';
+            return h('div', { class: 'flex items-center gap-1' }, [
+                h('span', 'Costo'),
+                h(PermissionTooltip, { permission: 'products.view_costs', placement: 'top', size: 13 })
+            ]);
+        },
         key: 'purchase_price',
-        width: 90,
+        width: 110,
         render(row) {
             if ( hasPermission('products.view_costs') ) {
                 return h('div', { class: 'font-semibold text-emerald-600' }, formatCurrency(row.purchase_price));
@@ -182,9 +189,12 @@ const createColumns = () => [
         }
     },
     {
-        title: '',
+        title: () => h('div', { class: 'flex items-center gap-1' }, [
+            h(PermissionTooltip, { permission: 'products.edit', placement: 'top', size: 13 }),
+            h(PermissionTooltip, { permission: 'products.delete', placement: 'top', size: 13 }),
+        ]),
         key: 'actions',
-        width: 100,
+        width: 110,
         render(row) {
             const canEdit = hasPermission('products.edit');
             const canDelete = hasPermission('products.delete');
@@ -252,14 +262,17 @@ const rowProps = (row) => {
                     <p class="text-sm text-gray-500 mt-1">Gestiona el inventario por sucursal</p>
                 </div>
                 <!-- Botón Crear -->
-                <Link v-if="hasPermission('products.create')" :href="route('products.create')">
-                    <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
-                        Nuevo Producto
-                    </n-button>
-                </Link>
+                <div class="flex items-center gap-2">
+                    <PermissionTooltip permission="products.create" placement="bottom" :size="14" />
+                    <Link v-if="hasPermission('products.create')" :href="route('products.create')">
+                        <n-button type="primary" round size="large" class="shadow-md hover:shadow-lg transition-shadow duration-300">
+                            <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                            </template>
+                            Nuevo Producto
+                        </n-button>
+                    </Link>
+                </div>
             </div>
         </template>
 

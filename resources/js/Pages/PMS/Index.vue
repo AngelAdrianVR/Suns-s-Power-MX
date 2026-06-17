@@ -23,6 +23,7 @@ import { es } from 'date-fns/locale';
 
 // Composables de Permisos
 import { usePermissions } from '@/Composables/usePermissions';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     week_start: String,
@@ -712,12 +713,15 @@ const metricsData = computed(() => {
                         <span class="hidden sm:inline">Métricas</span>
                     </n-button>
 
-                    <n-button v-if="hasPermission('pms.create')" type="primary" @click="openCreateForm" class="shadow-sm" size="small">
-                        <template #icon>
-                            <n-icon><AddOutline /></n-icon>
-                        </template>
-                        <span class="hidden sm:inline">Nueva</span>
-                    </n-button>
+                    <div class="flex items-center gap-1">
+                        <PermissionTooltip permission="pms.create" placement="bottom" :size="13" />
+                        <n-button v-if="hasPermission('pms.create')" type="primary" @click="openCreateForm" class="shadow-sm" size="small">
+                            <template #icon>
+                                <n-icon><AddOutline /></n-icon>
+                            </template>
+                            <span class="hidden sm:inline">Nueva</span>
+                        </n-button>
+                    </div>
                 </div>
             </div>
         </template>
@@ -735,7 +739,10 @@ const metricsData = computed(() => {
                         
                         <div class="p-2 lg:p-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
                             <h3 class="font-bold text-gray-600 mb-2 lg:mb-3 text-[12px] lg:text-[13px] uppercase tracking-wider flex items-center justify-between">
-                                Backlog de Tareas
+                                <span class="flex items-center gap-1.5">
+                                    Backlog de Tareas
+                                    <PermissionTooltip permission="pms.view_all" placement="top" :size="11" />
+                                </span>
                                 <n-tag v-if="kanbanPriorityFilter" size="small" type="info" :bordered="false" round>Filtrado</n-tag>
                             </h3>
                             <div class="flex flex-col gap-1.5 lg:gap-2">
@@ -797,7 +804,10 @@ const metricsData = computed(() => {
                     </div>
 
                     <!-- MAIN KANBAN BOARD -->
-                    <div class="flex-1 overflow-x-auto overflow-y-hidden bg-white rounded-2xl shadow-sm border border-gray-100 flex p-3 gap-3 snap-x snap-mandatory scroll-smooth custom-scrollbar min-h-0 h-full" style="scroll-padding: 0.75rem;">
+                    <div class="flex-1 overflow-x-auto overflow-y-hidden bg-white rounded-2xl shadow-sm border border-gray-100 flex p-3 gap-3 snap-x snap-mandatory scroll-smooth custom-scrollbar min-h-0 h-full relative" style="scroll-padding: 0.75rem;">
+                        <div class="absolute top-2 right-3 z-20">
+                            <PermissionTooltip permission="pms.schedule" placement="left" :size="13" />
+                        </div>
                         <div 
                             v-for="day in days" :key="day.date" 
                             class="snap-start shrink-0 w-[85vw] sm:w-[280px] md:w-[300px] xl:w-auto xl:flex-1 flex flex-col bg-gray-50/50 rounded-xl border border-gray-100 h-full max-h-full"

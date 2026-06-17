@@ -3,10 +3,12 @@ import { ref, computed, onMounted, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import axios from 'axios';
 import TaskGanttChart from '@/Components/MyComponents/TaskGanttChart.vue'; 
 import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
 import OrderFilesTab from './Components/OrderFilesTab.vue';
+import OrderConditioningTab from './Components/OrderConditioningTab.vue';
 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
@@ -14,8 +16,11 @@ import {
     NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
 } from 'naive-ui';
 import { 
-    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline
+    ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, 
+    CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
+    HardwareChipOutline, HomeOutline, SaveOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
     order: Object,
@@ -29,8 +34,23 @@ const props = defineProps({
 const { hasPermission } = usePermissions();
 const { dialog, notification } = createDiscreteApi(['dialog', 'notification']);
 
+// --- CONDICIONAMIENTO PREVIO (debe ir antes de activeTab) ---
+const allConditioningsCompleted = computed(() => {
+    if (!props.order.conditionings?.length) return true;
+    return props.order.conditionings.every(c => c.status === 'Terminado');
+});
+
+const conditioningAttentionType = computed(() => {
+    if (!props.order.requires_pre_installation) return 'none';
+    return allConditioningsCompleted.value ? 'completed' : 'pending';
+});
+
 // --- LÓGICA DE PESTAÑAS Y URL ---
-const activeTab = ref('gantt');
+const activeTab = ref(
+    props.order.requires_pre_installation && !allConditioningsCompleted.value
+        ? 'conditioning'
+        : 'gantt'
+);
 
 onMounted(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -109,6 +129,67 @@ const formattedTotal = computed(() =>
   new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(props.order.total_amount ?? 0)
 );
 
+const paymentMethodLabel = computed(() => {
+    const map = {
+        'Contado': 'Contado', '3 MSI': '3 Meses', '6 MSI': '6 Meses',
+        '9 MSI': '9 Meses', '12 MSI': '12 Meses', 'Personalizado': 'Personalizado'
+    };
+    return map[props.order.payment_method] || props.order.payment_method || 'No definido';
+});
+
+const formattedDownPayment = computed(() => {
+    if (!props.order.down_payment) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(props.order.down_payment);
+});
+
+const remainingAmount = computed(() => {
+    if (!props.order.total_amount || !props.order.down_payment) return null;
+    const remaining = Number(props.order.total_amount) - Number(props.order.down_payment);
+    if (remaining <= 0) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(remaining);
+});
+
+const formattedPricePerModule = computed(() => {
+    if (!props.order.price_per_module) return null;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(props.order.price_per_module);
+});
+
+// --- INLINE EDIT: PRECIO DE MANTENIMIENTO POR MÓDULO ---
+const isEditingPrice = ref(false);
+const editingPrice = ref(null);
+const isSavingPrice = ref(false);
+
+const startEditPrice = () => {
+    editingPrice.value = props.order.price_per_module || null;
+    isEditingPrice.value = true;
+};
+
+const cancelEditPrice = () => {
+    isEditingPrice.value = false;
+    editingPrice.value = props.order.price_per_module || null;
+};
+
+const savePrice = async () => {
+    isSavingPrice.value = true;
+    try {
+        await axios.patch(
+            route('api.service-orders.update-maintenance-price', props.order.id),
+            { price_per_module: editingPrice.value }
+        );
+        isEditingPrice.value = false;
+        notification.success({ title: 'Actualizado', content: 'Precio de mantenimiento guardado.', duration: 3000 });
+        router.reload({ only: ['order'] });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudo guardar el precio.', duration: 3000 });
+    } finally {
+        isSavingPrice.value = false;
+    }
+};
+
+const refreshOrder = () => {
+    router.reload({ only: ['order'] });
+};
+
 // --- CONCILIACIÓN DE MATERIAL ---
 const hasNoMaterials = computed(() => {
     return !props.order.items || props.order.items.length === 0;
@@ -118,6 +199,7 @@ const materialsReported = computed(() => {
     if (hasNoMaterials.value) return true; 
     return props.order.items.every(item => item.used_quantity !== null);
 });
+
 
 const showCompletionModal = ref(false);
 const completionForm = useForm({
@@ -257,6 +339,7 @@ const confirmDelete = () => {
                             <n-tag v-else :type="getStatusType(order.status)" round size="small" :bordered="false">
                                 {{ order.status }}
                             </n-tag>
+                            <PermissionTooltip permission="service_orders.change_status" placement="right" :size="12" />
                             <span class="text-xs text-gray-400 border-l pl-2 ml-2 border-gray-300">
                                 Creado {{ formatDate(order.created_at) }}
                             </span>
@@ -282,6 +365,7 @@ const confirmDelete = () => {
                         {{ hasNoMaterials ? 'Sin materiales para conciliar' : (materialsReported ? 'Material Conciliado' : 'Conciliar Material') }}
                     </n-button>
 
+                    <PermissionTooltip permission="service_orders.edit" placement="bottom" :size="13" />
                     <n-button 
                         v-if="hasPermission('service_orders.edit')" 
                         quaternary type="warning" 
@@ -289,6 +373,7 @@ const confirmDelete = () => {
                     >
                         <template #icon><n-icon><CreateOutline /></n-icon></template> Editar
                     </n-button>
+                    <PermissionTooltip permission="service_orders.delete" placement="bottom" :size="13" />
                     <n-button 
                         v-if="hasPermission('service_orders.delete') && !['Completado', 'Facturado'].includes(order.status)" 
                         quaternary type="error" 
@@ -325,12 +410,17 @@ const confirmDelete = () => {
                                     </div>
                                 </div>
                             </n-grid-item>
-                            <n-grid-item v-if="can_view_financials">
+                            <n-grid-item v-if="can_view_financials && hasPermission('sales.view_sales_amount')">
                                 <div class="p-2 border-l border-gray-100">
+                                    <PermissionTooltip permission="sales.view_sales_amount" placement="right" :size="12" />
                                     <div class="text-gray-400 text-xs uppercase font-bold mb-1">Total Proyecto</div>
                                     <n-statistic :value="formattedTotal">
                                         <template #prefix>$</template>
                                     </n-statistic>
+                                    <div v-if="formattedDownPayment" class="mt-1 text-xs">
+                                        <span class="text-green-600 font-medium">{{ formattedDownPayment }}</span>
+                                        <span class="text-gray-400"> anticipo</span>
+                                    </div>
                                 </div>
                             </n-grid-item>
                             <n-grid-item>
@@ -369,16 +459,113 @@ const confirmDelete = () => {
                     </n-card>
                 </div>
 
+                <!-- Segunda fila: Pago y Acondicionamiento -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <n-card v-if="(order.payment_method || order.down_payment || order.price_per_module) && hasPermission('sales.view_sales_amount')" size="small" class="rounded-2xl shadow-sm bg-emerald-50/30 border-emerald-100">
+                        <!-- Se actualizó el div superior con 'justify-between' para separar el título y el botón -->
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2 text-emerald-800 font-semibold">
+                                <n-icon :component="CashOutline" /> Plan de Pago
+                                <PermissionTooltip permission="sales.view_sales_amount" placement="top" :size="12" />
+                            </div>
+                            
+                            <!-- Nuevo botón de navegación -->
+                            <n-button 
+                                v-if="order?.client?.id"
+                                size="small" 
+                                type="primary" 
+                                secondary
+                                @click="$inertia.visit(route('clients.show', { id: order.client.id }))"
+                            >
+                                Ver Detalles
+                            </n-button>
+                        </div>
+
+                        <n-grid cols="2" y-gap="8">
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Método</div>
+                                <n-tag type="info" size="small" round :bordered="false">{{ paymentMethodLabel }}</n-tag>
+                            </n-grid-item>
+                            
+                            <n-grid-item v-if="formattedDownPayment">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Anticipo</div>
+                                <div class="text-sm font-bold text-green-700">{{ formattedDownPayment }}</div>
+                            </n-grid-item>
+                            
+                            <n-grid-item v-if="remainingAmount">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Saldo Pendiente</div>
+                                <div class="text-sm font-bold text-amber-600">{{ remainingAmount }}</div>
+                            </n-grid-item>
+
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Precio Mantenimiento / Módulo</div>
+                                <div v-if="!isEditingPrice" class="flex items-center gap-2">
+                                    <span class="text-sm font-bold text-gray-700">
+                                        {{ formattedPricePerModule || '—' }}
+                                    </span>
+                                    <n-button size="tiny" text type="primary" @click="startEditPrice">
+                                        <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                    </n-button>
+                                </div>
+                                <div v-else class="flex items-center gap-2">
+                                    <n-input-number
+                                        v-model:value="editingPrice"
+                                        :min="0"
+                                        :precision="2"
+                                        size="small"
+                                        placeholder="0.00"
+                                        class="w-32"
+                                    >
+                                        <template #prefix>$</template>
+                                    </n-input-number>
+                                    <n-button size="tiny" type="primary" @click="savePrice" :loading="isSavingPrice">
+                                        <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                    </n-button>
+                                    <n-button size="tiny" @click="cancelEditPrice">Cancelar</n-button>
+                                </div>
+                            </n-grid-item>
+                        </n-grid>
+                    </n-card>
+
+                    <n-card v-if="order.requires_pre_installation" size="small" class="rounded-2xl shadow-sm bg-orange-50/30 border-orange-100">
+                        <div class="flex items-center gap-2 text-orange-800 font-semibold mb-3">
+                            <n-icon :component="HomeOutline" /> Acondicionamiento Previo
+                        </div>
+                        <n-grid cols="2" y-gap="8">
+                            <n-grid-item>
+                                <div class="text-xs text-gray-400 uppercase font-bold">Coordinado por</div>
+                                <n-tag type="warning" size="small" round :bordered="false">
+                                    {{ order.pre_installation_assigned_to || 'Sin asignar' }}
+                                </n-tag>
+                            </n-grid-item>
+                            <n-grid-item v-if="order.conditionings?.length">
+                                <div class="text-xs text-gray-400 uppercase font-bold">Tareas</div>
+                                <div class="text-sm font-bold text-gray-700">{{ order.conditionings.length }} registradas</div>
+                            </n-grid-item>
+                        </n-grid>
+                        <p v-if="order.pre_installation_details" class="text-xs text-gray-500 mt-3 line-clamp-2">
+                            {{ order.pre_installation_details }}
+                        </p>
+                    </n-card>
+                </div>
+
                 <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden min-h-[500px]">
                     <n-tabs type="line" size="large" animated class="px-6 pt-4" :value="activeTab" @update:value="handleTabChange">
                         
-                        <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt" tab="Cronograma y Tareas">
+                        <n-tab-pane v-if="hasPermission('tasks.view_board')" name="gantt">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <span>Cronograma y Tareas</span>
+                                    <PermissionTooltip permission="tasks.view_board" placement="top" :size="12" />
+                                </div>
+                            </template>
                             <div class="py-4 space-y-6">
                                 <TaskGanttChart :tasks="diagram_data" :order-id="order.id" :assignable-users="assignable_users" />
                             </div>
                         </n-tab-pane>
 
                         <n-tab-pane name="items" tab="Materiales y Productos">
+                            <PermissionTooltip permission="sales.view_sales_amount" placement="right" :size="12" />
                              <OrderItemsTab 
                                 :order="order" 
                                 :available_products="available_products" 
@@ -393,6 +580,23 @@ const confirmDelete = () => {
                         <!-- NUEVO: Agregamos el listener @upload-success para forzar el rebote -->
                         <n-tab-pane name="files" tab="Evidencias">
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
+                        </n-tab-pane>
+
+                        <n-tab-pane name="conditioning"
+                            :tab-props="conditioningAttentionType !== 'none' ? { class: conditioningAttentionType === 'pending' ? 'conditioning-tab-attention' : 'conditioning-tab-completed' } : undefined">
+                            <template #tab>
+                                <div class="flex items-center gap-1.5">
+                                    <n-icon size="18"><HomeOutline /></n-icon>
+                                    <span>Acondicionamiento</span>
+                                    <n-badge v-if="conditioningAttentionType === 'pending'" dot type="error" />
+                                    <n-badge v-if="conditioningAttentionType === 'completed'" dot type="success" />
+                                </div>
+                            </template>
+                            <OrderConditioningTab 
+                                :order="order" 
+                                :assignable-users="assignable_users"
+                                @refresh="refreshOrder"
+                            />
                         </n-tab-pane>
 
                     </n-tabs>
@@ -417,7 +621,7 @@ const confirmDelete = () => {
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-100">
-                            <tr v-for="(item, index) in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
+                            <tr v-for="item in completionForm.items" :key="item.id" class="hover:bg-gray-50 transition-colors">
                                 <td class="px-4 py-2 text-sm text-gray-800">
                                     {{ item.name }} <br><span class="text-[10px] text-gray-400">{{ item.sku }}</span>
                                 </td>
@@ -484,5 +688,27 @@ const confirmDelete = () => {
     color: #92400e !important; 
     border-color: #f59e0b !important;
     transition: all 0.3s ease;
+}
+
+:deep(.conditioning-tab-attention) {
+    position: relative;
+    background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 700 !important;
+    color: #92400e !important;
+    animation: tab-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes tab-glow {
+    0%, 100% { box-shadow: inset 0 -2px 0 0 #f59e0b; }
+    50% { box-shadow: inset 0 -2px 0 0 #f59e0b, 0 0 12px 2px rgba(245, 158, 11, 0.4); }
+}
+
+:deep(.conditioning-tab-completed) {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0) !important;
+    border-radius: 8px 8px 0 0 !important;
+    font-weight: 700 !important;
+    color: #065f46 !important;
+    box-shadow: inset 0 -2px 0 0 #10b981;
 }
 </style>

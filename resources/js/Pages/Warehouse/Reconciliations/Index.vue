@@ -9,6 +9,8 @@ import {
 import { 
     CheckmarkCircleOutline, ArrowForwardOutline, AlertCircleOutline, CheckboxOutline, OpenOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
+import { usePermissions } from '@/Composables/usePermissions';
 
 const props = defineProps({
     orders: Object,
@@ -16,6 +18,7 @@ const props = defineProps({
 });
 
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
+const { hasPermission } = usePermissions();
 
 // Lógica de Tabs / Filtro
 const currentFilter = ref(props.filterStatus);
@@ -157,14 +160,17 @@ const confirmReconciliation = () => {
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-right">
                                         <!-- Botón dinámico según el estado de la conciliación -->
-                                        <n-button v-if="filterStatus === 'pending'" type="primary" size="small" @click="openReconciliationModal(order)">
-                                            Revisar y Conciliar
-                                            <template #icon><n-icon><ArrowForwardOutline /></n-icon></template>
-                                        </n-button>
-                                        <n-button v-else type="success" secondary size="small" @click="openReconciliationModal(order)">
-                                            <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
-                                            Conciliado (Ver)
-                                        </n-button>
+                                        <div class="flex items-center gap-1 justify-end">
+                                            <PermissionTooltip permission="warehouse.reconciliations.approve" placement="left" :size="13" />
+                                            <n-button v-if="filterStatus === 'pending'" type="primary" size="small" @click="openReconciliationModal(order)">
+                                                Revisar y Conciliar
+                                                <template #icon><n-icon><ArrowForwardOutline /></n-icon></template>
+                                            </n-button>
+                                            <n-button v-else type="success" secondary size="small" @click="openReconciliationModal(order)">
+                                                <template #icon><n-icon><CheckmarkCircleOutline /></n-icon></template>
+                                                Conciliado (Ver)
+                                            </n-button>
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr v-if="!orders.data.length">
@@ -266,6 +272,7 @@ const confirmReconciliation = () => {
                     <div class="flex justify-end gap-3">
                         <n-button @click="showModal = false">Cerrar</n-button>
                         <!-- El botón de Aprobar SOLO aparece si el estado es pendiente -->
+                        <PermissionTooltip permission="warehouse.reconciliations.approve" placement="top" :size="13" />
                         <n-button 
                             v-if="filterStatus === 'pending'" 
                             type="success" 

@@ -35,7 +35,8 @@ return new class extends Migration
             $table->dateTime('completion_date')->nullable();
             // Bandera para que almacén sepa si ya ajustaron el inventario de esta orden
             $table->boolean('inventory_reconciled')->default(false);
-            $table->decimal('total_amount', 12, 2)->default(0); 
+            $table->decimal('total_amount', 12, 2)->default(0);
+            $table->decimal('down_payment', 12, 2)->nullable()->comment('Anticipo');
             
             // Dirección de Instalación (Específica de la orden)
             // Usamos prefijos para distinguirla de la dirección fiscal del cliente
@@ -51,6 +52,12 @@ return new class extends Migration
             // Coordenadas de la instalación
             $table->decimal('installation_lat', 10, 8)->nullable();
             $table->decimal('installation_lng', 11, 8)->nullable();
+
+            // Propuesta Comercial y Acondicionamiento
+            $table->enum('payment_method', ['Contado', '3 MSI', '6 MSI', '9 MSI', '12 MSI', 'Personalizado'])->nullable();
+            $table->boolean('requires_pre_installation')->default(false);
+            $table->text('pre_installation_details')->nullable();
+            $table->enum('pre_installation_assigned_to', ['Sun\'s power mx', 'Cliente', 'Otro'])->nullable();
 
             $table->text('notes')->nullable(); 
             $table->timestamps();

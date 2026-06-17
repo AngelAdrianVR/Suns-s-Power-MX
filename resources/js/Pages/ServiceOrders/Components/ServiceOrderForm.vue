@@ -5,15 +5,16 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { 
     NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, 
     createDiscreteApi, NSelect, NDatePicker, NInputNumber, NSpin, NTooltip,
-    NModal, NPopconfirm, NEmpty
+    NModal, NPopconfirm, NEmpty, NSwitch, NDivider, NUpload
 } from 'naive-ui';
 import { 
     SaveOutline, PersonOutline, ConstructOutline, 
     LocationOutline, CashOutline, DocumentTextOutline, BriefcaseOutline,
     PersonAddOutline, RefreshOutline, FlashOutline, SpeedometerOutline,
     HardwareChipOutline, AddOutline, CreateOutline, TrashOutline, 
-    CheckmarkCircleOutline, CloseOutline
+    CheckmarkCircleOutline, CloseOutline, HomeOutline, BuildOutline
 } from '@vicons/ionicons5';
+import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -84,6 +85,26 @@ const wireOptions = [
     { label: '1 Hilo', value: 1 },
     { label: '2 Hilos', value: 2 },
     { label: '3 Hilos', value: 3 }
+];
+
+const paymentMethodOptions = [
+    { label: 'Contado', value: 'Contado' },
+    { label: '3 MSI', value: '3 MSI' },
+    { label: '6 MSI', value: '6 MSI' },
+    { label: '9 MSI', value: '9 MSI' },
+    { label: '12 MSI', value: '12 MSI' },
+    { label: 'Personalizado', value: 'Personalizado' },
+];
+
+const preInstallationOptions = [
+    { label: "Sun's power mx", value: "Sun's power mx" },
+    { label: 'Cliente', value: 'Cliente' },
+    { label: 'Otro', value: 'Otro' },
+];
+
+const conditioningCategoryOptions = [
+    { label: 'Instalación Eléctrica', value: 'Instalación Eléctrica' },
+    { label: 'Área de Instalación', value: 'Área de Instalación' },
 ];
 
 const mexicoStates = [
@@ -217,6 +238,22 @@ const form = useForm({
     installation_lng: props.order?.installation_lng ? parseFloat(props.order.installation_lng) : null,
 
     notes: props.order?.notes || '',
+    
+    // Propuesta comercial
+    payment_method: props.order?.payment_method || null,
+    down_payment: props.order?.down_payment ? Number(props.order.down_payment) : null,
+    requires_pre_installation: props.order?.requires_pre_installation || false,
+    pre_installation_details: props.order?.pre_installation_details || '',
+    pre_installation_assigned_to: props.order?.pre_installation_assigned_to || null,
+    
+    // Tareas de acondicionamiento (se envían como array separado)
+    conditionings: props.order?.conditionings?.map(c => ({
+        id: c.id,
+        category: c.category,
+        task: c.task,
+        user_id: c.user_id,
+        notes: c.notes || '',
+    })) || [],
 });
 
 const rules = {
@@ -316,6 +353,20 @@ const submit = () => {
             notification.warning({ title: 'Campos Incompletos', content: 'Por favor completa la información requerida.', duration: 3000 });
         }
     });
+};
+
+// --- FUNCIONES DE ACONDICIONAMIENTO ---
+const addConditioningTask = () => {
+    form.conditionings.push({
+        category: 'Instalación Eléctrica',
+        task: '',
+        user_id: null,
+        notes: '',
+    });
+};
+
+const removeConditioningTask = (index) => {
+    form.conditionings.splice(index, 1);
 };
 </script>
 
@@ -465,6 +516,7 @@ const submit = () => {
                                         />
                                     </div>
 
+                                    <PermissionTooltip permission="system_type.create" placement="bottom" :size="13" />
                                     <n-tooltip trigger="hover">
                                         <template #trigger>
                                             <n-button 
@@ -626,6 +678,133 @@ const submit = () => {
                             <template #suffix>MXN</template>
                         </n-input-number>
                     </n-form-item>
+                    
+                    <n-divider class="!my-3" />
+
+                    <n-form-item label="Método de Pago" path="payment_method">
+                        <n-select 
+                            v-model:value="form.payment_method" 
+                            :options="paymentMethodOptions" 
+                            placeholder="Seleccionar plan de pago"
+                            clearable
+                        />
+                    </n-form-item>
+
+                    <n-form-item label="Anticipo" path="down_payment">
+                        <n-input-number 
+                            v-model:value="form.down_payment" 
+                            :min="0"
+                            :precision="2"
+                            placeholder="0.00"
+                            class="w-full"
+                        >
+                            <template #prefix>$</template>
+                            <template #suffix>MXN</template>
+                        </n-input-number>
+                    </n-form-item>
+                </n-card>
+
+                <!-- Tarjeta: Acondicionamiento Previo -->
+                <n-card :bordered="false" class="shadow-sm rounded-2xl">
+                    <template #header>
+                        <span class="text-gray-600 font-semibold flex items-center gap-2 text-sm">
+                            <n-icon :component="BuildOutline"/> Acondicionamiento Previo
+                        </span>
+                    </template>
+
+                    <n-form-item label="¿Requiere acondicionamiento previo a la instalación?" label-placement="top">
+                        <n-switch v-model:value="form.requires_pre_installation">
+                            <template #checked>Sí</template>
+                            <template #unchecked>No</template>
+                        </n-switch>
+                    </n-form-item>
+
+                    <template v-if="form.requires_pre_installation">
+                        <n-form-item label="¿Quién lo coordinará?" label-placement="top">
+                            <n-select 
+                                v-model:value="form.pre_installation_assigned_to" 
+                                :options="preInstallationOptions" 
+                                placeholder="Seleccionar responsable"
+                                clearable
+                            />
+                        </n-form-item>
+
+                        <n-form-item label="Detalles generales" label-placement="top">
+                            <n-input 
+                                v-model:value="form.pre_installation_details" 
+                                type="textarea" 
+                                placeholder="Describir los trabajos necesarios..."
+                                :autosize="{ minRows: 2, maxRows: 4 }"
+                            />
+                        </n-form-item>
+
+                        <n-divider class="!my-3" />
+
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-sm font-bold text-gray-600 flex items-center gap-2">
+                                <n-icon :component="ConstructOutline" class="text-orange-500" />
+                                Tareas de Acondicionamiento
+                            </span>
+                            <n-button size="tiny" type="primary" secondary @click="addConditioningTask">
+                                <template #icon><n-icon><AddOutline /></n-icon></template>
+                                Agregar Tarea
+                            </n-button>
+                        </div>
+
+                        <div v-if="form.conditionings.length === 0" class="text-center py-4 text-xs text-gray-400">
+                            No hay tareas de acondicionamiento. Haz clic en "Agregar Tarea" para añadir una.
+                        </div>
+
+                        <div v-for="(cond, index) in form.conditionings" :key="index" 
+                             class="border border-gray-200 rounded-xl p-3 mb-3 bg-gray-50/50">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold text-gray-500">Tarea #{{ index + 1 }}</span>
+                                <n-button size="tiny" quaternary type="error" @click="removeConditioningTask(index)">
+                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                </n-button>
+                            </div>
+
+                            <div class="space-y-3">
+                                <n-form-item label="Categoría" label-placement="top" size="small">
+                                    <n-select 
+                                        v-model:value="cond.category" 
+                                        :options="conditioningCategoryOptions" 
+                                        placeholder="Seleccionar categoría"
+                                        size="small"
+                                    />
+                                </n-form-item>
+
+                                <n-form-item label="Tarea" label-placement="top" size="small">
+                                    <n-input 
+                                        v-model:value="cond.task" 
+                                        placeholder="Ej. Mover tinaco, Cambiar a 220V, Reforzar techo..."
+                                        size="small"
+                                    />
+                                </n-form-item>
+
+                                <n-form-item label="Asignar a (opcional)" label-placement="top" size="small">
+                                    <n-select 
+                                        v-model:value="cond.user_id" 
+                                        :options="techOptions" 
+                                        placeholder="Seleccionar usuario"
+                                        filterable
+                                        clearable
+                                        size="small"
+                                    />
+                                </n-form-item>
+
+                                <n-form-item label="Notas" label-placement="top" size="small">
+                                    <n-input 
+                                        v-model:value="cond.notes" 
+                                        type="textarea" 
+                                        placeholder="Detalles adicionales..."
+                                        :autosize="{ minRows: 1, maxRows: 3 }"
+                                        size="small"
+                                    />
+                                </n-form-item>
+                            </div>
+                        </div>
+                    </template>
                 </n-card>
 
                 <n-card :bordered="false" class="shadow-sm rounded-2xl">
@@ -670,6 +849,7 @@ const submit = () => {
     <!-- MODAL: GESTIÓN DE TIPOS DE SISTEMA -->
     <n-modal v-model:show="showSystemModal" preset="card" class="max-w-md" title="Gestionar Tipos de Sistema">
         <div v-if="hasPermission('system_type.create')" class="flex gap-2 mb-6">
+            <PermissionTooltip permission="system_type.create" placement="top" :size="13" />
             <n-input v-model:value="systemForm.name" placeholder="Nuevo tipo (ej. Interconectado)" @keyup.enter="handleAddSystem" />
             <n-button type="primary" class="bg-indigo-600" @click="handleAddSystem" :loading="systemForm.processing" :disabled="!systemForm.name">
                 Agregar
@@ -684,9 +864,11 @@ const submit = () => {
 
                 <div class="flex gap-1">
                     <template v-if="editingSystemId !== sys.id">
+                        <PermissionTooltip permission="system_type.edit" placement="top" :size="11" />
                         <n-button v-if="hasPermission('system_type.edit')" circle quaternary size="small" type="info" @click="startEditSystem(sys)">
                             <template #icon><n-icon><CreateOutline/></n-icon></template>
                         </n-button>
+                        <PermissionTooltip permission="system_type.delete" placement="top" :size="11" />
                         <n-popconfirm v-if="hasPermission('system_type.delete')" @positive-click="handleDeleteSystem(sys.id)" positive-text="Sí, eliminar" negative-text="Cancelar">
                             <template #trigger>
                                 <n-button circle quaternary size="small" type="error">
