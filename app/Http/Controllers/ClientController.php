@@ -417,6 +417,7 @@ class ClientController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         $page = (int) $request->input('page', 1);
         $perPage = 30;
+        $search = $request->input('search');
         $paymentMethod = $request->input('payment_method');
         $delinquency = $request->input('delinquency'); // 'late' o 'defaulted'
 
@@ -424,10 +425,24 @@ class ClientController extends Controller
             ->whereHas('serviceOrders', fn($q) => $q->whereNotIn('status', ['Cancelado', 'Cotización']))
             ->with(['contacts', 'serviceOrders' => fn($q) => $q->whereNotIn('status', ['Cancelado', 'Cotización'])
                 ->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'payment_method', 'down_payment')
-                ->withSum('payments as total_paid', 'amount')->orderBy('created_at', 'desc')])
+                ->withSum('payments as total_paid', 'amount')
+                ->with('paymentInstallments')
+                ->orderBy('created_at', 'desc')])
             ->orderBy('name')->get();
 
-        $allData = $allClients->map(function ($client) {
+        // Inicializar proyección mensual (12 meses desde ahora)
+        $globalMonthlyProjection = [];
+        for ($m = 0; $m < 12; $m++) {
+            $date = now()->startOfMonth()->addMonthsNoOverflow($m);
+            $globalMonthlyProjection[] = [
+                'month' => $date->month,
+                'year' => $date->year,
+                'label' => $date->locale('es')->isoFormat('MMMM YYYY'),
+                'total' => 0,
+            ];
+        }
+
+        $allData = $allClients->map(function ($client) use (&$globalMonthlyProjection) {
             $totalDebt = 0; $totalPaid = 0; $orders = [];
             foreach ($client->serviceOrders as $order) {
                 $paid = (float) ($order->total_paid ?? 0);
@@ -444,6 +459,55 @@ class ClientController extends Controller
                     $isOverdue = now()->startOfDay()->gt($deadlineDate->startOfDay());
                     $daysSinceProj = (int) $deadlineDate->startOfDay()->diffInDays(now()->startOfDay(), false);
                 }
+
+                // --- Calcular cuotas desde payment_installments ---
+                $installments = [];
+                $dbInstallments = $order->paymentInstallments->sortBy('installment_number');
+                if ($dbInstallments->isNotEmpty()) {
+                    foreach ($dbInstallments as $inst) {
+                        $projDate = $inst->projected_date instanceof \Carbon\Carbon
+                            ? $inst->projected_date
+                            : \Carbon\Carbon::parse($inst->projected_date);
+                        $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
+                        $installments[] = [
+                            'projected_date' => $projDate->format('Y-m-d'),
+                            'amount' => round((float) $inst->amount, 2),
+                            'is_paid' => $isPaid,
+                        ];
+                    }
+                } else {
+                    // Fallback legacy
+                    if ($months !== null && $months > 0) {
+                        $installmentAmount = $remaining / $months;
+                        $startDate = $order->created_at;
+                        for ($i = 1; $i <= $months; $i++) {
+                            $installments[] = [
+                                'projected_date' => $startDate->copy()->addMonths($i)->format('Y-m-d'),
+                                'amount' => round($installmentAmount, 2),
+                                'is_paid' => false,
+                            ];
+                        }
+                    } elseif ($months === 0) {
+                        $installments[] = [
+                            'projected_date' => $order->created_at->format('Y-m-d'),
+                            'amount' => $remaining,
+                            'is_paid' => $remaining <= 0,
+                        ];
+                    }
+                }
+
+                // Acumular en proyección mensual global
+                foreach ($installments as $inst) {
+                    if ($inst['is_paid']) continue;
+                    $instDate = \Carbon\Carbon::parse($inst['projected_date']);
+                    foreach ($globalMonthlyProjection as &$mp) {
+                        if ($mp['month'] === (int) $instDate->month && $mp['year'] === (int) $instDate->year) {
+                            $mp['total'] += $inst['amount'];
+                            break;
+                        }
+                    }
+                }
+
                 $orders[] = ['id' => $order->id, 'status' => $order->status, 'total_amount' => $total,
                     'paid' => $paid, 'remaining' => $remaining, 'payment_method' => $order->payment_method,
                     'liquidation_deadline' => $deadline, 'is_overdue' => $isOverdue,
@@ -456,6 +520,12 @@ class ClientController extends Controller
         })->filter()->values();
 
         // Aplicar filtros server-side
+        if ($search) {
+            $allData = $allData->filter(fn($c) =>
+                stripos($c['name'], $search) !== false
+                || ($c['tax_id'] && stripos($c['tax_id'], $search) !== false)
+            )->values();
+        }
         if ($paymentMethod) {
             $allData = $allData->filter(fn($c) =>
                 $c['orders'] && collect($c['orders'])->contains('payment_method', $paymentMethod)
@@ -478,6 +548,16 @@ class ClientController extends Controller
         $total = $allData->count();
         $paginated = $allData->forPage($page, $perPage)->values();
 
+        // Redondear y calcular totales de proyección
+        $grandTotalProjected = 0;
+        $grandTotalReceived = $allData->sum('total_paid');
+        foreach ($globalMonthlyProjection as &$mp) {
+            $mp['total'] = round($mp['total'], 2);
+            $grandTotalProjected += $mp['total'];
+        }
+        $grandTotalProjected = round($grandTotalProjected, 2);
+        $grandTotalReceived = round($grandTotalReceived, 2);
+
         return response()->json([
             'reportData' => $paginated,
             'pagination' => [
@@ -486,6 +566,9 @@ class ClientController extends Controller
                 'total' => $total,
                 'last_page' => max(1, (int) ceil($total / $perPage)),
             ],
+            'monthlyProjection' => $globalMonthlyProjection,
+            'grandTotalProjected' => $grandTotalProjected,
+            'grandTotalReceived' => $grandTotalReceived,
         ]);
     }
 
@@ -504,13 +587,30 @@ class ClientController extends Controller
                 $q->whereNotIn('status', ['Cancelado', 'Cotización'])
                   ->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'payment_method', 'down_payment')
                   ->withSum('payments as total_paid', 'amount')
+                  ->with('paymentInstallments')
                   ->orderBy('created_at', 'desc');
             }])
             ->orderBy('name')
             ->get();
 
+        // Inicializar acumulador global de proyección mensual (12 meses)
+        $globalMonthlyProjection = [];
+        for ($m = 0; $m < 12; $m++) {
+            $date = now()->startOfMonth()->addMonthsNoOverflow($m);
+            $globalMonthlyProjection[] = [
+                'month' => $date->month,
+                'year' => $date->year,
+                'label' => $date->locale('es')->isoFormat('MMMM YYYY'),
+                'total' => 0,
+            ];
+        }
+
+        // Totales globales para la sección de proyección
+        $grandTotalProjected = 0;
+        $grandTotalReceived = 0;
+
         // Filtrar solo clientes con saldo pendiente y calcular datos
-        $reportData = $clients->map(function ($client) {
+        $reportData = $clients->map(function ($client) use (&$globalMonthlyProjection, &$grandTotalProjected, &$grandTotalReceived) {
             $totalDebt = 0;
             $totalPaid = 0;
             $orders = [];
@@ -539,6 +639,69 @@ class ClientController extends Controller
                     $isOverdue = now()->startOfDay()->gt($deadlineDate->startOfDay());
                 }
 
+                // --- Leer cuotas desde payment_installments (fuente de verdad) ---
+                $dbInstallments = $order->paymentInstallments->sortBy('installment_number');
+                $installments = [];
+
+                if ($dbInstallments->isNotEmpty()) {
+                    // Usar registros reales de la BD
+                    foreach ($dbInstallments as $inst) {
+                        $projDate = $inst->projected_date instanceof \Carbon\Carbon
+                            ? $inst->projected_date
+                            : \Carbon\Carbon::parse($inst->projected_date);
+                        $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
+                        $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
+
+                        $installments[] = [
+                            'installment' => $inst->installment_number,
+                            'projected_date' => $projDate->format('Y-m-d'),
+                            'amount' => round((float) $inst->amount, 2),
+                            'is_paid' => $isPaid,
+                            'is_past' => $daysSince > 0 && !$isPaid,
+                        ];
+                    }
+                } else {
+                    // Fallback: calcular cuotas sobre la marcha (órdenes legacy sin payment_installments)
+                    if ($months !== null && $months > 0) {
+                        $installmentCount = $months;
+                        $installmentAmount = $remaining / $installmentCount;
+                        $startDate = $order->created_at;
+
+                        for ($i = 1; $i <= $installmentCount; $i++) {
+                            $projDate = $startDate->copy()->addMonths($i);
+                            $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
+
+                            $installments[] = [
+                                'installment' => $i,
+                                'projected_date' => $projDate->format('Y-m-d'),
+                                'amount' => round($installmentAmount, 2),
+                                'is_paid' => false,
+                                'is_past' => $daysSince > 0,
+                            ];
+                        }
+                    } elseif ($months === 0) {
+                        $installments[] = [
+                            'installment' => 1,
+                            'projected_date' => $order->created_at->format('Y-m-d'),
+                            'amount' => $remaining,
+                            'is_paid' => $remaining <= 0,
+                            'is_past' => true,
+                        ];
+                    }
+                }
+
+                // --- Acumular en la proyección mensual global ---
+                foreach ($installments as $inst) {
+                    if ($inst['is_paid']) continue; // No contar pagadas en proyección futura
+                    $instDate = \Carbon\Carbon::parse($inst['projected_date']);
+                    foreach ($globalMonthlyProjection as &$mp) {
+                        if ($mp['month'] === (int) $instDate->month && $mp['year'] === (int) $instDate->year) {
+                            $mp['total'] += $inst['amount'];
+                            break;
+                        }
+                    }
+                }
+
                 $orders[] = [
                     'id' => $order->id,
                     'status' => $order->status,
@@ -549,6 +712,7 @@ class ClientController extends Controller
                     'liquidation_deadline' => $deadline,
                     'is_overdue' => $isOverdue,
                     'created_at' => $order->created_at->format('Y-m-d'),
+                    'installments' => $installments,
                 ];
             }
 
@@ -566,9 +730,21 @@ class ClientController extends Controller
             ];
         })->filter()->values();
 
+        // Calcular totales globales para la proyección
+        $grandTotalProjected = collect($globalMonthlyProjection)->sum('total');
+        $grandTotalReceived = $reportData->sum('total_paid');
+
+        // Redondear totales de proyección mensual
+        foreach ($globalMonthlyProjection as &$mp) {
+            $mp['total'] = round($mp['total'], 2);
+        }
+
         return Inertia::render('Clients/DebtReport', [
             'reportData' => $reportData,
-            'generatedAt' => now()->format('d/m/Y H:i'),
+            'monthlyProjection' => $globalMonthlyProjection,
+            'grandTotalProjected' => round($grandTotalProjected, 2),
+            'grandTotalReceived' => round($grandTotalReceived, 2),
+            'generatedAt' => now()->locale('es')->isoFormat('D [de] MMMM [del] YYYY, h:mm a'),
         ]);
     }
 
