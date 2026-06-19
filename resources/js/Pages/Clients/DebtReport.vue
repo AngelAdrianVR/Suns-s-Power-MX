@@ -2,21 +2,62 @@
 import { ref, computed } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import { NButton, NIcon, NTag } from 'naive-ui';
-import { PrintOutline, DownloadOutline, AlertCircleOutline, ArrowBackOutline } from '@vicons/ionicons5';
+import { PrintOutline, DownloadOutline, AlertCircleOutline, ArrowBackOutline, ChevronDownOutline, ChevronForwardOutline, CheckmarkCircleOutline } from '@vicons/ionicons5';
 
 const props = defineProps({
     reportData: Array,
+    monthlyProjection: Array,
+    grandTotalProjected: Number,
+    grandTotalReceived: Number,
     generatedAt: String,
 });
+
+const expandedClients = ref(new Set());
+const allExpanded = ref(false);
+
+const toggleClientInstallments = (clientId) => {
+    const s = new Set(expandedClients.value);
+    if (s.has(clientId)) {
+        s.delete(clientId);
+    } else {
+        s.add(clientId);
+    }
+    expandedClients.value = s;
+    allExpanded.value = false;
+};
+
+const toggleAllInstallments = () => {
+    allExpanded.value = !allExpanded.value;
+    if (allExpanded.value) {
+        const allIds = props.reportData.map(c => c.id);
+        expandedClients.value = new Set(allIds);
+    } else {
+        expandedClients.value = new Set();
+    }
+};
 
 const formatCurrency = (amount) => {
     if (!amount && amount !== 0) return '$0.00';
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 };
 
+const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
 const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString + 'T00:00:00').toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+    const d = new Date(dateString + 'T12:00:00');
+    const day = d.getDate();
+    const month = monthNames[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+};
+
+const formatMonthLabel = (label) => {
+    // Capitalize first letter of Spanish month
+    return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
 const paymentPlanLabel = (method) => {
@@ -105,8 +146,51 @@ const printReport = () => {
                         </div>
                     </div>
 
+                    <!-- Proyección Mensual -->
+                    <div v-if="monthlyProjection?.length" class="px-4 sm:px-10 py-6 border-b border-gray-100">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider">Proyección Mensual</h3>
+                                <span class="text-xs text-gray-400 ml-1">— Ingreso estimado próximos 12 meses</span>
+                            </div>
+                            <!-- <div class="flex items-center gap-4 text-xs">
+                                <span class="text-gray-800 font-bold">Total a recibir: <span class="text-gray-900 text-sm">{{ formatCurrency(grandTotalProjected) }}</span></span>
+                                <span class="text-gray-300">|</span>
+                                <span class="text-green-700 font-bold">Total recibido: <span class="text-green-600 text-sm">{{ formatCurrency(grandTotalReceived) }}</span></span>
+                            </div> -->
+                        </div>
+                        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-6 gap-2">
+                            <div
+                                v-for="m in monthlyProjection"
+                                :key="`${m.month}-${m.year}`"
+                                class="relative bg-gray-50 rounded-xl p-3 border border-gray-100 hover:border-emerald-200 hover:shadow-sm transition-all"
+                            >
+                                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                                    {{ formatMonthLabel(m.label) }}
+                                </div>
+                                <div class="text-sm font-black" :class="m.total > 0 ? 'text-gray-800' : 'text-gray-300'">
+                                    {{ formatCurrency(m.total) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Tabla del Reporte -->
                     <div class="p-4 sm:p-6 overflow-x-auto">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs text-gray-400 font-semibold uppercase tracking-wider">Detalle de órdenes</span>
+                            <n-button
+                                v-if="reportData.some(c => c.orders?.some(o => o.installments?.length))"
+                                text
+                                size="tiny"
+                                @click="toggleAllInstallments"
+                                class="text-gray-400 hover:text-gray-600"
+                            >
+                                <n-icon :component="allExpanded ? ChevronDownOutline : ChevronForwardOutline" size="14" class="mr-1" />
+                                <span class="text-[11px]">{{ allExpanded ? 'Ocultar cuotas' : 'Ver cuotas de todos' }}</span>
+                            </n-button>
+                        </div>
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b-2 border-gray-200 text-left">
@@ -130,9 +214,20 @@ const printReport = () => {
                                         :class="{ 'bg-red-50/30': order.is_overdue }"
                                     >
                                         <td class="py-3 px-3" v-if="oIdx === 0" :rowspan="client.orders.length">
-                                            <div>
-                                                <p class="font-bold text-gray-800">{{ client.name }}</p>
-                                                <p class="text-xs text-gray-400" v-if="client.phone">{{ client.phone }}</p>
+                                            <div class="flex items-center gap-1.5">
+                                                <n-button
+                                                    v-if="client.orders?.some(o => o.installments?.length)"
+                                                    text
+                                                    size="tiny"
+                                                    class="!p-0"
+                                                    @click.stop="toggleClientInstallments(client.id)"
+                                                >
+                                                    <n-icon :component="expandedClients.has(client.id) ? ChevronDownOutline : ChevronForwardOutline" size="14" class="text-gray-400" />
+                                                </n-button>
+                                                <div>
+                                                    <p class="font-bold text-gray-800 text-sm">{{ client.name }}</p>
+                                                    <p class="text-xs text-gray-400" v-if="client.phone">{{ client.phone }}</p>
+                                                </div>
                                             </div>
                                         </td>
                                         <td class="py-3 px-3 text-xs text-gray-500 font-mono" v-if="oIdx === 0" :rowspan="client.orders.length">
@@ -176,6 +271,55 @@ const printReport = () => {
                                         <td class="py-2 px-3 text-right text-xs font-bold text-red-600">{{ formatCurrency(client.balance) }}</td>
                                         <td></td>
                                     </tr>
+                                    <!-- Cuotas proyectadas del cliente (expandible) -->
+                                    <tr v-if="expandedClients.has(client.id) && client.orders?.some(o => o.installments?.length)">
+                                        <td colspan="9" class="p-0">
+                                            <div class="bg-emerald-50/40 border-b border-emerald-100">
+                                                <div class="py-3 px-6">
+                                                    <div class="flex items-center gap-2 mb-2">
+                                                        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                                                        <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Cuotas Proyectadas</span>
+                                                    </div>
+                                                    <div class="grid gap-2">
+                                                        <template v-for="order in client.orders" :key="'inst-' + order.id">
+                                                        <div v-if="order.installments?.length">
+                                                            <div class="text-xs text-gray-400 font-semibold mb-1.5 ml-1">
+                                                                OS #{{ order.id }} · {{ paymentPlanLabel(order.payment_method) }}
+                                                            </div>
+                                                            <div class="flex flex-wrap gap-1.5">
+                                                                <div
+                                                                    v-for="inst in order.installments"
+                                                                    :key="inst.installment"
+                                                                    class="inline-flex items-center gap-1.5 bg-white rounded-lg border px-2.5 py-1.5 text-xs"
+                                                                    :class="inst.is_paid
+                                                                        ? 'border-emerald-300 bg-emerald-50'
+                                                                        : inst.is_past
+                                                                            ? 'border-gray-200 opacity-60'
+                                                                            : 'border-emerald-200 bg-emerald-50/60'"
+                                                                >
+                                                                    <span v-if="inst.is_paid" class="text-emerald-600">
+                                                                        <n-icon :component="CheckmarkCircleOutline" size="14" />
+                                                                    </span>
+                                                                    <span class="text-gray-400 font-medium">#{{ inst.installment }}</span>
+                                                                    <span class="text-gray-700">{{ formatDate(inst.projected_date) }}</span>
+                                                                    <span class="font-bold" :class="inst.is_paid ? 'text-emerald-700' : 'text-gray-800'">{{ formatCurrency(inst.amount) }}</span>
+                                                                    <span
+                                                                        v-if="inst.is_paid"
+                                                                        class="text-[10px] text-emerald-600 font-semibold"
+                                                                    >Pagado</span>
+                                                                    <span
+                                                                        v-else-if="inst.is_past"
+                                                                        class="text-[10px] text-gray-400 italic"
+                                                                    >Pendiente</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 </template>
 
                                 <!-- Gran Total -->
@@ -206,8 +350,18 @@ const printReport = () => {
 
 <style scoped>
 @media print {
+    @page {
+        margin: 8mm;
+    }
     .n-button, .n-layout-sider, header, nav { display: none !important; }
-    body { background: white !important; }
-    table { font-size: 10px; }
+    body { background: white !important; padding: 0 !important; }
+    .min-h-screen { min-height: auto !important; padding-top: 0 !important; }
+    .max-w-7xl { max-width: 100% !important; padding: 0 !important; }
+    table { font-size: 9px; }
+    .px-4\ sm\:px-10 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .p-4\ sm\:p-6 { padding: 0.5rem !important; }
+    .p-6 { padding: 0.75rem !important; }
+    .py-3 { padding-top: 0.3rem !important; padding-bottom: 0.3rem !important; }
+    .px-3 { padding-left: 0.4rem !important; padding-right: 0.4rem !important; }
 }
 </style>

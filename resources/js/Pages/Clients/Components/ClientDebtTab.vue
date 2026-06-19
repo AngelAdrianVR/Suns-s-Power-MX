@@ -11,7 +11,7 @@ import {
     EyeOutline, CashOutline, AlertCircleOutline,
     CheckmarkCircleOutline, TimeOutline, CloseCircleOutline,
     CalendarOutline, PersonOutline, SearchOutline,
-    DownloadOutline
+    DownloadOutline, CloseOutline
 } from '@vicons/ionicons5';
 
 const { notification } = createDiscreteApi(['notification']);
@@ -22,10 +22,25 @@ const reportData = ref([]);
 const pagination = ref({ current_page: 1, last_page: 1, total: 0 });
 const fetchError = ref(null);
 const currentPage = ref(1);
+const monthlyProjection = ref([]);
+const grandTotalProjected = ref(0);
+const grandTotalReceived = ref(0);
 
 // --- Filtros ---
+const searchFilter = ref('');
 const paymentMethodFilter = ref(null);
 const delinquencyFilter = ref(null);
+
+let searchTimeout = null;
+const handleSearchInput = () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => fetchReport(1), 350);
+};
+
+const clearSearch = () => {
+    searchFilter.value = '';
+    fetchReport(1);
+};
 
 const paymentMethodOptions = [
     { label: 'Todos los planes', value: null },
@@ -51,12 +66,16 @@ const fetchReport = async (page = 1) => {
         const response = await axios.get(route('api.clients.debt-report'), {
             params: {
                 page,
+                search: searchFilter.value || undefined,
                 payment_method: paymentMethodFilter.value || undefined,
                 delinquency: delinquencyFilter.value || undefined,
             }
         });
         reportData.value = response.data.reportData || [];
         pagination.value = response.data.pagination || { current_page: 1, last_page: 1, total: 0 };
+        monthlyProjection.value = response.data.monthlyProjection || [];
+        grandTotalProjected.value = response.data.grandTotalProjected || 0;
+        grandTotalReceived.value = response.data.grandTotalReceived || 0;
         currentPage.value = page;
     } catch (error) {
         fetchError.value = 'No se pudo cargar el reporte de cartera.';
@@ -129,6 +148,10 @@ const formatDate = (date) => {
     return new Date(date + 'T12:00:00').toLocaleDateString('es-MX', {
         year: 'numeric', month: 'short', day: 'numeric'
     });
+};
+
+const formatMonthLabel = (label) => {
+    return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
 const paymentPlanLabel = (method) => {
@@ -231,6 +254,22 @@ const columns = [
                 <p class="text-xs sm:text-sm text-gray-500">Clientes con saldos pendientes y estado de pagos</p>
             </div>
             <div class="flex gap-2 flex-wrap items-center">
+                <div class="relative">
+                    <input
+                        v-model="searchFilter"
+                        type="text"
+                        placeholder="Buscar cliente..."
+                        class="w-44 pl-7 pr-7 py-1.5 text-xs border border-gray-200 rounded-lg focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none transition-all"
+                        @input="handleSearchInput"
+                    />
+                    <n-icon size="14" class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400"><SearchOutline /></n-icon>
+                    <n-icon
+                        v-if="searchFilter"
+                        size="14"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hover:text-gray-600"
+                        @click="clearSearch"
+                    ><CloseOutline /></n-icon>
+                </div>
                 <n-select
                     v-model:value="paymentMethodFilter"
                     :options="paymentMethodOptions"
@@ -249,10 +288,10 @@ const columns = [
                     class="w-48"
                     @update:value="handleFilterChange"
                 />
-                <!-- <n-button size="small" secondary round type="warning" @click="downloadReport">
+                <n-button size="small" secondary round type="warning" @click="downloadReport">
                     <template #icon><n-icon><DownloadOutline /></n-icon></template>
                     Descargar reporte
-                </n-button> -->
+                </n-button>
             </div>
         </div>
 
@@ -262,7 +301,37 @@ const columns = [
 
         <n-alert v-else-if="fetchError" type="error" :title="fetchError" class="mb-4" />
 
-        <div v-else class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+        <!-- Proyección Mensual -->
+        <div v-if="!loading && !fetchError && monthlyProjection.length" class="mb-4 bg-white rounded-xl border border-emerald-100 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                    <h4 class="text-xs font-bold text-gray-700 uppercase tracking-wider">Proyección Mensual</h4>
+                    <span class="text-[10px] text-gray-400 ml-1">— Próximos 12 meses</span>
+                </div>
+                <!-- <div class="flex items-center gap-3 text-[10px]">
+                    <span class="text-gray-700 font-bold">A recibir: <span class="text-gray-900 text-xs">{{ formatCurrency(grandTotalProjected) }}</span></span>
+                    <span class="text-gray-300">|</span>
+                    <span class="text-green-700 font-bold">Recibido: <span class="text-green-600 text-xs">{{ formatCurrency(grandTotalReceived) }}</span></span>
+                </div> -->
+            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
+                <div
+                    v-for="m in monthlyProjection"
+                    :key="`${m.month}-${m.year}`"
+                    class="bg-gray-50 rounded-lg p-2 border border-gray-100"
+                >
+                    <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                        {{ formatMonthLabel(m.label) }}
+                    </div>
+                    <div class="text-xs font-black" :class="m.total > 0 ? 'text-gray-800' : 'text-gray-300'">
+                        {{ formatCurrency(m.total) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="!loading && !fetchError" class="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
             <div class="min-w-[700px] sm:min-w-full">
                 <n-data-table
                     :columns="columns"
