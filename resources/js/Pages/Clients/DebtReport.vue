@@ -293,20 +293,31 @@ const printReport = () => {
                                                                     class="inline-flex items-center gap-1.5 bg-white rounded-lg border px-2.5 py-1.5 text-xs"
                                                                     :class="inst.is_paid
                                                                         ? 'border-emerald-300 bg-emerald-50'
-                                                                        : inst.is_past
-                                                                            ? 'border-gray-200 opacity-60'
-                                                                            : 'border-emerald-200 bg-emerald-50/60'"
+                                                                        : inst.interest > 0
+                                                                            ? 'border-red-300 bg-red-50'
+                                                                            : inst.is_past
+                                                                                ? 'border-gray-200 opacity-60'
+                                                                                : 'border-emerald-200 bg-emerald-50/60'"
                                                                 >
                                                                     <span v-if="inst.is_paid" class="text-emerald-600">
                                                                         <n-icon :component="CheckmarkCircleOutline" size="14" />
                                                                     </span>
+                                                                    <span v-else-if="inst.interest > 0" class="text-red-500">
+                                                                        <n-icon :component="AlertCircleOutline" size="14" />
+                                                                    </span>
                                                                     <span class="text-gray-400 font-medium">#{{ inst.installment }}</span>
                                                                     <span class="text-gray-700">{{ formatDate(inst.projected_date) }}</span>
-                                                                    <span class="font-bold" :class="inst.is_paid ? 'text-emerald-700' : 'text-gray-800'">{{ formatCurrency(inst.amount) }}</span>
+                                                                    <span class="font-bold" :class="inst.is_paid ? 'text-emerald-700' : inst.interest > 0 ? 'text-red-700' : 'text-gray-800'">
+                                                                        {{ formatCurrency(inst.total_with_interest || inst.amount) }}
+                                                                    </span>
                                                                     <span
                                                                         v-if="inst.is_paid"
                                                                         class="text-[10px] text-emerald-600 font-semibold"
                                                                     >Pagado</span>
+                                                                    <span
+                                                                        v-else-if="inst.interest > 0"
+                                                                        class="text-[10px] text-red-500 font-semibold"
+                                                                    >+{{ formatCurrency(inst.interest) }}</span>
                                                                     <span
                                                                         v-else-if="inst.is_past"
                                                                         class="text-[10px] text-gray-400 italic"

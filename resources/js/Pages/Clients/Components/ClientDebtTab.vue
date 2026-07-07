@@ -427,6 +427,15 @@ const columns = [
                                             <span class="text-gray-500">Monto:</span>
                                             <span class="font-bold">{{ formatCurrency(inst.amount) }}</span>
                                         </div>
+                                        <!-- Interés moratorio -->
+                                        <div v-if="inst.interest > 0" class="flex justify-between text-red-500">
+                                            <span>Interés {{ inst.months_of_interest }} mes(es):</span>
+                                            <span class="font-bold">+ {{ formatCurrency(inst.interest) }}</span>
+                                        </div>
+                                        <div v-if="inst.interest > 0" class="flex justify-between border-t border-red-100 pt-1 mt-1">
+                                            <span class="text-gray-700 font-semibold">Total:</span>
+                                            <span class="font-black text-red-600">{{ formatCurrency(inst.total_with_interest) }}</span>
+                                        </div>
                                         <div v-if="inst.payment" class="flex justify-between text-emerald-600">
                                             <span>Pagado:</span>
                                             <span>{{ formatCurrency(inst.payment.amount) }} — {{ formatDate(inst.payment.date) }}</span>

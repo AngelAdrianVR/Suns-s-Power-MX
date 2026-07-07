@@ -225,7 +225,8 @@ class ClientController extends Controller
 
         $totalDebt = $client->serviceOrders()->whereNotIn('status', ['Cancelado', 'Cotización'])->sum('total_amount');
         $totalPaid = $client->payments()->sum('amount');
-        $balance = $totalDebt - $totalPaid;
+        $balance = max(0, $totalDebt - $totalPaid);
+        $totalInterestPaid = max(0, $totalPaid - $totalDebt);
 
         $documents = $client->getMedia('documents')->map(function ($media) {
             return [
@@ -244,6 +245,7 @@ class ClientController extends Controller
                 'total_debt' => $totalDebt,
                 'total_paid' => $totalPaid,
                 'balance' => $balance,
+                'total_interest_paid' => $totalInterestPaid,
                 'services_count' => $client->serviceOrders()->count(),
             ]
         ]);
@@ -469,10 +471,24 @@ class ClientController extends Controller
                             ? $inst->projected_date
                             : \Carbon\Carbon::parse($inst->projected_date);
                         $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
+                        $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
+                        $lateDays = !$isPaid ? max(0, $daysSince - \App\Models\PaymentInstallment::GRACE_PERIOD_DAYS) : 0;
+                        $interest = 0;
+                        $monthsOfInterest = 0;
+                        if ($lateDays > 0) {
+                            $monthsOfInterest = (int) ceil($lateDays / 30);
+                            $totalWithInt = (float) $inst->amount * pow(1 + \App\Models\PaymentInstallment::MONTHLY_INTEREST_RATE, $monthsOfInterest);
+                            $interest = round($totalWithInt - (float) $inst->amount, 2);
+                        }
+
                         $installments[] = [
                             'projected_date' => $projDate->format('Y-m-d'),
                             'amount' => round((float) $inst->amount, 2),
+                            'interest' => $interest,
+                            'total_with_interest' => round((float) $inst->amount + $interest, 2),
                             'is_paid' => $isPaid,
+                            'days_late' => $lateDays,
+                            'months_of_interest' => $monthsOfInterest,
                         ];
                     }
                 } else {
@@ -500,9 +516,10 @@ class ClientController extends Controller
                 foreach ($installments as $inst) {
                     if ($inst['is_paid']) continue;
                     $instDate = \Carbon\Carbon::parse($inst['projected_date']);
+                    $instTotal = $inst['amount'] + ($inst['interest'] ?? 0);
                     foreach ($globalMonthlyProjection as &$mp) {
                         if ($mp['month'] === (int) $instDate->month && $mp['year'] === (int) $instDate->year) {
-                            $mp['total'] += $inst['amount'];
+                            $mp['total'] += $instTotal;
                             break;
                         }
                     }
@@ -651,13 +668,25 @@ class ClientController extends Controller
                             : \Carbon\Carbon::parse($inst->projected_date);
                         $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
                         $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
+                        $lateDays = !$isPaid ? max(0, $daysSince - \App\Models\PaymentInstallment::GRACE_PERIOD_DAYS) : 0;
+                        $interest = 0;
+                        $monthsOfInterest = 0;
+                        if ($lateDays > 0) {
+                            $monthsOfInterest = (int) ceil($lateDays / 30);
+                            $totalWithInt = (float) $inst->amount * pow(1 + \App\Models\PaymentInstallment::MONTHLY_INTEREST_RATE, $monthsOfInterest);
+                            $interest = round($totalWithInt - (float) $inst->amount, 2);
+                        }
 
                         $installments[] = [
                             'installment' => $inst->installment_number,
                             'projected_date' => $projDate->format('Y-m-d'),
                             'amount' => round((float) $inst->amount, 2),
+                            'interest' => $interest,
+                            'total_with_interest' => round((float) $inst->amount + $interest, 2),
                             'is_paid' => $isPaid,
                             'is_past' => $daysSince > 0 && !$isPaid,
+                            'days_late' => $lateDays,
+                            'months_of_interest' => $monthsOfInterest,
                         ];
                     }
                 } else {
@@ -694,9 +723,10 @@ class ClientController extends Controller
                 foreach ($installments as $inst) {
                     if ($inst['is_paid']) continue; // No contar pagadas en proyección futura
                     $instDate = \Carbon\Carbon::parse($inst['projected_date']);
+                    $instTotal = $inst['amount'] + ($inst['interest'] ?? 0);
                     foreach ($globalMonthlyProjection as &$mp) {
                         if ($mp['month'] === (int) $instDate->month && $mp['year'] === (int) $instDate->year) {
-                            $mp['total'] += $inst['amount'];
+                            $mp['total'] += $instTotal;
                             break;
                         }
                     }
