@@ -206,14 +206,26 @@ const googleMapsUrl = computed(() => {
                                 </div>
                             </div>
                             
-                            <div class="grid grid-cols-2 sm:flex sm:flex-col gap-2 w-full sm:w-auto">
-                                <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
-                                    <div class="text-[10px] text-gray-400 uppercase truncate">Facturado</div>
-                                    <div class="font-semibold text-gray-700 text-sm">{{ formatCurrency(stats.total_debt) }}</div>
+                            <div class="flex flex-col gap-2 w-full sm:w-auto">
+                                <div class="grid grid-cols-2 sm:flex sm:flex-col gap-2 w-full sm:w-auto">
+                                    <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
+                                        <div class="text-[10px] text-gray-400 uppercase truncate">Facturado</div>
+                                        <div class="font-semibold text-gray-700 text-sm">{{ formatCurrency(stats.total_debt) }}</div>
+                                    </div>
+                                    <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
+                                        <div class="text-[10px] text-gray-400 uppercase truncate">Pagado</div>
+                                        <div class="font-semibold text-gray-700 text-sm">{{ formatCurrency(stats.total_paid) }}</div>
+                                    </div>
                                 </div>
-                                <div class="bg-white border border-gray-100 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center">
-                                    <div class="text-[10px] text-gray-400 uppercase truncate">Pagado</div>
-                                    <div class="font-semibold text-gray-700 text-sm">{{ formatCurrency(stats.total_paid) }}</div>
+
+                                <!-- Desglose de intereses cobrados -->
+                                <div v-if="stats.total_interest_paid > 0" class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2">
+                                    <div class="text-[10px] text-amber-700 font-medium">
+                                        <span class="font-bold">Intereses cobrados</span>
+                                    </div>
+                                    <div class="text-xs font-black text-amber-800">
+                                        {{ formatCurrency(stats.total_interest_paid) }}
+                                    </div>
                                 </div>
                             </div>
                         </div>

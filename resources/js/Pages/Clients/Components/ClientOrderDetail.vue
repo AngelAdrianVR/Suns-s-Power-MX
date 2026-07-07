@@ -211,8 +211,9 @@ const openReminderModal = (installment = null) => {
 
 // Abrir modal de pago para una cuota específica (usando el nuevo endpoint)
 const openPaymentForInstallment = (inst) => {
-    // Emitir con ID de la cuota (inst.id) para que PaymentModal lo use con el nuevo endpoint
-    emit('open-payment', selectedOrderId.value, inst.amount, true, inst.installment, `Pagar ${inst.label}`, inst.id);
+    // Si hay interés, usar el total con interés; si no, el monto base
+    const amount = inst.total_with_interest || inst.amount;
+    emit('open-payment', selectedOrderId.value, amount, true, inst.installment, `Pagar ${inst.label}`, inst.id);
 };
 
 // Liquidar todas las cuotas pendientes de una orden
@@ -396,6 +397,17 @@ const totalProjectedPending = computed(() => {
         .reduce((sum, inst) => sum + parseFloat(inst.amount || 0), 0);
 });
 
+const totalInterest = computed(() => {
+    if (!projectionData.value?.installments?.length) return 0;
+    return projectionData.value.installments
+        .filter(inst => !inst.payment && inst.status !== 'paid' && inst.status !== 'on_time')
+        .reduce((sum, inst) => sum + parseFloat(inst.interest || 0), 0);
+});
+
+const totalProjectedWithInterest = computed(() => {
+    return totalProjectedPending.value + totalInterest.value;
+});
+
 // --- INLINE EDIT: PRECIO DE MANTENIMIENTO POR MÓDULO ---
 const isEditingPrice = ref(false);
 const editingPrice = ref(null);
@@ -476,10 +488,11 @@ const saveInstallment = async () => {
 
 // --- PAGAR CUOTA INDIVIDUAL (nuevo endpoint) ---
 const paySingleInstallment = async (inst) => {
-    // Pago rápido con monto fijo y fecha actual
+    // Usar total con interés si aplica
+    const amount = inst.total_with_interest || inst.amount;
     try {
         await axios.post(route('api.installments.pay', inst.id), {
-            amount: inst.amount,
+            amount: amount,
             payment_date: new Date().toISOString().split('T')[0],
             method: 'Transferencia',
             notes: `Pago de ${inst.label}`,
@@ -757,8 +770,11 @@ const saveProjection = async () => {
                     <div v-if="projectionData?.installments?.length && planExpanded" class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 mb-2 border border-gray-200">
                         <span class="text-xs text-gray-500 font-medium">Total cuotas pendientes:</span>
                         <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-emerald-600">
-                                {{ formatCurrency(totalProjectedPending) }}
+                            <span class="font-bold text-sm" :class="totalInterest > 0 ? 'text-red-600' : 'text-emerald-600'">
+                                {{ formatCurrency(totalProjectedWithInterest) }}
+                            </span>
+                            <span v-if="totalInterest > 0" class="text-[10px] text-red-500 bg-red-50 px-2 py-0.5 rounded-full font-medium">
+                                +{{ formatCurrency(totalInterest) }} interés
                             </span>
                             <span v-if="Math.abs(totalProjectedPending - orderRemaining) >= 1" class="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
                                 Saldo: {{ formatCurrency(orderRemaining) }}
@@ -780,16 +796,15 @@ const saveProjection = async () => {
                                         <span class="font-bold text-gray-800">{{ inst.label }}</span>
                                         <!-- Solo mostrar estatus detallado en la siguiente cuota pendiente o pagadas -->
                                         <n-tag
-                                            v-if="isNextPending(inst) || inst.status === 'paid' || inst.status === 'on_time'"
-                                            :type="inst.status === 'defaulted' ? 'error' : inst.status === 'late' ? 'warning' : inst.status === 'on_time' ? 'success' : inst.status === 'paid' ? 'success' : 'info'"
+                                            :type="inst.status === 'defaulted' ? 'error' : inst.status === 'late' ? 'warning' : inst.status === 'on_time' ? 'success' : inst.status === 'paid' ? 'success' : inst.status === 'upcoming' ? 'info' : 'default'"
                                             size="tiny" round :bordered="false"
                                         >
-                                            {{ isNextPending(inst) ? inst.status_label : (inst.status === 'paid' || inst.status === 'on_time' ? 'Pagado' : inst.status_label) }}
+                                            {{ inst.status === 'paid' || inst.status === 'on_time' ? 'Pagado' : inst.status_label }}
                                         </n-tag>
-                                        <!-- Botón editar cuota (requiere payments.edit) -->
+                                        <!-- Botón editar cuota (requiere payments.edit, solo cuotas no pagadas) -->
                                         <PermissionTooltip permission="payments.edit" placement="top" :size="10" />
                                         <n-button
-                                            v-if="isNextPending(inst) && hasPermission('payments.edit')"
+                                            v-if="!inst.payment && inst.status !== 'paid' && inst.status !== 'on_time' && hasPermission('payments.edit')"
                                             size="tiny" text type="primary"
                                             @click="startEditInstallment(inst)"
                                         >
@@ -843,6 +858,19 @@ const saveProjection = async () => {
                                         <div class="flex justify-between">
                                             <span class="text-gray-500">Monto:</span>
                                             <span class="font-bold">{{ formatCurrency(inst.amount) }}</span>
+                                        </div>
+
+                                        <!-- Interés moratorio -->
+                                        <div v-if="inst.interest > 0" class="flex justify-between text-red-500">
+                                            <span class="flex items-center gap-1">
+                                                <n-icon size="14"><AlertCircleOutline /></n-icon>
+                                                Interés {{ inst.months_of_interest }} mes(es):
+                                            </span>
+                                            <span class="font-bold">+ {{ formatCurrency(inst.interest) }}</span>
+                                        </div>
+                                        <div v-if="inst.interest > 0" class="flex justify-between border-t border-red-100 pt-1 mt-1">
+                                            <span class="text-gray-700 font-semibold">Total a pagar:</span>
+                                            <span class="font-black text-red-600">{{ formatCurrency(inst.total_with_interest) }}</span>
                                         </div>
 
                                         <!-- Pago real -->
@@ -963,6 +991,10 @@ const saveProjection = async () => {
                         Recordatorio para: <strong>{{ reminderTargetInstallment.label }}</strong><br/>
                         Fecha esperada: {{ formatDate(reminderTargetInstallment.projected_date) }}<br/>
                         Monto: {{ formatCurrency(reminderTargetInstallment.amount) }}
+                        <template v-if="reminderTargetInstallment.interest > 0">
+                            <br/><span class="text-red-600 font-bold">+ Interés: {{ formatCurrency(reminderTargetInstallment.interest) }} ({{ reminderTargetInstallment.months_of_interest }} mes/es)</span>
+                            <br/><span class="text-red-700 font-black">Total a pagar: {{ formatCurrency(reminderTargetInstallment.total_with_interest) }}</span>
+                        </template>
                     </template>
                 </n-alert>
 
