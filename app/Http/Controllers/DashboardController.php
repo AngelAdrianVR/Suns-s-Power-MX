@@ -81,30 +81,27 @@ class DashboardController extends Controller
                 ];
             });
 
-        // 4. Clientes con Saldos
+        // 4. Clientes con Saldos (OPTIMIZADO EN SQL)
         $clientsWithBalance = Client::where('branch_id', $branchId)
             ->withSum(['serviceOrders as total_debt' => function($query) {
                 $query->whereNotIn('status', ['Cotización', 'Cancelado']);
             }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
+            ->havingRaw('(IFNULL(total_debt, 0) - IFNULL(total_paid, 0)) > 0')
             ->get()
             ->map(function ($client) {
-                $balance = ($client->total_debt ?? 0) - ($client->total_paid ?? 0);
                 return [
                     'id' => $client->id,
                     'name' => $client->name,
                     'phone' => $client->phone,
-                    'balance' => $balance,
+                    'balance' => ($client->total_debt ?? 0) - ($client->total_paid ?? 0),
                 ];
-            })
-            ->filter(function ($client) {
-                return $client['balance'] > 0;
             })
             ->sortByDesc('balance')
             ->take(5)
             ->values();
 
-        // 5. TAREAS SEMANALES (KANBAN PARA DASHBOARD)
+        // 5. TAREAS SEMANALES (KANBAN PARA DASHBOARD) (OPTIMIZADO PARA PAYLOAD HTTP/2)
         $weekStart = Carbon::now()->startOfWeek();
         $weekEnd = $weekStart->copy()->addDays(5)->endOfDay(); 
 
@@ -130,8 +127,44 @@ class DashboardController extends Controller
             });
         }
 
-        $weeklyTasks = $weeklyTasksQuery->get()->groupBy(function($task) {
-            return Carbon::parse($task->start_date)->format('Y-m-d');
+        // Mapeo estricto antes de agrupar para evitar sobrecarga del servidor en Hostgator
+        $weeklyTasks = $weeklyTasksQuery->get()->map(function ($task) {
+            return [
+                'id' => $task->id,
+                'title' => $task->title ?? $task->name ?? '', // Ajusta a la columna real de tu base de datos
+                'description' => $task->description,
+                'start_date' => $task->start_date,
+                'due_date' => $task->due_date,
+                'status' => $task->status,
+                'priority' => $task->priority ?? null, 
+                
+                'assignees' => $task->assignees->map(function ($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'profile_photo_url' => $user->profile_photo_url, 
+                    ];
+                }),
+                
+                'taskable' => $task->taskable ? [
+                    'id' => $task->taskable->id,
+                    'type' => class_basename($task->taskable_type),
+                ] : null,
+                
+                'comments' => $task->comments->map(function ($comment) {
+                    return [
+                        'id' => $comment->id,
+                        'body' => $comment->body,
+                        'created_at' => $comment->created_at->format('Y-m-d H:i'),
+                        'user' => [
+                            'id' => $comment->user->id,
+                            'name' => $comment->user->name,
+                        ]
+                    ];
+                }),
+            ];
+        })->groupBy(function($task) {
+            return Carbon::parse($task['start_date'])->format('Y-m-d');
         });
 
         // Resumen General (KPIs rápidos)
@@ -172,7 +205,6 @@ class DashboardController extends Controller
             ->map(function ($inst) {
                 $projDate = Carbon::parse($inst->projected_date)->startOfDay();
                 $daysDiff = (int) $projDate->diffInDays(now()->startOfDay(), false);
-                // daysDiff > 0 = overdue (date in past), daysDiff < 0 = future (days remaining)
                 $isOverdue = $daysDiff >= 0;
                 $client = $inst->serviceOrder->client ?? null;
                 $primaryContact = $client?->contacts->firstWhere('is_primary', true) ?? $client?->contacts->first();
@@ -184,7 +216,7 @@ class DashboardController extends Controller
                     'amount' => (float) $inst->amount,
                     'projected_date' => $inst->projected_date->format('Y-m-d'),
                     'status' => $inst->status,
-                    'days_until_due' => $isOverdue ? -$daysDiff : -$daysDiff, // Negative=overdue
+                    'days_until_due' => $isOverdue ? -$daysDiff : -$daysDiff,
                     'is_overdue' => $isOverdue,
                     'days_abs' => abs($daysDiff),
                     'client' => $client ? [
