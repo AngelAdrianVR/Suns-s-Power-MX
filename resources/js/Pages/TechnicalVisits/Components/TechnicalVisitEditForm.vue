@@ -124,16 +124,20 @@ watch([() => form.estimated_monthly_generation, () => form.rate_type, () => form
 const handleUpload = ({ fileList }) => { form.documents = fileList.map(f => f.file); };
 
 const submit = () => {
-    const payload = form.transform((data) => ({
-        ...data,
-        scheduled_at: data.scheduled_at ? new Date(data.scheduled_at).toLocaleString('sv-SE').replace(',', '') : null
-    }));
-    
-    if (props.visit?.id) {
-        payload.put(route('technical-visits.update', props.visit.id), { preserveScroll: true });
-    } else {
-        payload.post(route('technical-visits.store'), { preserveScroll: true });
-    }
+    // Al enviar archivos con PUT, PHP no parsea multipart/form-data.
+    // Usamos POST con _method: 'put' para que los campos del form sean legibles.
+    form
+        .transform((data) => ({
+            ...data,
+            ...(props.visit?.id ? { _method: 'put' } : {}),
+            scheduled_at: data.scheduled_at
+                ? new Date(data.scheduled_at).toLocaleString('sv-SE').replace(',', '')
+                : null,
+        }))
+        .post(
+            route(props.visit?.id ? 'technical-visits.update' : 'technical-visits.store', props.visit?.id ? props.visit.id : undefined),
+            { preserveScroll: true }
+        );
 };
 
 const onCreateDevice = () => ({ concept: '', hours: 0 });
