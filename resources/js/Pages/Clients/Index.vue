@@ -7,7 +7,7 @@ import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
 import ClientDebtTab from './Components/ClientDebtTab.vue'; 
 import { 
     NButton, NDataTable, NInput, NSpace, NTag, NAvatar, NIcon, NEmpty, NPagination, createDiscreteApi, NTooltip,
-    NTabs, NTabPane, NBadge
+    NTabs, NTabPane, NBadge, NSelect
 } from 'naive-ui';
 import { 
     SearchOutline, AddOutline, EyeOutline, CreateOutline, TrashOutline, 
@@ -19,6 +19,8 @@ import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 const props = defineProps({
     clients: Object, 
     filters: Object,
+    municipalities: Array,
+    states: Array,
 });
 
 // Inicializar permisos
@@ -26,11 +28,17 @@ const { hasPermission } = usePermissions();
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 
 // --- LÓGICA DE BÚSQUEDA ---
-// Mantenemos ambos filtros en refs separados
+// Mantenemos los filtros en refs separados
 const search = ref(props.filters.search || '');
 const addressSearch = ref(props.filters.address_filter || ''); // Nuevo filtro
+const municipalityFilter = ref(props.filters.municipality || null); // Filtro Municipio
+const stateFilter = ref(props.filters.state || null); // Filtro Estado
 
 let searchTimeout;
+
+// Opciones para los selects de ubicación
+const municipalityOptions = props.municipalities.map(m => ({ label: m, value: m }));
+const stateOptions = props.states.map(s => ({ label: s, value: s }));
 
 // Función única para recargar la tabla
 const reloadTable = () => {
@@ -38,19 +46,24 @@ const reloadTable = () => {
         route('clients.index'), 
         { 
             search: search.value, 
-            address_filter: addressSearch.value 
+            address_filter: addressSearch.value,
+            municipality: municipalityFilter.value,
+            state: stateFilter.value
         }, 
         { preserveState: true, replace: true }
     );
 };
 
-// Observamos ambos campos
+// Observamos los campos de texto (con debounce)
 watch([search, addressSearch], () => {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
         reloadTable();
     }, 400); // Un poco más de delay para evitar muchas peticiones si escriben en ambos
 });
+
+// Los selects aplican de inmediato
+watch([municipalityFilter, stateFilter], reloadTable);
 
 // --- ESTADO DEL MODAL DE PAGOS ---
 const showPaymentModal = ref(false);
@@ -225,11 +238,13 @@ const createColumns = () => [
 const columns = createColumns();
 
 const handlePageChange = (page) => {
-    // Incluimos ambos filtros al cambiar de página
+    // Incluimos todos los filtros al cambiar de página
     router.get(route('clients.index'), { 
         page, 
         search: search.value,
-        address_filter: addressSearch.value
+        address_filter: addressSearch.value,
+        municipality: municipalityFilter.value,
+        state: stateFilter.value
     }, { preserveState: true });
 };
 
@@ -278,7 +293,7 @@ const rowProps = (row) => ({
 
                         <!-- Barra de Filtros -->
                         <div class="mb-6 px-4 sm:px-0 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                            <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-grow max-w-4xl">
+                            <div class="flex flex-col md:flex-row flex-wrap gap-3 w-full md:w-auto flex-grow max-w-xl">
                                 <n-input 
                                     v-model:value="search" 
                                     type="text" 
@@ -305,6 +320,26 @@ const rowProps = (row) => ({
                                         <n-icon :component="LocationOutline" class="text-indigo-400" />
                                     </template>
                                 </n-input>
+
+                                <!-- Filtro Municipio -->
+                                <n-select 
+                                    v-model:value="municipalityFilter"
+                                    :options="municipalityOptions"
+                                    placeholder="Municipio"
+                                    filterable
+                                    clearable
+                                    class="w-full md:w-48 shadow-sm"
+                                />
+
+                                <!-- Filtro Estado -->
+                                <n-select 
+                                    v-model:value="stateFilter"
+                                    :options="stateOptions"
+                                    placeholder="Estado"
+                                    filterable
+                                    clearable
+                                    class="w-full md:w-48 shadow-sm"
+                                />
                             </div>
                         </div>
 

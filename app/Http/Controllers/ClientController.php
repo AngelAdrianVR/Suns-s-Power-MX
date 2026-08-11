@@ -19,12 +19,29 @@ class ClientController extends Controller
      */
     public function index(Request $request)
     {
-        // 1. Recibimos el nuevo filtro 'address_filter'
-        $filters = $request->only(['search', 'address_filter']);
+        // 1. Recibimos los filtros
+        $filters = $request->only(['search', 'address_filter', 'municipality', 'state']);
         $search = $filters['search'] ?? null;
         $addressFilter = $filters['address_filter'] ?? null;
+        $municipality = $filters['municipality'] ?? null;
+        $state = $filters['state'] ?? null;
         
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        // Municipios y Estados disponibles para los selects del index
+        $availableMunicipalities = Client::where('branch_id', $branchId)
+            ->whereNotNull('municipality')
+            ->where('municipality', '!=', '')
+            ->distinct()
+            ->orderBy('municipality')
+            ->pluck('municipality');
+
+        $availableStates = Client::where('branch_id', $branchId)
+            ->whereNotNull('state')
+            ->where('state', '!=', '')
+            ->distinct()
+            ->orderBy('state')
+            ->pluck('state');
 
         $clients = Client::query()
             ->where('branch_id', $branchId)
@@ -53,6 +70,16 @@ class ClientController extends Controller
                       // Opcional: También buscar en calle si lo deseas
                       ->orWhere('street', 'like', "%{$addressFilter}%");
                 });
+            })
+
+            // 3. Filtro por Municipio (select)
+            ->when($municipality, function (Builder $query, $municipality) {
+                $query->where('municipality', $municipality);
+            })
+
+            // 4. Filtro por Estado (select)
+            ->when($state, function (Builder $query, $state) {
+                $query->where('state', $state);
             })
 
             ->withSum(['serviceOrders as total_debt' => function ($query) {
@@ -86,6 +113,8 @@ class ClientController extends Controller
         return Inertia::render('Clients/Index', [
             'clients' => $clients,
             'filters' => $filters,
+            'municipalities' => $availableMunicipalities,
+            'states' => $availableStates,
         ]);
     }
 
