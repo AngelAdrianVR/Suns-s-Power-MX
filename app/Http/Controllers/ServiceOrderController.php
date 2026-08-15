@@ -1467,11 +1467,56 @@ class ServiceOrderController extends Controller
         $validated = $request->validate([
             'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
             'down_payment' => 'nullable|numeric|min:0',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         $serviceOrder->update($validated);
 
-        // Regenerar cuotas proyectadas según el nuevo plan
+        // Sincronizar el pago de anticipo REAL (fuente de verdad para saldos y cuotas).
+        // El campo down_payment de la orden es solo metadata; el registro en payments
+        // es lo que se muestra en "Pagos Realizados" y descuenta el saldo.
+        $downPayment = (float) ($validated['down_payment'] ?? 0);
+        $existingAnticipo = $serviceOrder->payments()
+            ->where('notes', 'Anticipo')
+            ->latest('id')
+            ->first();
+
+        if ($downPayment > 0) {
+            // Si ya existe un anticipo con el mismo monto, conservarlo (y su comprobante)
+            if ($existingAnticipo && (float) $existingAnticipo->amount === $downPayment) {
+                $anticipoPayment = $existingAnticipo;
+                // Reemplazar el comprobante solo si se subió uno nuevo
+                if ($request->hasFile('proof')) {
+                    $anticipoPayment->clearMediaCollection('receipts');
+                    $anticipoPayment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+                }
+            } else {
+                // Monto distinto o sin anticipo previo: eliminar el anterior y crear el nuevo
+                if ($existingAnticipo) {
+                    $existingAnticipo->delete();
+                }
+                $anticipoPayment = Payment::create([
+                    'branch_id' => $branchId,
+                    'client_id' => $serviceOrder->client_id,
+                    'service_order_id' => $serviceOrder->id,
+                    'amount' => $downPayment,
+                    'payment_date' => now(),
+                    'method' => 'Transferencia',
+                    'notes' => 'Anticipo',
+                ]);
+
+                if ($request->hasFile('proof')) {
+                    $anticipoPayment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+                }
+            }
+        } else {
+            // Sin anticipo: eliminar el registro previo si existía
+            if ($existingAnticipo) {
+                $existingAnticipo->delete();
+            }
+        }
+
+        // Regenerar cuotas proyectadas según el nuevo plan (usa el anticipo real)
         $serviceOrder->generateInstallments();
 
         return response()->json([
@@ -1549,6 +1594,7 @@ class ServiceOrderController extends Controller
             'projected_date' => 'nullable|date',
             'amount' => 'nullable|numeric|min:0',
             'label' => 'nullable|string|max:255',
+            'apply_interest' => 'nullable|boolean',
         ]);
 
         $updateData = array_filter($validated, fn($v) => $v !== null);
@@ -1593,6 +1639,12 @@ class ServiceOrderController extends Controller
             'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
+        // Separar el interés moratorio del abono principal.
+        // El interés NO descuenta el saldo: se registra aparte y se acumula.
+        $baseAmount = (float) $installment->amount;
+        $received = (float) $validated['amount'];
+        $interestPortion = max(0, round($received - $baseAmount, 2));
+
         // Crear el pago real
         $payment = Payment::create([
             'branch_id' => $branchId,
@@ -1600,6 +1652,7 @@ class ServiceOrderController extends Controller
             'service_order_id' => $serviceOrder->id,
             'installment_number' => $installment->installment_number,
             'amount' => $validated['amount'],
+            'interest_amount' => $interestPortion,
             'payment_date' => $validated['payment_date'],
             'method' => $validated['method'],
             'reference' => $validated['reference'] ?? null,
@@ -1664,12 +1717,28 @@ class ServiceOrderController extends Controller
             ], 422);
         }
 
+        // Calcular el interés moratorio pendiente real (según apply_interest de cada cuota)
+        $pendingInterestTotal = 0;
+        foreach ($pendingInstallments as $inst) {
+            $inst->recalculateStatus();
+            if ($inst->apply_interest !== false) {
+                $pendingInterestTotal += $inst->calculateInterest();
+            }
+        }
+        $pendingInterestTotal = round($pendingInterestTotal, 2);
+
+        // El excedente sobre el principal pendiente se registra como interés cobrado
+        // (NO descuenta el saldo, solo se acumula como interés).
+        $excess = max(0, (float) $validated['amount'] - $totalPending);
+        $interestAmount = min($excess, $pendingInterestTotal);
+
         // Crear un solo pago por el total
         $payment = Payment::create([
             'branch_id' => $branchId,
             'client_id' => $serviceOrder->client_id,
             'service_order_id' => $serviceOrder->id,
             'amount' => $validated['amount'],
+            'interest_amount' => $interestAmount,
             'payment_date' => $validated['payment_date'],
             'method' => $validated['method'],
             'reference' => $validated['reference'] ?? null,
@@ -1680,8 +1749,8 @@ class ServiceOrderController extends Controller
             $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
         }
 
-        // Distribuir el pago entre todas las cuotas pendientes
-        $remainingAmount = $validated['amount'];
+        // Distribuir el PRINCIPAL entre todas las cuotas pendientes
+        $remainingAmount = (float) $validated['amount'] - $interestAmount;
         foreach ($pendingInstallments as $inst) {
             if ($remainingAmount <= 0) break;
             $allocatedAmount = min($inst->amount, $remainingAmount);
@@ -1727,21 +1796,11 @@ class ServiceOrderController extends Controller
         }
 
         $validated = $request->validate([
-            'projected_date' => 'required|date|after_or_equal:today',
+            'projected_date' => 'required|date',
             'amount' => 'required|numeric|min:1',
             'label' => 'nullable|string|max:255',
+            'apply_interest' => 'nullable|boolean',
         ]);
-
-        // Calcular saldo pendiente: total_amount - pagos registrados
-        $totalPaid = (float) $serviceOrder->payments()->sum('amount');
-        $remaining = (float) $serviceOrder->total_amount - $totalPaid;
-
-        if ($validated['amount'] > $remaining) {
-            return response()->json([
-                'success' => false,
-                'error' => "El monto (\${$validated['amount']}) excede el saldo pendiente (\$" . number_format($remaining, 2) . ").",
-            ], 422);
-        }
 
         // Obtener el último número de cuota
         $lastNumber = (int) $serviceOrder->paymentInstallments()->max('installment_number');
@@ -1751,6 +1810,7 @@ class ServiceOrderController extends Controller
             'label' => $validated['label'] ?? "Proyección #" . ($lastNumber + 1),
             'projected_date' => $validated['projected_date'],
             'amount' => $validated['amount'],
+            'apply_interest' => $validated['apply_interest'] ?? true,
             'status' => 'pending',
         ]);
 
@@ -1760,6 +1820,42 @@ class ServiceOrderController extends Controller
             'success' => true,
             'installment' => $installment->fresh(),
             'message' => 'Cuota proyectada agregada correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Elimina una cuota proyectada (solo plan Personalizado y sin pago).
+     * DELETE /api/installments/{installment}
+     */
+    public function destroyInstallment(Request $request, PaymentInstallment $installment)
+    {
+        $serviceOrder = $installment->serviceOrder;
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Solo permitido para plan Personalizado
+        if ($serviceOrder->payment_method !== 'Personalizado') {
+            return response()->json([
+                'success' => false,
+                'error' => 'Solo puedes eliminar proyecciones en plan Personalizado.',
+            ], 422);
+        }
+
+        // No permitir eliminar cuotas ya pagadas o vinculadas a un pago
+        if ($installment->payment_id || in_array($installment->status, ['paid', 'on_time'])) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No se puede eliminar una cuota ya pagada.',
+            ], 422);
+        }
+
+        $installment->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Proyección eliminada correctamente.',
         ]);
     }
 }

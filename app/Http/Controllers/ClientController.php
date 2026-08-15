@@ -86,12 +86,13 @@ class ClientController extends Controller
                 $query->whereNotIn('status', ['Cancelado', 'Cotización']);
             }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
+            ->withSum('payments as total_interest', 'interest_amount')
             ->orderBy('created_at', 'desc')
             ->paginate(30)
             ->withQueryString()
             ->through(function ($client) {
                 $debt = $client->total_debt ?? 0;
-                $paid = $client->total_paid ?? 0;
+                $paid = ($client->total_paid ?? 0) - ($client->total_interest ?? 0);
                 $balance = $debt - $paid;
                 
                 $mainContact = $client->contacts->firstWhere('is_primary', true) ?? $client->contacts->first();
@@ -198,12 +199,12 @@ class ClientController extends Controller
                            'payment_method', 'down_payment', 'price_per_module', 'system_type',
                            'service_number')
                   ->withSum('payments as total_paid', 'amount')
+                  ->withSum('payments as total_interest', 'interest_amount')
                   ->orderBy('created_at', 'desc');
             },
             'payments' => function ($q) {
                 $q->with(['serviceOrder:id,total_amount,created_at,payment_method', 'media']) 
-                  ->orderBy('payment_date', 'desc')
-                  ->take(15);
+                  ->orderBy('payment_date', 'desc');
             },
             'tickets' => function ($q) {
                 $q->select('id', 'client_id', 'title', 'status', 'priority', 'created_at')
@@ -214,7 +215,7 @@ class ClientController extends Controller
 
         // Transformar service orders para agregar campos calculados
         $client->serviceOrders->transform(function ($order) {
-            $paid = (float) ($order->total_paid ?? 0);
+            $paid = (float) (($order->total_paid ?? 0) - ($order->total_interest ?? 0));
             $total = (float) ($order->total_amount ?? 0);
             $order->amount_paid = $paid;
             $order->remaining = max(0, $total - $paid);
@@ -253,9 +254,9 @@ class ClientController extends Controller
         // --------------------
 
         $totalDebt = $client->serviceOrders()->whereNotIn('status', ['Cancelado', 'Cotización'])->sum('total_amount');
-        $totalPaid = $client->payments()->sum('amount');
+        $totalInterestPaid = $client->payments()->sum('interest_amount');
+        $totalPaid = $client->payments()->sum('amount') - $totalInterestPaid;
         $balance = max(0, $totalDebt - $totalPaid);
-        $totalInterestPaid = max(0, $totalPaid - $totalDebt);
 
         $documents = $client->getMedia('documents')->map(function ($media) {
             return [
@@ -457,6 +458,7 @@ class ClientController extends Controller
             ->with(['contacts', 'serviceOrders' => fn($q) => $q->whereNotIn('status', ['Cancelado', 'Cotización'])
                 ->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'payment_method', 'down_payment')
                 ->withSum('payments as total_paid', 'amount')
+                ->withSum('payments as total_interest', 'interest_amount')
                 ->with('paymentInstallments')
                 ->orderBy('created_at', 'desc')])
             ->orderBy('name')->get();
@@ -476,7 +478,7 @@ class ClientController extends Controller
         $allData = $allClients->map(function ($client) use (&$globalMonthlyProjection) {
             $totalDebt = 0; $totalPaid = 0; $orders = [];
             foreach ($client->serviceOrders as $order) {
-                $paid = (float) ($order->total_paid ?? 0);
+                $paid = (float) (($order->total_paid ?? 0) - ($order->total_interest ?? 0));
                 $total = (float) ($order->total_amount ?? 0);
                 $remaining = max(0, $total - $paid);
                 if ($remaining <= 1) continue;
@@ -633,6 +635,7 @@ class ClientController extends Controller
                 $q->whereNotIn('status', ['Cancelado', 'Cotización'])
                   ->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'payment_method', 'down_payment')
                   ->withSum('payments as total_paid', 'amount')
+                  ->withSum('payments as total_interest', 'interest_amount')
                   ->with('paymentInstallments')
                   ->orderBy('created_at', 'desc');
             }])
@@ -662,7 +665,7 @@ class ClientController extends Controller
             $orders = [];
 
             foreach ($client->serviceOrders as $order) {
-                $paid = (float) ($order->total_paid ?? 0);
+                $paid = (float) (($order->total_paid ?? 0) - ($order->total_interest ?? 0));
                 $total = (float) ($order->total_amount ?? 0);
                 $remaining = max(0, $total - $paid);
 

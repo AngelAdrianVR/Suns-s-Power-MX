@@ -26,9 +26,11 @@ class PaymentController extends Controller
             ->where('branch_id', $branchId)
             ->whereNotIn('status', ['Cancelado', 'Cotización'])
             ->withSum('payments', 'amount')
+            ->withSum('payments as total_interest', 'interest_amount')
             ->get()
             ->map(function ($order) {
-                $paid = $order->payments_sum_amount ?? 0;
+                // El interés moratorio no descuenta el saldo
+                $paid = ($order->payments_sum_amount ?? 0) - ($order->total_interest ?? 0);
                 $debt = $order->total_amount - $paid;
 
                 return [
@@ -72,12 +74,6 @@ class PaymentController extends Controller
 
         return DB::transaction(function () use ($validated, $request, $branchId) {
             $order = ServiceOrder::findOrFail($validated['service_order_id']);
-            $currentPaid = $order->payments()->sum('amount');
-            $newBalance = $order->total_amount - ($currentPaid + $validated['amount']);
-
-            if ($newBalance < -1) {
-                return back()->withErrors(['amount' => 'El monto excede el saldo pendiente de la orden.']);
-            }
 
             // Crear el registro de pago
             $payment = Payment::create([

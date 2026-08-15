@@ -17,6 +17,7 @@ class Payment extends Model implements HasMedia
         'service_order_id',
         'installment_number',
         'amount',
+        'interest_amount',
         'payment_date',
         'method', // Enum: Efectivo, Transferencia...
         'reference',
@@ -27,6 +28,7 @@ class Payment extends Model implements HasMedia
     protected $casts = [
         'payment_date' => 'date',
         'amount' => 'decimal:2',
+        'interest_amount' => 'decimal:2',
     ];
 
     public function client()

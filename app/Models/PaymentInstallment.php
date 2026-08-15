@@ -19,6 +19,7 @@ class PaymentInstallment extends Model
         'label',
         'projected_date',
         'amount',
+        'apply_interest',
         'status',
         'paid_amount',
         'paid_date',
@@ -30,6 +31,7 @@ class PaymentInstallment extends Model
         'paid_date' => 'date',
         'amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'apply_interest' => 'boolean',
     ];
 
     /**
@@ -124,6 +126,11 @@ class PaymentInstallment extends Model
     {
         // Si ya está pagada, no hay interés pendiente
         if ($this->payment_id || in_array($this->status, ['paid', 'on_time'])) {
+            return 0;
+        }
+
+        // Si se desactivó el interés (registro tardío en sistema), no se cobra
+        if ($this->apply_interest === false) {
             return 0;
         }
 

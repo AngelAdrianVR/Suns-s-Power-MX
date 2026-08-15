@@ -87,14 +87,16 @@ class DashboardController extends Controller
                 $query->whereNotIn('status', ['Cotización', 'Cancelado']);
             }], 'total_amount')
             ->withSum('payments as total_paid', 'amount')
-            ->havingRaw('(IFNULL(total_debt, 0) - IFNULL(total_paid, 0)) > 0')
+            ->withSum('payments as total_interest', 'interest_amount')
+            ->havingRaw('(IFNULL(total_debt, 0) - (IFNULL(total_paid, 0) - IFNULL(total_interest, 0))) > 0')
             ->get()
             ->map(function ($client) {
+                $paid = ($client->total_paid ?? 0) - ($client->total_interest ?? 0);
                 return [
                     'id' => $client->id,
                     'name' => $client->name,
                     'phone' => $client->phone,
-                    'balance' => ($client->total_debt ?? 0) - ($client->total_paid ?? 0),
+                    'balance' => ($client->total_debt ?? 0) - $paid,
                 ];
             })
             ->sortByDesc('balance')

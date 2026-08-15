@@ -12,13 +12,13 @@ import ClientDocumentsTab from './Components/ClientDocumentsTab.vue';
 import ClientTicketsTab from './Components/ClientTicketsTab.vue';
 
 import { 
-    NButton, NIcon, NTabs, NTabPane, NAvatar, NBadge, NAlert, createDiscreteApi
+    NButton, NIcon, NTabs, NTabPane, NAvatar, NBadge, NAlert, NTooltip, createDiscreteApi
 } from 'naive-ui';
 import { 
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     ConstructOutline, PeopleOutline, DocumentTextOutline,
     CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline,
-    TicketOutline
+    TicketOutline, InformationCircleOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -189,11 +189,19 @@ const googleMapsUrl = computed(() => {
                             <div class="absolute -top-2 -right-2 z-10">
                                 <PermissionTooltip permission="clients.view_balance" placement="left" :size="12" />
                             </div>
-                            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full">
+                            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 flex flex-row sm:flex-col justify-between items-center sm:items-start w-full sm:min-w-[180px] h-auto sm:h-full relative">
                                 <div>
                                     <div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">Saldo Pendiente</div>
-                                    <div class="text-2xl font-bold" :class="stats.balance > 1 ? 'text-red-600' : 'text-emerald-600'">
-                                        {{ formatCurrency(stats.balance) }}
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="text-2xl font-bold" :class="stats.balance > 1 ? 'text-red-600' : 'text-emerald-600'">
+                                            {{ formatCurrency(stats.balance) }}
+                                        </div>
+                                        <n-tooltip trigger="hover" placement="top">
+                                            <template #trigger>
+                                                <n-icon size="14" class="text-gray-400 cursor-pointer hover:text-gray-600"><InformationCircleOutline /></n-icon>
+                                            </template>
+                                            Las órdenes de servicio con estatus "Cotización" no se toman en cuenta para el balance actual del cliente
+                                        </n-tooltip>
                                     </div>
                                 </div>
                                 <div class="text-right sm:text-left">
