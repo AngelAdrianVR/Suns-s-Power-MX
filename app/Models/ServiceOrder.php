@@ -263,6 +263,7 @@ class ServiceOrder extends Model implements HasMedia
             'label' => $inst->label,
             'projected_date' => $inst->projected_date->format('Y-m-d'),
             'amount' => (float) $inst->amount,
+            'apply_interest' => (bool) $inst->apply_interest,
             'interest' => $inst->calculateInterest(),
             'total_with_interest' => $inst->total_with_interest,
             'days_late' => $inst->days_late,
@@ -289,6 +290,8 @@ class ServiceOrder extends Model implements HasMedia
                 $result['payment'] = [
                     'id' => $payment?->id,
                     'amount' => $payAmount,
+                    'interest' => (float) ($payment?->interest_amount ?? 0),
+                    'principal' => round($payAmount - (float) ($payment?->interest_amount ?? 0), 2),
                     'date' => $payDate instanceof \Carbon\Carbon ? $payDate->format('Y-m-d') : $payDate,
                     'method' => $payment?->method ?? '-',
                     'reference' => $payment?->reference ?? '-',
@@ -298,6 +301,8 @@ class ServiceOrder extends Model implements HasMedia
                 $result['payment'] = [
                     'id' => $payment?->id,
                     'amount' => $payAmount,
+                    'interest' => (float) ($payment?->interest_amount ?? 0),
+                    'principal' => round($payAmount - (float) ($payment?->interest_amount ?? 0), 2),
                     'date' => $inst->paid_date?->format('Y-m-d'),
                     'method' => $payment?->method ?? '-',
                     'reference' => $payment?->reference ?? '-',
