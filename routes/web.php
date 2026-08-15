@@ -144,6 +144,10 @@ Route::post('/api/service-orders/{serviceOrder}/installments', [ServiceOrderCont
 Route::patch('/api/installments/{installment}', [ServiceOrderController::class, 'updateInstallment'])
     ->name('api.installments.update')
     ->middleware('auth');
+// API: Eliminar una cuota proyectada (solo Personalizado y sin pago)
+Route::delete('/api/installments/{installment}', [ServiceOrderController::class, 'destroyInstallment'])
+    ->name('api.installments.destroy')
+    ->middleware('auth');
 // API: Pagar una cuota específica
 Route::post('/api/installments/{installment}/pay', [ServiceOrderController::class, 'payInstallment'])
     ->name('api.installments.pay')

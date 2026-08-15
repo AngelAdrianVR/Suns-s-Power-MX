@@ -217,8 +217,8 @@ const submit = async () => {
         return;
     }
     if (selectedOrder.value && form.amount > selectedOrder.value.pending_balance + 1) {
-        notification.error({ title: 'Error de Monto', content: 'El monto no puede ser mayor al saldo pendiente.', duration: 3000 });
-        return;
+        // Se permite registrar montos mayores al saldo pendiente (el excedente queda como sobregiro)
+        notification.warning({ title: 'Atención', content: 'El monto supera el saldo pendiente de la orden. Se registrará de todos modos.', duration: 4000 });
     }
 
     form.transform((data) => ({

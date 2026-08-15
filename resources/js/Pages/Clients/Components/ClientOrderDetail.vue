@@ -2,13 +2,14 @@
 import { ref, computed, watch, h } from 'vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import { useSecureFile } from '@/Composables/useSecureFile';
-import { router, Link } from '@inertiajs/vue3';
+import { router, Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     NSelect, NTag, NIcon, NButton, NSpin, NDataTable, NTimeline,
     NTimelineItem, NDivider, NEmpty, NTooltip, NGrid, NGridItem,
     NStatistic, NCard, NAlert, NBadge, NModal, createDiscreteApi,
-    NSpace, NForm, NFormItem, NInputNumber, NDatePicker, NInput
+    NSpace, NForm, NFormItem, NInputNumber, NDatePicker, NInput,
+    NUpload, NUploadDragger, NPopselect, NSwitch
 } from 'naive-ui';
 import {
     ConstructOutline, WalletOutline, AlertCircleOutline,
@@ -16,7 +17,7 @@ import {
     MailOutline, LogoWhatsapp, CashOutline, EyeOutline,
     SendOutline, AttachOutline, CalendarOutline,
     CreateOutline, SaveOutline, CloseOutline,
-    PencilOutline, TrashOutline
+    PencilOutline, TrashOutline, CloudUploadOutline, ChevronDownOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -30,6 +31,7 @@ const emit = defineEmits(['open-payment', 'refresh']);
 const { hasPermission } = usePermissions();
 const { openFileWithRetry } = useSecureFile();
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
+const page = usePage();
 
 // --- Estado ---
 const selectedOrderId = ref(null);
@@ -127,6 +129,33 @@ const paymentPlanLabel = (method) => {
 const statusColorMap = {
     'Cotización': 'default', 'Aceptado': 'info', 'En Proceso': 'warning',
     'Completado': 'success', 'Facturado': 'success', 'Cancelado': 'error'
+};
+
+// --- CAMBIO DE ESTATUS DE LA ORDEN (igual que en el show de orden de servicio) ---
+const orderStatusOptions = [
+    { label: 'Cotización', value: 'Cotización' }, { label: 'Aceptado', value: 'Aceptado' },
+    { label: 'En Proceso', value: 'En Proceso' }, { label: 'Completado', value: 'Completado' },
+    { label: 'Facturado', value: 'Facturado' }, { label: 'Cancelado', value: 'Cancelado' }
+];
+
+const handleOrderStatusUpdate = (newStatus) => {
+    if (!hasPermission('service_orders.change_status')) return;
+    if (newStatus === selectedOrder.value?.status) return;
+
+    router.patch(route('service-orders.update-status', selectedOrder.value.id), { status: newStatus }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            if (page.props.flash?.error) {
+                notification.error({ title: 'Error', content: page.props.flash.error, duration: 5000 });
+            } else {
+                notification.success({ title: 'Estatus Actualizado', content: `Orden cambió a ${newStatus}`, duration: 3000 });
+            }
+            emit('refresh');
+        },
+        onError: () => {
+            notification.error({ title: 'Error', content: 'No se pudo actualizar el estatus.', duration: 4000 });
+        }
+    });
 };
 
 // --- Color de estatus de pago ---
@@ -232,8 +261,13 @@ const showPaymentMethodModal = ref(false);
 const paymentMethodForm = ref({
     payment_method: null,
     down_payment: 0,
+    proof: null,
 });
 const savingPaymentMethod = ref(false);
+
+const handleProofChange = (options) => {
+    paymentMethodForm.value.proof = options.fileList.length > 0 ? options.fileList[0].file : null;
+};
 const paymentMethodOptions = [
     { label: 'Contado', value: 'Contado' },
     { label: '3 MSI', value: '3 MSI' },
@@ -246,7 +280,9 @@ const paymentMethodOptions = [
 const openPaymentMethodModal = () => {
     paymentMethodForm.value = {
         payment_method: selectedOrder.value?.payment_method || null,
-        down_payment: 0,
+        // Precargar el anticipo existente para no perderlo al re-guardar el plan
+        down_payment: selectedOrder.value?.down_payment ? Number(selectedOrder.value.down_payment) : 0,
+        proof: null,
     };
     showPaymentMethodModal.value = true;
 };
@@ -258,7 +294,17 @@ const savePaymentMethod = async () => {
     }
     savingPaymentMethod.value = true;
     try {
-        await axios.patch(route('api.service-orders.update-payment-method', selectedOrderId.value), paymentMethodForm.value);
+        // FormData para poder adjuntar el comprobante (multipart)
+        const formData = new FormData();
+        formData.append('_method', 'PATCH');
+        formData.append('payment_method', paymentMethodForm.value.payment_method);
+        formData.append('down_payment', paymentMethodForm.value.down_payment || 0);
+        if (paymentMethodForm.value.proof) {
+            formData.append('proof', paymentMethodForm.value.proof);
+        }
+        await axios.post(route('api.service-orders.update-payment-method', selectedOrderId.value), formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
         showPaymentMethodModal.value = false;
         notification.success({ title: 'Actualizado', content: 'Plan de pago guardado correctamente.', duration: 3000 });
         emit('refresh');
@@ -336,8 +382,16 @@ const paymentColumns = [
         render: (row) => h('span', { class: 'text-xs' }, row.notes || '-')
     },
     {
-        title: 'Monto', key: 'amount', align: 'right', width: 130,
-        render: (row) => h('span', { class: 'font-bold text-emerald-600 text-xs' }, formatCurrency(row.amount))
+        title: 'Monto', key: 'amount', align: 'right', width: 150,
+        render: (row) => {
+            const interest = parseFloat(row.interest_amount || 0);
+            return h('div', { class: 'text-right' }, [
+                h('span', { class: 'font-bold text-emerald-600 text-xs' }, formatCurrency(row.amount)),
+                interest > 0
+                    ? h('div', { class: 'text-[9px] text-amber-500 font-medium' }, `${formatCurrency(interest)} interés`)
+                    : null,
+            ]);
+        }
     },
     {
         title: 'Comp.',
@@ -380,8 +434,13 @@ const paymentColumns = [
 ];
 
 // --- Calcular totales ---
+// El interés moratorio se registra aparte (interest_amount) y NO descuenta el saldo
 const orderTotalPaid = computed(() => {
-    return orderPayments.value.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    return orderPayments.value.reduce((sum, p) => sum + parseFloat(p.amount || 0) - parseFloat(p.interest_amount || 0), 0);
+});
+
+const orderInterestCollected = computed(() => {
+    return orderPayments.value.reduce((sum, p) => sum + parseFloat(p.interest_amount || 0), 0);
 });
 
 const orderRemaining = computed(() => {
@@ -486,6 +545,44 @@ const saveInstallment = async () => {
     }
 };
 
+// --- ELIMINAR PROYECCIÓN DE PAGO (solo Personalizado y sin pago) ---
+const handleDeleteInstallment = (inst) => {
+    dialog.warning({
+        title: 'Eliminar Proyección',
+        content: `¿Estás seguro de eliminar "${inst.label}" (${formatCurrency(inst.amount)}) del ${formatDate(inst.projected_date)}? Esta acción no se puede deshacer.`,
+        positiveText: 'Eliminar',
+        negativeText: 'Cancelar',
+        onPositiveClick: async () => {
+            try {
+                await axios.delete(route('api.installments.destroy', inst.id));
+                notification.success({ title: 'Eliminado', content: 'Proyección eliminada correctamente.', duration: 3000 });
+                await refreshProjection();
+                emit('refresh');
+            } catch (error) {
+                const msg = error.response?.data?.error || 'No se pudo eliminar la proyección.';
+                notification.error({ title: 'Error', content: msg, duration: 4000 });
+            }
+        }
+    });
+};
+
+// --- TOGGLE DE INTERÉS MORATORIO (solo Personalizado y sin pago) ---
+const togglingInterestId = ref(null);
+
+const toggleApplyInterest = async (inst, value) => {
+    togglingInterestId.value = inst.id;
+    try {
+        await axios.patch(route('api.installments.update', inst.id), { apply_interest: value });
+        notification.success({ title: 'Actualizado', content: value ? 'Se cargará interés moratorio en esta cuota.' : 'Interés moratorio desactivado para esta cuota.', duration: 3000 });
+        await refreshProjection();
+    } catch (error) {
+        const msg = error.response?.data?.error || 'No se pudo actualizar la opción de interés.';
+        notification.error({ title: 'Error', content: msg, duration: 4000 });
+    } finally {
+        togglingInterestId.value = null;
+    }
+};
+
 // --- PAGAR CUOTA INDIVIDUAL (nuevo endpoint) ---
 const paySingleInstallment = async (inst) => {
     // Usar total con interés si aplica
@@ -512,6 +609,7 @@ const projectionForm = ref({
     projected_date: new Date().toISOString().split('T')[0],
     amount: null,
     label: '',
+    apply_interest: true,
 });
 const savingProjection = ref(false);
 
@@ -520,6 +618,7 @@ const openAddProjectionModal = () => {
         projected_date: new Date().toISOString().split('T')[0],
         amount: null,
         label: '',
+        apply_interest: true,
     };
     showAddProjectionModal.value = true;
 };
@@ -533,12 +632,6 @@ const saveProjection = async () => {
         notification.warning({ title: 'Atención', content: 'Selecciona una fecha.', duration: 3000 });
         return;
     }
-    // Validar que la fecha no sea anterior a hoy
-    const today = new Date().toISOString().split('T')[0];
-    if (projectionForm.value.projected_date < today) {
-        notification.warning({ title: 'Atención', content: 'La fecha debe ser igual o posterior a hoy.', duration: 3000 });
-        return;
-    }
 
     savingProjection.value = true;
     try {
@@ -546,6 +639,7 @@ const saveProjection = async () => {
             projected_date: projectionForm.value.projected_date,
             amount: projectionForm.value.amount,
             label: projectionForm.value.label || null,
+            apply_interest: projectionForm.value.apply_interest,
         };
         await axios.post(route('api.service-orders.store-installment', selectedOrderId.value), payload);
         notification.success({ title: 'Agregado', content: 'Proyección de pago registrada.', duration: 3000 });
@@ -611,12 +705,31 @@ const saveProjection = async () => {
                         <n-tag type="success" size="tiny" round :bordered="false">Al corriente</n-tag>
                     </div>
 
+                    <!-- AVISO: ORDEN EN COTIZACIÓN NO CUENTA PARA EL BALANCE -->
+                    <n-alert v-if="selectedOrder.status === 'Cotización'" type="warning" :bordered="false" class="mb-3">
+                        <template #icon><n-icon><AlertCircleOutline /></n-icon></template>
+                        Esta orden está en estatus <strong>Cotización</strong> y no se toma en cuenta para el balance del cliente.
+                    </n-alert>
+
                     <n-grid :cols="4" x-gap="12" y-gap="8" responsive="screen" item-responsive>
                         <n-grid-item span="4 m:2 l:1">
                             <n-statistic label="Estado" tabular-nums>
-                                <n-tag :type="statusColorMap[selectedOrder.status] || 'default'" size="small" round :bordered="false">
-                                    {{ selectedOrder.status }}
-                                </n-tag>
+                                <div class="flex items-center gap-1">
+                                    <n-popselect
+                                        v-if="hasPermission('service_orders.change_status')"
+                                        :options="orderStatusOptions"
+                                        :value="selectedOrder.status"
+                                        @update:value="handleOrderStatusUpdate"
+                                        trigger="click"
+                                    >
+                                        <n-tag :type="statusColorMap[selectedOrder.status] || 'default'" size="small" round :bordered="false" class="cursor-pointer hover:opacity-80">
+                                            {{ selectedOrder.status }} <n-icon class="ml-1"><ChevronDownOutline /></n-icon>
+                                        </n-tag>
+                                    </n-popselect>
+                                    <n-tag v-else :type="statusColorMap[selectedOrder.status] || 'default'" size="small" round :bordered="false">
+                                        {{ selectedOrder.status }}
+                                    </n-tag>
+                                </div>
                             </n-statistic>
                         </n-grid-item>
                         <n-grid-item span="4 m:2 l:1">
@@ -810,6 +923,14 @@ const saveProjection = async () => {
                                         >
                                             <template #icon><n-icon><PencilOutline /></n-icon></template>
                                         </n-button>
+                                        <!-- Botón eliminar proyección (solo Personalizado y sin pago) -->
+                                        <n-button
+                                            v-if="selectedOrder.payment_method === 'Personalizado' && !inst.payment && inst.status !== 'paid' && inst.status !== 'on_time' && hasPermission('payments.edit')"
+                                            size="tiny" text type="error"
+                                            @click="handleDeleteInstallment(inst)"
+                                        >
+                                            <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                        </n-button>
                                     </div>
                                 </template>
 
@@ -873,11 +994,37 @@ const saveProjection = async () => {
                                             <span class="font-black text-red-600">{{ formatCurrency(inst.total_with_interest) }}</span>
                                         </div>
 
+                                        <!-- Sin interés: registro tardío en sistema -->
+                                        <div v-if="inst.apply_interest === false && (inst.status === 'late' || inst.status === 'defaulted')" class="text-[10px] text-gray-400 mt-1">
+                                            Interés moratorio desactivado
+                                        </div>
+
+                                        <!-- Toggle de interés moratorio (todas las modalidades, cuotas sin pago) -->
+                                        <div
+                                            v-if="!inst.payment && inst.status !== 'paid' && inst.status !== 'on_time' && hasPermission('payments.edit')"
+                                            class="flex items-center justify-between bg-gray-50 rounded-lg px-2 py-1.5 mt-2 border border-gray-100"
+                                        >
+                                            <span class="text-[10px] text-gray-500 flex items-center gap-1">
+                                                <n-icon size="12" class="text-amber-500"><AlertCircleOutline /></n-icon>
+                                                Cargar interés moratorio
+                                            </span>
+                                            <n-switch
+                                                :value="inst.apply_interest !== false"
+                                                size="small"
+                                                :loading="togglingInterestId === inst.id"
+                                                @update:value="toggleApplyInterest(inst, $event)"
+                                            />
+                                        </div>
+
                                         <!-- Pago real -->
                                         <template v-if="inst.payment">
                                             <div class="flex justify-between text-emerald-600">
                                                 <span>Pagado:</span>
                                                 <span>{{ formatCurrency(inst.payment.amount) }} — {{ formatDate(inst.payment.date) }}</span>
+                                            </div>
+                                            <div v-if="inst.payment.interest > 0" class="flex justify-between text-amber-600 text-xs">
+                                                <span>De los cuales, interés (no descuenta saldo):</span>
+                                                <span>{{ formatCurrency(inst.payment.interest) }}</span>
                                             </div>
                                             <div class="text-xs" :class="inst.status === 'on_time' ? 'text-emerald-500' : inst.status === 'late' ? 'text-amber-500' : 'text-red-500'">
                                                 {{ inst.payment.days_diff }} día(s) {{ inst.payment.days_diff >= 0 ? 'después' : 'antes' }} de la fecha proyectada
@@ -957,8 +1104,12 @@ const saveProjection = async () => {
                     </h4>
 
                     <div class="flex justify-between items-center mb-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                        <span class="text-xs text-gray-500">Total pagado:</span>
+                        <span class="text-xs text-gray-500">Total pagado (abonos):</span>
                         <span class="font-bold text-emerald-600">{{ formatCurrency(orderTotalPaid) }}</span>
+                    </div>
+                    <div v-if="orderInterestCollected > 0" class="flex justify-between items-center mb-2 bg-amber-50 p-2 rounded-lg border border-amber-100">
+                        <span class="text-xs text-amber-700 font-medium">Intereses cobrados (no descuentan saldo):</span>
+                        <span class="font-bold text-amber-700">{{ formatCurrency(orderInterestCollected) }}</span>
                     </div>
 
                     <div class="-mx-2 sm:mx-0 overflow-x-auto">
@@ -1045,7 +1196,7 @@ const saveProjection = async () => {
         <!-- MODAL AGREGAR/EDITAR PLAN DE PAGO -->
         <n-modal v-model:show="showPaymentMethodModal" :mask-closable="false">
             <n-card
-                style="width: 420px"
+                style="width: 460px"
                 title="Plan de Pago"
                 :bordered="false"
                 size="small"
@@ -1062,6 +1213,27 @@ const saveProjection = async () => {
                         <n-input-number v-model:value="paymentMethodForm.down_payment" :min="0" :precision="2">
                             <template #prefix>$</template>
                         </n-input-number>
+                    </n-form-item>
+                    <n-form-item label="Comprobante de anticipo (opcional)">
+                        <n-upload
+                            :max="1"
+                            :default-upload="false"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            class="w-full"
+                            @change="handleProofChange"
+                        >
+                            <n-upload-dragger class="bg-gray-50/50 hover:bg-indigo-50/30 transition-colors border border-dashed border-gray-300">
+                                <div class="flex items-center justify-center gap-3 py-1">
+                                    <n-icon size="24" :depth="3" class="text-indigo-400">
+                                        <CloudUploadOutline />
+                                    </n-icon>
+                                    <div class="text-left">
+                                        <p class="text-xs font-bold text-gray-700">Clic o arrastra el comprobante</p>
+                                        <p class="text-[9px] text-gray-400 uppercase">PDF, JPG o PNG</p>
+                                    </div>
+                                </div>
+                            </n-upload-dragger>
+                        </n-upload>
                     </n-form-item>
                 </n-form>
                 <template #footer>
@@ -1083,7 +1255,8 @@ const saveProjection = async () => {
             >
                 <n-alert type="info" :bordered="false" class="mb-4">
                     Saldo pendiente: <strong>{{ formatCurrency(orderRemaining) }}</strong><br/>
-                    Los montos no deben superar este saldo.
+                    Puedes registrar proyecciones o montos mayores al saldo si es necesario (el excedente queda como sobregiro).<br/>
+                    <span class="text-[10px]">Puedes registrar fechas pasadas para pagos que no se registraron a tiempo.</span>
                 </n-alert>
                 <n-form>
                     <n-form-item label="Fecha programada" required>
@@ -1091,7 +1264,6 @@ const saveProjection = async () => {
                             v-model:value="projectionForm.projected_date"
                             type="date"
                             class="w-full"
-                            :min="new Date().toISOString().split('T')[0]"
                         />
                     </n-form-item>
                     <n-form-item label="Monto" required>
@@ -1099,7 +1271,6 @@ const saveProjection = async () => {
                             v-model:value="projectionForm.amount"
                             :min="1"
                             :precision="2"
-                            :max="orderRemaining"
                             class="w-full"
                             placeholder="0.00"
                         >
@@ -1112,6 +1283,27 @@ const saveProjection = async () => {
                             placeholder="Ej: Segunda quincena de julio"
                             :maxlength="255"
                         />
+                    </n-form-item>
+
+                    <!-- Opción: cargar o no interés moratorio -->
+                    <n-form-item label="Interés moratorio">
+                        <div class="w-full">
+                            <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                <div class="flex items-start gap-2">
+                                    <n-icon size="18" class="text-amber-500 mt-0.5"><AlertCircleOutline /></n-icon>
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-700">Cargar interés moratorio</div>
+                                        <div class="text-[10px] text-gray-400">Actívalo solo si el cliente realmente pagó tarde.</div>
+                                    </div>
+                                </div>
+                                <n-switch v-model:value="projectionForm.apply_interest" size="small" />
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-1.5 leading-snug">
+                                El sistema aplica automáticamente <strong>10% mensual</strong> compuesto después de <strong>5 días</strong> de gracia desde la fecha programada.
+                                Si el cliente pagó a tiempo y el retraso fue solo por registrarlo después en el sistema,
+                                <strong>desactiva esta opción</strong> para no cobrar intereses.
+                            </p>
+                        </div>
                     </n-form-item>
                 </n-form>
                 <template #footer>
