@@ -267,6 +267,7 @@ class ServiceOrder extends Model implements HasMedia
             'interest' => $inst->calculateInterest(),
             'total_with_interest' => $inst->total_with_interest,
             'days_late' => $inst->days_late,
+            'interest_days' => $inst->interest_days,
             'months_of_interest' => $inst->months_of_interest,
             'status' => $inst->status,
             'status_label' => $this->getStatusLabel($inst->status),

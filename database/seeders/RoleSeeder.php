@@ -219,6 +219,13 @@ class RoleSeeder extends Seeder
                 'description' => 'Acceder a configuraciones generales del sistema',
                 'module' => 'Configuraciones'
             ],
+
+            // --- Módulo: Portal de Clientes ---
+            [
+                'name' => 'validar_abonos',
+                'description' => 'Validar abonos registrados por clientes en el portal',
+                'module' => 'Portal de Clientes'
+            ],
         ];
 
         // 3. Insertar Permisos en Base de Datos

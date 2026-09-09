@@ -225,6 +225,13 @@ export default {
                     show: hasPermission('clients.index')
                 },
                 {
+                    label: 'Portal Clientes',
+                    icon: icons.tickets,
+                    route: 'portal-abonos.index',
+                    active: current('portal-abonos.*'),
+                    show: hasPermission('validar_abonos')
+                },
+                {
                     label: 'Tickets',
                     icon: icons.tickets,
                     route: 'tickets.index', 

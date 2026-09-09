@@ -17,6 +17,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TicketController; // Importar el controlador
 use App\Http\Controllers\TaskTemplateController; // IMPORTANTE: Agregado
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\PortalPaymentController;
 use App\Http\Controllers\WarehouseReconciliationController; // <-- NUEVO CONTROLADOR ALMACÉN
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -217,6 +218,13 @@ Route::delete('/contactos/{contact}', [ContactController::class, 'destroy'])->na
 Route::middleware('auth')->group(function () {
     Route::get('/almacen/conciliaciones', [WarehouseReconciliationController::class, 'index'])->name('warehouse.reconciliations.index');
     Route::post('/almacen/conciliaciones/{serviceOrder}/approve', [WarehouseReconciliationController::class, 'approve'])->name('warehouse.reconciliations.approve');
+});
+
+// ---------------------------- PORTAL DE CLIENTES: VALIDACIÓN DE ABONOS ----------------------------
+Route::middleware(['auth', 'permission:validar_abonos'])->group(function () {
+    Route::get('/portal-abonos', [PortalPaymentController::class, 'index'])->name('portal-abonos.index');
+    Route::post('/portal-abonos/{portalPayment}/aprobar', [PortalPaymentController::class, 'approve'])->name('portal-abonos.approve');
+    Route::post('/portal-abonos/{portalPayment}/rechazar', [PortalPaymentController::class, 'reject'])->name('portal-abonos.reject');
 });
 
 

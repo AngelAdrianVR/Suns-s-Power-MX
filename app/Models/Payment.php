@@ -23,6 +23,7 @@ class Payment extends Model implements HasMedia
         'reference',
         'notes',
         'branch_id',
+        'portal_payment_id',
     ];
 
     protected $casts = [

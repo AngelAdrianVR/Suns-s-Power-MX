@@ -503,14 +503,9 @@ class ClientController extends Controller
                             : \Carbon\Carbon::parse($inst->projected_date);
                         $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
                         $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
+                        // Interés compuesto diario (10% mensual) después de los 5 días de gracia
                         $lateDays = !$isPaid ? max(0, $daysSince - \App\Models\PaymentInstallment::GRACE_PERIOD_DAYS) : 0;
-                        $interest = 0;
-                        $monthsOfInterest = 0;
-                        if ($lateDays > 0) {
-                            $monthsOfInterest = (int) ceil($lateDays / 30);
-                            $totalWithInt = (float) $inst->amount * pow(1 + \App\Models\PaymentInstallment::MONTHLY_INTEREST_RATE, $monthsOfInterest);
-                            $interest = round($totalWithInt - (float) $inst->amount, 2);
-                        }
+                        $interest = \App\Models\PaymentInstallment::interestForLateDays((float) $inst->amount, $lateDays);
 
                         $installments[] = [
                             'projected_date' => $projDate->format('Y-m-d'),
@@ -519,7 +514,8 @@ class ClientController extends Controller
                             'total_with_interest' => round((float) $inst->amount + $interest, 2),
                             'is_paid' => $isPaid,
                             'days_late' => $lateDays,
-                            'months_of_interest' => $monthsOfInterest,
+                            'interest_days' => $lateDays,
+                            'months_of_interest' => (int) ceil($lateDays / \App\Models\PaymentInstallment::DAYS_PER_MONTH),
                         ];
                     }
                 } else {
@@ -700,14 +696,9 @@ class ClientController extends Controller
                             : \Carbon\Carbon::parse($inst->projected_date);
                         $daysSince = (int) $projDate->startOfDay()->diffInDays(now()->startOfDay(), false);
                         $isPaid = $inst->status === 'paid' || $inst->status === 'on_time' || (bool) $inst->payment_id;
+                        // Interés compuesto diario (10% mensual) después de los 5 días de gracia
                         $lateDays = !$isPaid ? max(0, $daysSince - \App\Models\PaymentInstallment::GRACE_PERIOD_DAYS) : 0;
-                        $interest = 0;
-                        $monthsOfInterest = 0;
-                        if ($lateDays > 0) {
-                            $monthsOfInterest = (int) ceil($lateDays / 30);
-                            $totalWithInt = (float) $inst->amount * pow(1 + \App\Models\PaymentInstallment::MONTHLY_INTEREST_RATE, $monthsOfInterest);
-                            $interest = round($totalWithInt - (float) $inst->amount, 2);
-                        }
+                        $interest = \App\Models\PaymentInstallment::interestForLateDays((float) $inst->amount, $lateDays);
 
                         $installments[] = [
                             'installment' => $inst->installment_number,
@@ -718,7 +709,8 @@ class ClientController extends Controller
                             'is_paid' => $isPaid,
                             'is_past' => $daysSince > 0 && !$isPaid,
                             'days_late' => $lateDays,
-                            'months_of_interest' => $monthsOfInterest,
+                            'interest_days' => $lateDays,
+                            'months_of_interest' => (int) ceil($lateDays / \App\Models\PaymentInstallment::DAYS_PER_MONTH),
                         ];
                     }
                 } else {

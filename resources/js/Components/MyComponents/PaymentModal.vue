@@ -152,6 +152,11 @@ const submit = async () => {
         notification.warning({ title: 'Atención', content: 'El monto debe ser mayor a cero.', duration: 3000 });
         return;
     }
+    // El comprobante SIEMPRE es obligatorio (ya no existe el pago rápido)
+    if (!form.proof) {
+        notification.error({ title: 'Comprobante Requerido', content: 'Debes subir una imagen o PDF del comprobante.', duration: 3000 });
+        return;
+    }
 
     const paymentDate = new Date(form.payment_date).toISOString().split('T')[0];
 

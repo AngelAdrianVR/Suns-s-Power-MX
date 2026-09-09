@@ -1636,7 +1636,8 @@ class ServiceOrderController extends Controller
             'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:500',
-            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            // El comprobante SIEMPRE es obligatorio (se eliminó el pago rápido)
+            'proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         // Separar el interés moratorio del abono principal.
@@ -1692,7 +1693,8 @@ class ServiceOrderController extends Controller
             'method' => 'required|in:Efectivo,Transferencia,Tarjeta,Cheque,Depósito,Otro',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:500',
-            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            // El comprobante SIEMPRE es obligatorio (se eliminó el pago rápido)
+            'proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         // Obtener cuotas pendientes

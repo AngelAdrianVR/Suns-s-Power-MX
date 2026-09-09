@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\Payment;
+use App\Models\PaymentInstallment;
 use App\Models\ServiceOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -108,25 +109,84 @@ class PaymentController extends Controller
         });
     }
 
-     /**
-     * Elimina un abono existente.
+    /**
+     * Actualiza la fecha de un abono registrado.
+     *
+     * Solo usuarios con rol Admin pueden editar la fecha de pagos existentes.
+     * Si el pago está vinculado a cuota(s) proyectada(s), se actualiza también su
+     * paid_date y se recalcula su estatus (a tiempo / extemporáneo / incumplido).
      */
-    public function destroy(Payment $payment)
+    public function update(Request $request, Payment $payment)
     {
+        $user = $request->user();
+
+        // Solo rol Admin
+        abort_unless($user && $user->hasRole('Admin'), 403, 'Solo el rol Admin puede editar la fecha de los abonos.');
+
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
         if ($payment->branch_id !== $branchId) {
-            abort(403, 'No tienes permiso para eliminar este pago.');
+            abort(403, 'No tienes permiso para editar este pago.');
+        }
+
+        $validated = $request->validate([
+            'payment_date' => 'required|date',
+        ]);
+
+        DB::transaction(function () use ($payment, $validated) {
+            $payment->update(['payment_date' => $validated['payment_date']]);
+
+            // Sincronizar la fecha en las cuotas vinculadas y recalcular su estatus
+            $installments = PaymentInstallment::where('payment_id', $payment->id)->get();
+            foreach ($installments as $installment) {
+                $installment->update(['paid_date' => $validated['payment_date']]);
+                $installment->recalculateStatus();
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'payment_date' => $payment->fresh()->payment_date->format('Y-m-d'),
+            'message' => 'Fecha del abono actualizada correctamente.',
+        ]);
+    }
+
+    /**
+     * Elimina un abono registrado.
+     *
+     * Requiere permiso "payments.delete". La eliminación:
+     *  - Desvincula TODAS las cuotas proyectadas que fueron marcadas como pagadas
+     *    por este abono (vuelven a pendiente/próxima según su fecha), permitiendo
+     *    volver a registrar el pago correctamente.
+     *  - Elimina el comprobante/evidencia adjunto (media library).
+     *  - Elimina el registro del pago, actualizando el saldo de la orden.
+     */
+    public function destroy(Request $request, Payment $payment)
+    {
+        $user = $request->user();
+
+        // Permiso requerido: payments.delete (o payments.edit)
+        abort_unless(
+            $user && ($user->hasPermissionTo('payments.delete') || $user->hasPermissionTo('payments.edit')),
+            403,
+            'No tienes permiso para eliminar abonos.'
+        );
+
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+
+        if ($payment->branch_id !== $branchId) {
+            abort(403, 'No tienes permiso para revertir este pago.');
         }
 
         DB::transaction(function () use ($payment) {
-            // Desvincular la cuota proyectada si existe
-            $payment->load('serviceOrder.paymentInstallments');
+            // 1) Desvincular TODAS las cuotas proyectadas que referencia este pago
+            $payment->load('serviceOrder');
             if ($payment->serviceOrder) {
-                $installment = $payment->serviceOrder->paymentInstallments()
+                $installments = $payment->serviceOrder->paymentInstallments()
                     ->where('payment_id', $payment->id)
-                    ->first();
-                if ($installment) {
+                    ->get();
+
+                foreach ($installments as $installment) {
                     $installment->update([
                         'payment_id' => null,
                         'status' => 'pending',
@@ -137,9 +197,20 @@ class PaymentController extends Controller
                 }
             }
 
+            // 2) Eliminar la evidencia / comprobante del abono (media library)
+            foreach (['receipts', 'payments', 'default'] as $collection) {
+                if ($payment->getMedia($collection)->isNotEmpty()) {
+                    $payment->clearMediaCollection($collection);
+                }
+            }
+
+            // 3) Eliminar el registro del abono
             $payment->delete();
         });
 
-        return redirect()->back()->with('success', 'Abono eliminado correctamente. El saldo de la orden ha sido actualizado.');
+        return redirect()->back()->with(
+            'success',
+            'Abono eliminado correctamente. Se eliminó el registro junto con su comprobante y las cuotas vinculadas volvieron a quedar pendientes.'
+        );
     }
 }
