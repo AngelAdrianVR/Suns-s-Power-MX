@@ -57,50 +57,81 @@ class PortalPaymentController extends Controller
     }
 
     /**
-     * Aprobar abono: crea el pago real en el ERP y copia el comprobante.
+     * Aprobar abono: crea el pago real en el ERP, copia el comprobante y
+     * marca el abono como Completado. Al crear el Payment, el saldo del
+     * cliente baja automáticamente (los saldos se calculan con la suma
+     * de pagos registrados).
      */
     public function approve(Request $request, PortalPayment $portalPayment)
     {
-        if ($portalPayment->status !== 'En revisión') {
-            return back()->with('error', 'Este abono ya fue procesado.');
+        if ($portalPayment->status !== PortalPayment::STATUS_IN_REVIEW) {
+            return $this->respond($request, 'Este abono ya fue procesado.', 'error', 422);
         }
 
-        DB::transaction(function () use ($portalPayment, $request) {
-            $payment = Payment::create([
-                'branch_id' => $portalPayment->branch_id,
-                'client_id' => $portalPayment->client_id,
-                'service_order_id' => $portalPayment->service_order_id,
-                'amount' => $portalPayment->amount,
-                'interest_amount' => 0,
-                'payment_date' => $portalPayment->payment_date,
-                'method' => $portalPayment->method,
-                'reference' => $portalPayment->reference,
-                'notes' => 'Abono registrado desde el portal de clientes',
-                'portal_payment_id' => $portalPayment->id,
-            ]);
+        // Re-validar que el monto no supere el saldo pendiente ACTUAL del
+        // servicio (el cliente pudo haber hecho otros pagos desde el portal
+        // o el personal del ERP pudo registrar abonos mientras tanto).
+        if ($portalPayment->service_order_id) {
+            $order = $portalPayment->serviceOrder()->first();
 
-            $receipt = $portalPayment->getFirstMedia('receipts');
+            if ($order) {
+                $balance = $this->outstandingBalance($order);
 
-            if ($receipt) {
-                $absolutePath = Storage::disk('erp_media')->path($receipt->getPath());
-
-                if (is_file($absolutePath)) {
-                    $payment
-                        ->addMedia($absolutePath)
-                        ->preservingOriginal()
-                        ->usingFileName($receipt->file_name)
-                        ->toMediaCollection('receipts');
+                if ((float) $portalPayment->amount > $balance + 0.005) {
+                    return $this->respond(
+                        $request,
+                        'No se puede aprobar: el monto del abono supera el saldo pendiente del servicio ('
+                            .number_format($balance, 2).').',
+                        'error',
+                        422
+                    );
                 }
             }
+        }
 
-            $portalPayment->update([
-                'status' => 'Completado',
-                'validated_by' => $request->user()->id,
-                'validated_at' => now(),
-            ]);
-        });
+        try {
+            DB::transaction(function () use ($portalPayment, $request) {
+                $payment = Payment::create([
+                    'branch_id' => $portalPayment->branch_id,
+                    'client_id' => $portalPayment->client_id,
+                    'service_order_id' => $portalPayment->service_order_id,
+                    'amount' => $portalPayment->amount,
+                    'interest_amount' => 0,
+                    'payment_date' => $portalPayment->payment_date,
+                    'method' => $portalPayment->method,
+                    'reference' => $portalPayment->reference,
+                    'notes' => 'Abono registrado desde el portal de clientes',
+                    'portal_payment_id' => $portalPayment->id,
+                ]);
 
-        return back()->with('success', 'Abono aprobado y registrado como pago.');
+                // Copiar el comprobante del abono del portal al pago del ERP
+                $receipt = $portalPayment->getFirstMedia('receipts');
+
+                if ($receipt) {
+                    $absolutePath = Storage::disk(PortalPayment::RECEIPT_DISK)->path($receipt->getPath());
+
+                    if (is_file($absolutePath)) {
+                        $payment
+                            ->addMedia($absolutePath)
+                            ->preservingOriginal()
+                            ->usingFileName($receipt->file_name)
+                            ->toMediaCollection('receipts');
+                    }
+                }
+
+                $portalPayment->update([
+                    'status' => PortalPayment::STATUS_COMPLETED,
+                    'validated_by' => $request->user()->id,
+                    'validated_at' => now(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->respond($request, 'No se pudo aprobar el abono. Inténtalo de nuevo.', 'error', 500);
+        }
+
+        return $this->respond($request, 'Abono aprobado y registrado como pago. El saldo del cliente se actualizó.');
     }
 
     /**
@@ -108,8 +139,8 @@ class PortalPaymentController extends Controller
      */
     public function reject(Request $request, PortalPayment $portalPayment)
     {
-        if ($portalPayment->status !== 'En revisión') {
-            return back()->with('error', 'Este abono ya fue procesado.');
+        if ($portalPayment->status !== PortalPayment::STATUS_IN_REVIEW) {
+            return $this->respond($request, 'Este abono ya fue procesado.', 'error', 422);
         }
 
         $validated = $request->validate([
@@ -117,12 +148,40 @@ class PortalPaymentController extends Controller
         ]);
 
         $portalPayment->update([
-            'status' => 'Rechazado',
+            'status' => PortalPayment::STATUS_REJECTED,
             'rejection_reason' => $validated['rejection_reason'],
             'validated_by' => $request->user()->id,
             'validated_at' => now(),
         ]);
 
-        return back()->with('success', 'Abono rechazado.');
+        return $this->respond($request, 'Abono rechazado. El cliente podrá ver el motivo en el portal.');
+    }
+
+    /**
+     * Saldo pendiente real de una orden de servicio:
+     * total - (pagos - intereses). El interés moratorio no descuenta saldo.
+     */
+    private function outstandingBalance($order): float
+    {
+        $paid = (float) $order->payments()->sum('amount')
+            - (float) $order->payments()->sum('interest_amount');
+
+        return max(0, (float) $order->total_amount - $paid);
+    }
+
+    /**
+     * Respuesta uniforme: JSON para peticiones AJAX/axios y flash
+     * redirigiendo de vuelta para peticiones Inertia.
+     */
+    private function respond(Request $request, string $message, string $type = 'success', int $status = 200)
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => $type === 'success',
+                'message' => $message,
+            ], $status);
+        }
+
+        return back()->with($type, $message);
     }
 }

@@ -19,6 +19,11 @@ class PortalPayment extends Model implements HasMedia
     public const STATUS_COMPLETED = 'Completado';
     public const STATUS_REJECTED = 'Rechazado';
 
+    public const METHODS = ['Transferencia', 'Efectivo', 'Cheque', 'Tarjeta', 'Depósito', 'Otro'];
+
+    /** Disco compartido con el storage público del ERP (mismo que usa el portal). */
+    public const RECEIPT_DISK = 'erp_media';
+
     protected $table = 'portal_payments';
 
     protected $fillable = [
