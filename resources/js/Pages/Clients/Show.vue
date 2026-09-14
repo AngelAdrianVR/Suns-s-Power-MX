@@ -122,6 +122,13 @@ const googleMapsUrl = computed(() => {
                     </Link>
                     
                     <div class="flex items-center gap-2">
+                        <PermissionTooltip permission="clients.index" placement="bottom" :size="13" />
+                        <a v-if="hasPermission('clients.index')" :href="route('clients.statement.view', client.id)" target="_blank" rel="noopener">
+                            <n-button secondary round type="info" size="small">
+                                <template #icon><n-icon><DocumentTextOutline /></n-icon></template> Estado de cuenta
+                            </n-button>
+                        </a>
+
                         <PermissionTooltip permission="clients.edit" placement="bottom" :size="13" />
                         <Link v-if="hasPermission('clients.edit')" :href="route('clients.edit', client.id)">
                             <n-button secondary round type="warning" size="small">

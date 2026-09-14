@@ -33,6 +33,9 @@ const { openFileWithRetry } = useSecureFile();
 const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
 const page = usePage();
 
+// ¿El usuario actual tiene rol Admin? (solo Admin puede editar la fecha de los abonos)
+const isAdmin = computed(() => (page.props.auth?.roles || []).includes('Admin'));
+
 // --- Estado ---
 const selectedOrderId = ref(null);
 const loadingProjection = ref(false);
@@ -347,32 +350,62 @@ const sendReminder = async (channel) => {
     }
 };
 
-// --- Eliminar pago ---
-const handleDeletePayment = (payment) => {
-    dialog.warning({
-        title: 'Eliminar Abono',
-        content: `¿Estás seguro de eliminar el abono de ${formatCurrency(payment.amount)} del ${formatDate(payment.payment_date)}?. Esto ajustará el saldo pendiente de la orden y eliminará la relación con la cuota si aplica.`,
-        positiveText: 'Eliminar',
-        negativeText: 'Cancelar',
-        onPositiveClick: () => {
-            router.delete(route('payments.destroy', payment.id), {
-                preserveScroll: true,
-                onSuccess: () => {
-                    notification.success({ title: 'Eliminado', content: 'Abono eliminado correctamente.', duration: 3000 });
-                    refreshProjection();
-                    emit('refresh');
-                },
-                onError: () => {
-                    notification.error({ title: 'Error', content: 'No se pudo eliminar el abono.', duration: 3000 });
-                }
-            });
-        }
-    });
+// --- Editar fecha de un abono registrado (solo rol Admin) ---
+const showEditDateModal = ref(false);
+const editingPaymentDate = ref(null);
+const editPaymentDateValue = ref(null);
+const savingPaymentDate = ref(false);
+
+const openEditPaymentDate = (row) => {
+    const dateStr = String(row.payment_date || '').trim().split(' ')[0].split('T')[0];
+    const ts = new Date(dateStr + 'T12:00:00').getTime();
+    editPaymentDateValue.value = isNaN(ts) ? Date.now() : ts;
+    editingPaymentDate.value = row;
+    showEditDateModal.value = true;
+};
+
+const closeEditPaymentDate = () => {
+    showEditDateModal.value = false;
+    editingPaymentDate.value = null;
+    editPaymentDateValue.value = null;
+};
+
+const savePaymentDate = async () => {
+    if (!editingPaymentDate.value?.id) return;
+    savingPaymentDate.value = true;
+    try {
+        const val = editPaymentDateValue.value;
+        const payment_date = typeof val === 'number' ? new Date(val).toISOString().split('T')[0] : val;
+        await axios.patch(route('payments.update', editingPaymentDate.value.id), { payment_date });
+        notification.success({ title: 'Actualizado', content: 'Fecha del abono actualizada correctamente.', duration: 3000 });
+        closeEditPaymentDate();
+        await refreshProjection();
+        emit('refresh');
+    } catch (error) {
+        const msg = error.response?.data?.error || 'No se pudo actualizar la fecha del abono.';
+        notification.error({ title: 'Error', content: msg, duration: 4000 });
+    } finally {
+        savingPaymentDate.value = false;
+    }
 };
 
 // --- Columnas de pagos realizados ---
 const paymentColumns = [
-    { title: 'Fecha', key: 'payment_date', width: 125, render: (row) => formatDate(row.payment_date) },
+    {
+        title: 'Fecha', key: 'payment_date', width: 155,
+        render: (row) => h('div', { class: 'flex items-center gap-1.5' }, [
+            h('span', { class: 'text-xs' }, formatDate(row.payment_date)),
+            isAdmin.value
+                ? h(NTooltip, null, {
+                    trigger: () => h(NButton, {
+                        text: true, size: 'tiny', type: 'primary',
+                        onClick: () => openEditPaymentDate(row)
+                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
+                    default: () => 'Editar fecha (solo Admin)'
+                })
+                : null,
+        ])
+    },
     {
         title: 'Método', key: 'method', width: 120,
         render: (row) => h('span', { class: 'text-xs' }, row.method || '-')
@@ -418,16 +451,20 @@ const paymentColumns = [
         width: 100,
         align: 'center',
         render(row) {
-            if (!hasPermission('payments.delete')) return null;
+            const canDelete = hasPermission('payments.delete') || hasPermission('payments.edit');
+            if (!canDelete) return null;
             return h('div', { class: 'flex items-center justify-center gap-0.5' }, [
                 h(PermissionTooltip, { permission: 'payments.delete', placement: 'left', size: 11 }),
-                h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'error',
-                    onClick: (e) => {
-                        e.stopPropagation();
-                        handleDeletePayment(row);
-                    }
-                }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                h(NTooltip, null, {
+                    trigger: () => h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'error',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            openDeletePayment(row);
+                        }
+                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                    default: () => 'Eliminar abono (quita el registro y su comprobante)'
+                }),
             ]);
         }
     },
@@ -583,24 +620,51 @@ const toggleApplyInterest = async (inst, value) => {
     }
 };
 
-// --- PAGAR CUOTA INDIVIDUAL (nuevo endpoint) ---
-const paySingleInstallment = async (inst) => {
-    // Usar total con interés si aplica
-    const amount = inst.total_with_interest || inst.amount;
-    try {
-        await axios.post(route('api.installments.pay', inst.id), {
-            amount: amount,
-            payment_date: new Date().toISOString().split('T')[0],
-            method: 'Transferencia',
-            notes: `Pago de ${inst.label}`,
-        });
-        notification.success({ title: 'Pagado', content: `${inst.label} marcada como pagada.`, duration: 3000 });
-        await refreshProjection();
-        emit('refresh');
-    } catch (error) {
-        const msg = error.response?.data?.error || 'No se pudo registrar el pago.';
-        notification.error({ title: 'Error', content: msg, duration: 4000 });
-    }
+// --- ELIMINAR UN ABONO REGISTRADO (con modal de confirmación) ---
+// Solo usuarios con permiso "payments.delete". Elimina el abono + su comprobante
+// y devuelve las cuotas vinculadas a estado pendiente (para volver a cargar el pago).
+const paymentToDelete = ref(null);
+const showDeleteModal = ref(false);
+const deletingPayment = ref(false);
+
+const deletePaymentLabel = (payment) => {
+    const amount = payment?.amount || payment?.paid_amount || 0;
+    const date = payment?.payment_date || payment?.date || null;
+    return { amount: formatCurrency(amount), date: date ? formatDate(date) : '-' };
+};
+
+const openDeletePayment = (payment) => {
+    if (!payment?.id) return;
+    paymentToDelete.value = payment;
+    showDeleteModal.value = true;
+};
+
+const confirmDeletePayment = () => {
+    if (!paymentToDelete.value?.id) return;
+    deletingPayment.value = true;
+    router.delete(route('payments.destroy', paymentToDelete.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            notification.success({ title: 'Eliminado', content: 'El abono y su comprobante fueron eliminados. La cuota vinculada volvió a quedar pendiente y podrás registrar el pago nuevamente.', duration: 4000 });
+            showDeleteModal.value = false;
+            paymentToDelete.value = null;
+            refreshProjection();
+            emit('refresh');
+        },
+        onError: (errors) => {
+            const msg = errors?.delete || 'No se pudo eliminar el abono. Verifica que tengas permiso payments.delete.';
+            notification.error({ title: 'Error', content: msg, duration: 4000 });
+        },
+        onFinish: () => {
+            deletingPayment.value = false;
+        }
+    });
+};
+
+const closeDeleteModal = () => {
+    if (deletingPayment.value) return;
+    showDeleteModal.value = false;
+    paymentToDelete.value = null;
 };
 
 // --- MODAL: AGREGAR PROYECCIÓN DE PAGO (Personalizado) ---
@@ -985,7 +1049,7 @@ const saveProjection = async () => {
                                         <div v-if="inst.interest > 0" class="flex justify-between text-red-500">
                                             <span class="flex items-center gap-1">
                                                 <n-icon size="14"><AlertCircleOutline /></n-icon>
-                                                Interés {{ inst.months_of_interest }} mes(es):
+                                                Interés ({{ inst.interest_days || inst.days_late || 0 }} día(s) · 10% mensual compuesto diario):
                                             </span>
                                             <span class="font-bold">+ {{ formatCurrency(inst.interest) }}</span>
                                         </div>
@@ -1029,6 +1093,17 @@ const saveProjection = async () => {
                                             <div class="text-xs" :class="inst.status === 'on_time' ? 'text-emerald-500' : inst.status === 'late' ? 'text-amber-500' : 'text-red-500'">
                                                 {{ inst.payment.days_diff }} día(s) {{ inst.payment.days_diff >= 0 ? 'después' : 'antes' }} de la fecha proyectada
                                             </div>
+                                            <!-- Eliminar pago (igual que en la tabla de Pagos Realizados) -->
+                                            <div
+                                                v-if="hasPermission('payments.delete') || hasPermission('payments.edit')"
+                                                class="flex items-center justify-end gap-1 mt-1.5"
+                                            >
+                                                <PermissionTooltip permission="payments.delete" placement="top" :size="10" />
+                                                <n-button size="tiny" quaternary type="error" @click="openDeletePayment(inst.payment)">
+                                                    <template #icon><n-icon><TrashOutline /></n-icon></template>
+                                                    Eliminar pago
+                                                </n-button>
+                                            </div>
                                         </template>
                                         <template v-else>
                                             <div class="text-xs" :class="inst.status === 'defaulted' ? 'text-red-500 font-bold' : inst.status === 'late' ? 'text-amber-500' : 'text-gray-400'">
@@ -1045,15 +1120,6 @@ const saveProjection = async () => {
                                             </div>
                                             <!-- Botones de acción solo para la siguiente cuota pendiente -->
                                             <div v-if="isNextPending(inst)" class="flex gap-1 mt-1 flex-wrap">
-                                                <PermissionTooltip permission="collection.fast_payment" placement="top" :size="10" />
-                                                <n-button
-                                                    v-if="hasPermission('collection.fast_payment')"
-                                                    size="tiny" quaternary type="success"
-                                                    @click="paySingleInstallment(inst)"
-                                                >
-                                                    <template #icon><n-icon><CashOutline /></n-icon></template>
-                                                    Pago rápido
-                                                </n-button>
                                                 <PermissionTooltip permission="collection.create" placement="top" :size="10" />
                                                 <n-button
                                                     v-if="hasPermission('collection.create')"
@@ -1143,7 +1209,7 @@ const saveProjection = async () => {
                         Fecha esperada: {{ formatDate(reminderTargetInstallment.projected_date) }}<br/>
                         Monto: {{ formatCurrency(reminderTargetInstallment.amount) }}
                         <template v-if="reminderTargetInstallment.interest > 0">
-                            <br/><span class="text-red-600 font-bold">+ Interés: {{ formatCurrency(reminderTargetInstallment.interest) }} ({{ reminderTargetInstallment.months_of_interest }} mes/es)</span>
+                            <br/><span class="text-red-600 font-bold">+ Interés: {{ formatCurrency(reminderTargetInstallment.interest) }} ({{ reminderTargetInstallment.interest_days || reminderTargetInstallment.days_late || 0 }} día(s), 10% mensual compuesto diario)</span>
                             <br/><span class="text-red-700 font-black">Total a pagar: {{ formatCurrency(reminderTargetInstallment.total_with_interest) }}</span>
                         </template>
                     </template>
@@ -1312,6 +1378,119 @@ const saveProjection = async () => {
                         <n-button type="primary" @click="saveProjection" :loading="savingProjection">
                             <template #icon><n-icon><CalendarOutline /></n-icon></template>
                             Agregar
+                        </n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
+        <!-- MODAL: EDITAR FECHA DEL ABONO (solo Admin) -->
+        <n-modal
+            :show="showEditDateModal"
+            :mask-closable="false"
+            :close-on-esc="false"
+            @update:show="(val) => { if (!val && !savingPaymentDate) closeEditPaymentDate(); }"
+        >
+            <n-card
+                style="width: 380px; border-radius: 0.75rem;"
+                title="Editar Fecha del Abono"
+                :bordered="false"
+                size="small"
+            >
+                <template #header-extra>
+                    <n-button circle size="small" quaternary :disabled="savingPaymentDate" @click="closeEditPaymentDate">
+                        <template #icon><n-icon><CloseOutline /></n-icon></template>
+                    </n-button>
+                </template>
+
+                <div v-if="editingPaymentDate" class="space-y-3">
+                    <div class="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-600 border border-gray-100 flex justify-between">
+                        <span>Abono:</span>
+                        <span class="font-bold text-gray-800">{{ deletePaymentLabel(editingPaymentDate).amount }}</span>
+                    </div>
+                    <n-form-item label="Nueva fecha de pago" required>
+                        <n-date-picker v-model:value="editPaymentDateValue" type="date" class="w-full" />
+                    </n-form-item>
+                    <p class="text-[10px] text-gray-400 leading-snug">
+                        Solo usuarios con rol <strong>Admin</strong>. Si el abono está vinculado a una cuota,
+                        su estatus (a tiempo / extemporáneo / incumplido) se recalculará con la nueva fecha.
+                    </p>
+                </div>
+
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="closeEditPaymentDate" :disabled="savingPaymentDate">Cancelar</n-button>
+                        <n-button type="primary" :loading="savingPaymentDate" @click="savePaymentDate">
+                            <template #icon><n-icon><SaveOutline /></n-icon></template>
+                            Guardar fecha
+                        </n-button>
+                    </div>
+                </template>
+            </n-card>
+        </n-modal>
+
+        <!-- MODAL DE CONFIRMACIÓN: ELIMINAR ABONO -->
+        <n-modal
+            :show="showDeleteModal"
+            :mask-closable="false"
+            :close-on-esc="false"
+            @update:show="(val) => { if (!val) closeDeleteModal(); }"
+        >
+            <n-card
+                style="width: 500px; border-radius: 0.75rem;"
+                title="Eliminar Abono"
+                :bordered="false"
+                size="small"
+            >
+                <template #header-extra>
+                    <n-button circle size="small" quaternary :disabled="deletingPayment" @click="closeDeleteModal">
+                        <template #icon><n-icon><CloseOutline /></n-icon></template>
+                    </n-button>
+                </template>
+
+                <div v-if="paymentToDelete">
+                    <n-alert type="error" :bordered="false" class="mb-4">
+                        <template #icon><n-icon><AlertCircleOutline /></n-icon></template>
+                        <p class="text-sm">
+                            <strong>¡Atención!</strong> Se eliminará de forma permanente el registro del abono de
+                            <strong>{{ deletePaymentLabel(paymentToDelete).amount }}</strong>
+                            del <strong>{{ deletePaymentLabel(paymentToDelete).date }}</strong>
+                            <template v-if="paymentToDelete.notes"> (<em>{{ paymentToDelete.notes }}</em>)</template>.
+                        </p>
+                        <p class="text-xs mt-2 leading-relaxed">
+                            Esto incluye <strong>su comprobante / evidencia adjunta</strong>.
+                            Las cuotas que fueron marcadas como pagadas por este abono volverán a
+                            estado <strong>pendiente</strong> y el saldo de la orden se actualizará.
+                            Esta acción <strong>no se puede deshacer</strong>.
+                        </p>
+                    </n-alert>
+
+                    <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1.5 border border-gray-100">
+                        <div class="flex justify-between">
+                            <span>Monto del abono:</span>
+                            <span class="font-bold text-gray-800">{{ deletePaymentLabel(paymentToDelete).amount }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Fecha de pago:</span>
+                            <span>{{ deletePaymentLabel(paymentToDelete).date }}</span>
+                        </div>
+                        <div v-if="paymentToDelete.method" class="flex justify-between">
+                            <span>Método:</span>
+                            <span>{{ paymentToDelete.method }}</span>
+                        </div>
+                        <div v-if="paymentToDelete.receipt_url || (paymentToDelete.media && paymentToDelete.media.length)" class="flex justify-between text-red-600 font-medium">
+                            <span>Comprobante / evidencia:</span>
+                            <span>Será eliminado</span>
+                        </div>
+                    </div>
+                </div>
+
+                <template #footer>
+                    <div class="flex justify-end gap-3">
+                        <n-button @click="closeDeleteModal" :disabled="deletingPayment">Cancelar</n-button>
+                        <n-button type="error" @click="confirmDeletePayment" :loading="deletingPayment">
+                            <template #icon><n-icon><TrashOutline /></n-icon></template>
+                            Sí, eliminar abono
                         </n-button>
                     </div>
                 </template>

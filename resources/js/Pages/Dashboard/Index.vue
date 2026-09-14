@@ -12,6 +12,7 @@ import LowStockWidget from './Partials/LowStockWidget.vue';
 import PurchaseOrdersWidget from './Partials/PurchaseOrdersWidget.vue';
 import ClientBalancesWidget from './Partials/ClientBalancesWidget.vue';
 import PaymentRemindersWidget from './Partials/PaymentRemindersWidget.vue';
+import PortalPaymentsWidget from './Partials/PortalPaymentsWidget.vue';
 
 // Componente para mostrar permisos requeridos
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
@@ -29,6 +30,7 @@ const props = defineProps({
     weeklyTasks: Object,
     weekDays: Array,
     upcomingPayments: Array,
+    pendingPortalPayments: Array,
 });
 
 const { hasPermission } = usePermissions();
@@ -231,6 +233,14 @@ const formatCurrency = (value) => {
                         <PermissionTooltip permission="collection.show" placement="left" :size="14" />
                     </div>
                     <PaymentRemindersWidget :payments="upcomingPayments" />
+                </div>
+
+                <!-- WIDGET: ABONOS DEL PORTAL POR VALIDAR -->
+                <div v-if="hasPermission('validar_abonos')" class="mb-8 relative">
+                    <div class="absolute top-3 right-3 z-10">
+                        <PermissionTooltip permission="validar_abonos" placement="left" :size="14" />
+                    </div>
+                    <PortalPaymentsWidget :payments="pendingPortalPayments" />
                 </div>
 
                 <!-- Grid Principal de Widgets -->

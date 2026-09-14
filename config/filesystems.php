@@ -47,6 +47,19 @@ return [
             'report' => false,
         ],
 
+        /*
+        | Disco compartido con el portal de clientes: apunta al mismo
+        | storage público del ERP donde el portal guarda los comprobantes.
+        */
+        'erp_media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public'),
+            'url' => env('APP_URL').'/storage',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
