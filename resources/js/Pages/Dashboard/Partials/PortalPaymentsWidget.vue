@@ -7,6 +7,7 @@ import {
 } from 'naive-ui';
 import {
     CashOutline, DocumentTextOutline, CheckmarkCircleOutline, CloseCircleOutline,
+    ChatbubbleEllipsesOutline,
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -69,7 +70,7 @@ function confirmReject() {
 </script>
 
 <template>
-    <n-card title="Abonos del Portal por Validar" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
+    <n-card title="Abonos del Portal de clientes por Validar" size="medium" class="shadow-sm rounded-2xl border-none" content-style="padding: 0;">
         <template #header-extra>
             <div class="flex items-center gap-2">
                 <PermissionTooltip permission="validar_abonos" placement="bottom" :size="13" />
@@ -101,6 +102,16 @@ function confirmReject() {
                                 <div class="text-[11px] text-gray-400 mt-0.5">
                                     Registrado: {{ p.created_at }}
                                     <span v-if="p.reference"> · Ref: {{ p.reference }}</span>
+                                </div>
+                                <div v-if="p.notes" class="flex items-start gap-1 mt-1">
+                                    <n-icon
+                                        :component="ChatbubbleEllipsesOutline"
+                                        size="13"
+                                        class="mt-0.5 flex-shrink-0 text-gray-400"
+                                    />
+                                    <span class="text-[11px] text-gray-500 whitespace-pre-line break-words">
+                                        {{ p.notes }}
+                                    </span>
                                 </div>
                             </div>
                         </div>

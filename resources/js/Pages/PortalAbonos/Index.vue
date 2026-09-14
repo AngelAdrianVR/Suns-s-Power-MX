@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
-import { NButton, NInput, NModal, NPopconfirm, NTag } from 'naive-ui';
-import { CheckmarkCircleOutline, CloseCircleOutline, DocumentTextOutline } from '@vicons/ionicons5';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NTag } from 'naive-ui';
+import { ArrowBackOutline, CheckmarkCircleOutline, CloseCircleOutline, DocumentTextOutline } from '@vicons/ionicons5';
+import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
     abonos: Array,
@@ -65,19 +66,26 @@ function confirmReject() {
 </script>
 
 <template>
-    <div class="py-8 min-h-screen bg-gray-50">
-        <Head title="Validación de abonos del portal" />
-
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+    <AppLayout title="Abonos del Portal de Clientes">
+        <template #header>
+            <div class="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h2 class="font-bold text-2xl text-gray-800">Abonos del Portal de Clientes</h2>
+                    <h2 class="font-semibold text-2xl text-gray-800 leading-tight">Abonos del Portal de Clientes</h2>
                     <p class="text-sm text-gray-500 mt-1">
                         {{ abonos.length }} abonos registrados · {{ pendingCount }} pendientes de validación
                     </p>
                 </div>
-            </div>
 
+                <Link :href="route('portal-clientes.index')">
+                    <n-button round class="shadow-sm">
+                        <template #icon><n-icon :component="ArrowBackOutline" /></template>
+                        Volver al portal de clientes
+                    </n-button>
+                </Link>
+            </div>
+        </template>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -95,7 +103,16 @@ function confirmReject() {
                         </thead>
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="abono in abonos" :key="abono.id" class="hover:bg-gray-50">
-                                <td class="px-4 py-3 text-sm text-gray-800 font-medium">{{ abono.client_name || '—' }}</td>
+                                <td class="px-4 py-3 text-sm font-medium">
+                                    <Link
+                                        v-if="abono.client_id"
+                                        :href="route('clients.show', abono.client_id)"
+                                        class="text-blue-600 hover:text-blue-800 hover:underline"
+                                    >
+                                        {{ abono.client_name || '—' }}
+                                    </Link>
+                                    <span v-else class="text-gray-800">{{ abono.client_name || '—' }}</span>
+                                </td>
                                 <td class="px-4 py-3 text-sm text-gray-600">{{ abono.service_number || '—' }}</td>
                                 <td class="px-4 py-3 text-sm font-semibold text-gray-800">{{ formatCurrency(abono.amount) }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-600">
@@ -199,5 +216,5 @@ function confirmReject() {
                 </div>
             </template>
         </n-modal>
-    </div>
+    </AppLayout>
 </template>
