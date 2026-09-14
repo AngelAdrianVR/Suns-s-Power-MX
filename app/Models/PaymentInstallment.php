@@ -13,6 +13,35 @@ class PaymentInstallment extends Model
     /** Días de gracia antes de aplicar interés */
     public const GRACE_PERIOD_DAYS = 5;
 
+    /** Días comerciales considerados como 1 mes para el cálculo de interés */
+    public const DAYS_PER_MONTH = 30;
+
+    /**
+     * Tasa diaria equivalente (compuesto diario tipo bancario).
+     * Se obtiene capitalizando la tasa mensual del 10% en 30 días:
+     *   (1 + 0.10)^(1/30) - 1 ≈ 0.3184% diario
+     */
+    public static function dailyInterestRate(): float
+    {
+        return pow(1 + self::MONTHLY_INTEREST_RATE, 1 / self::DAYS_PER_MONTH) - 1;
+    }
+
+    /**
+     * Calcula el interés compuesto diario para un monto y un número de días de retraso
+     * después del periodo de gracia (tipo bancario).
+     */
+    public static function interestForLateDays(float $amount, int $lateDays): float
+    {
+        if ($lateDays <= 0 || $amount <= 0) {
+            return 0.0;
+        }
+
+        $daily = self::dailyInterestRate();
+        $total = (float) $amount * pow(1 + $daily, $lateDays);
+
+        return round($total - (float) $amount, 2);
+    }
+
     protected $fillable = [
         'service_order_id',
         'installment_number',
@@ -118,9 +147,11 @@ class PaymentInstallment extends Model
 
     /**
      * Calcular el interés moratorio acumulado para esta cuota.
-     * 10% mensual compuesto sobre el monto base.
-     * Después de 5 días de gracia se aplica el primer 10%.
-     * Cada 30 días adicionales se aplica otro 10% sobre el acumulado.
+     * 10% mensual con capitalización DIARIA tipo bancario.
+     *
+     * Después de los 5 días de gracia, el interés comienza a crecer TODOS los días
+     * de forma proporcional y compuesta (cada día se capitaliza sobre el saldo
+     * del día anterior usando la tasa diaria equivalente a 10% mensual).
      */
     public function calculateInterest(): float
     {
@@ -141,17 +172,13 @@ class PaymentInstallment extends Model
         $now = now()->startOfDay();
         $daysSinceProjected = (int) $projDate->copy()->startOfDay()->diffInDays($now, false);
 
+        // Días de retraso DESPUÉS del periodo de gracia
         $lateDays = $daysSinceProjected - self::GRACE_PERIOD_DAYS;
         if ($lateDays <= 0) {
             return 0;
         }
 
-        // Meses de interés: cada 30 días de retraso = 1 mes de interés compuesto
-        // lateDays 1-30 → 1 mes, 31-60 → 2 meses, 61-90 → 3 meses, etc.
-        $monthsOfInterest = (int) ceil($lateDays / 30);
-        $totalWithInterest = (float) $this->amount * pow(1 + self::MONTHLY_INTEREST_RATE, $monthsOfInterest);
-
-        return round($totalWithInterest - (float) $this->amount, 2);
+        return self::interestForLateDays((float) $this->amount, $lateDays);
     }
 
     /**
@@ -164,6 +191,7 @@ class PaymentInstallment extends Model
 
     /**
      * Accesor: días de retraso después del período de gracia (0 si no hay).
+     * Es exactamente el número de días sobre los que se capitaliza el interés.
      */
     public function getDaysLateAttribute(): int
     {
@@ -182,12 +210,20 @@ class PaymentInstallment extends Model
     }
 
     /**
+     * Accesor: días de interés devengados (igual que days_late; se expone
+     * con este nombre para el frontend).
+     */
+    public function getInterestDaysAttribute(): int
+    {
+        return $this->days_late;
+    }
+
+    /**
      * Accesor: número de meses de interés acumulados (para el frontend).
+     * @deprecated Con la capitalización diaria se usa interest_days/days_late.
      */
     public function getMonthsOfInterestAttribute(): int
     {
-        $lateDays = $this->days_late;
-        if ($lateDays <= 0) return 0;
-        return (int) ceil($lateDays / 30);
+        return (int) ceil($this->days_late / self::DAYS_PER_MONTH);
     }
 }

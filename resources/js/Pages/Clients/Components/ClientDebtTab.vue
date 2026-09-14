@@ -429,7 +429,7 @@ const columns = [
                                         </div>
                                         <!-- Interés moratorio -->
                                         <div v-if="inst.interest > 0" class="flex justify-between text-red-500">
-                                            <span>Interés {{ inst.months_of_interest }} mes(es):</span>
+                                            <span>Interés ({{ inst.interest_days || inst.days_late || 0 }} día(s) · 10% mensual compuesto diario):</span>
                                             <span class="font-bold">+ {{ formatCurrency(inst.interest) }}</span>
                                         </div>
                                         <div v-if="inst.interest > 0" class="flex justify-between border-t border-red-100 pt-1 mt-1">

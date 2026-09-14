@@ -221,8 +221,22 @@ export default {
                     label: 'Clientes',
                     icon: icons.clients,
                     route: 'clients.index',
-                    active: current('clients.*'),
-                    show: hasPermission('clients.index')
+                    active: current('clients.*') || current('portal-clientes.*') || current('portal-abonos.*'),
+                    show: hasPermission('clients.index') || hasPermission('validar_abonos'),
+                    children: [
+                        {
+                            label: 'Cartera de clientes',
+                            route: 'clients.index',
+                            active: current('clients.*'),
+                            show: hasPermission('clients.index')
+                        },
+                        {
+                            label: 'Portal de clientes',
+                            route: 'portal-clientes.index',
+                            active: current('portal-clientes.*') || current('portal-abonos.*'),
+                            show: hasPermission('validar_abonos')
+                        }
+                    ]
                 },
                 {
                     label: 'Tickets',

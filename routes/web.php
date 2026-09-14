@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientStatementController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DashboardController;
@@ -17,6 +18,8 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\TicketController; // Importar el controlador
 use App\Http\Controllers\TaskTemplateController; // IMPORTANTE: Agregado
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\PortalClientesController;
+use App\Http\Controllers\PortalPaymentController;
 use App\Http\Controllers\WarehouseReconciliationController; // <-- NUEVO CONTROLADOR ALMACÉN
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -219,6 +222,16 @@ Route::middleware('auth')->group(function () {
     Route::post('/almacen/conciliaciones/{serviceOrder}/approve', [WarehouseReconciliationController::class, 'approve'])->name('warehouse.reconciliations.approve');
 });
 
+// ---------------------------- PORTAL DE CLIENTES: HUB Y VALIDACIÓN DE ABONOS --------------------------
+Route::middleware(['auth', 'permission:validar_abonos'])->group(function () {
+    // Hub del portal: tarjetas de módulos (por ahora solo Pagos)
+    Route::get('/portal-clientes', [PortalClientesController::class, 'index'])->name('portal-clientes.index');
+
+    Route::get('/portal-abonos', [PortalPaymentController::class, 'index'])->name('portal-abonos.index');
+    Route::post('/portal-abonos/{portalPayment}/aprobar', [PortalPaymentController::class, 'approve'])->name('portal-abonos.approve');
+    Route::post('/portal-abonos/{portalPayment}/rechazar', [PortalPaymentController::class, 'reject'])->name('portal-abonos.reject');
+});
+
 
 // ---------------------------- Rutas de Tickets (Soporte) --------------------------------
 // Ruta para AGREGAR RESPUESTA/COMENTARIO (Reply)
@@ -271,6 +284,14 @@ Route::get('/clientes/reporte-cartera', [ClientController::class, 'debtReport'])
     ->middleware('auth');
 Route::resource('clientes', ClientController::class)->names('clients')
 ->parameters(['clientes' => 'client'])->middleware('auth');
+
+// ---------------------------- ESTADO DE CUENTA DEL CLIENTE (vista + PDF igual al del portal) -------------
+Route::get('/clientes/{client}/estado-cuenta', [ClientStatementController::class, 'view'])
+    ->name('clients.statement.view')->middleware('auth');
+Route::get('/clientes/{client}/estado-cuenta/descargar', [ClientStatementController::class, 'downloadAll'])
+    ->name('clients.statement.download-all')->middleware('auth');
+Route::get('/clientes/{client}/estado-cuenta/servicios/{serviceOrder}', [ClientStatementController::class, 'download'])
+    ->name('clients.statement.service')->middleware('auth');
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
 Route::get('/api/clients/{client}/details', [ClientController::class, 'getClientDetails'])
     ->name('api.clients.details'); 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use App\Models\PaymentInstallment;
+use App\Models\PortalPayment;
 use App\Models\PurchaseOrder;
 use App\Models\ServiceOrder;
 use App\Models\Task;
@@ -236,6 +237,35 @@ class DashboardController extends Controller
             ->filter(fn($p) => $p['client'] !== null)
             ->values();
 
+        // 7. ABONOS DEL PORTAL DE CLIENTES PENDIENTES DE VALIDACIÓN
+        // Solo se carga el payload para usuarios con permiso validar_abonos.
+        $pendingPortalPayments = collect();
+
+        if (Auth::user()->can('validar_abonos')) {
+            $pendingPortalPayments = PortalPayment::with(['client:id,name', 'serviceOrder:id,service_number'])
+                ->where('status', PortalPayment::STATUS_IN_REVIEW)
+                ->where('branch_id', $branchId)
+                ->latest()
+                ->take(10)
+                ->get()
+                ->map(fn (PortalPayment $p) => [
+                    'id' => $p->id,
+                    'client_id' => $p->client?->id,
+                    'client_name' => $p->client?->name,
+                    'service_number' => $p->serviceOrder?->service_number,
+                    'amount' => (float) $p->amount,
+                    'payment_date' => $p->payment_date?->format('d/m/Y'),
+                    'method' => $p->method,
+                    'reference' => $p->reference,
+                    'notes' => $p->notes,
+                    'created_at' => $p->created_at?->format('d/m/Y H:i'),
+                    'receipt' => (($media = $p->getFirstMedia('receipts')) !== null)
+                        ? ['url' => $media->getUrl(), 'name' => $media->file_name]
+                        : null,
+                ])
+                ->values();
+        }
+
         return Inertia::render('Dashboard/Index', [
             'pendingServiceOrders' => $pendingServiceOrders,
             'lowStockProducts' => $lowStockProducts,
@@ -245,6 +275,7 @@ class DashboardController extends Controller
             'weeklyTasks' => $weeklyTasks,
             'weekDays' => $weekDays,
             'upcomingPayments' => $upcomingPayments,
+            'pendingPortalPayments' => $pendingPortalPayments,
         ]);
     }
 }
