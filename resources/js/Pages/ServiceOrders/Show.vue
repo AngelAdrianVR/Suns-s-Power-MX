@@ -336,6 +336,11 @@ const documentationOptions = computed(() => {
         key: 'arco'
     });
 
+    options.push({
+        label: 'Carta Poder',
+        key: 'carta'
+    });
+
     return options;
 });
 
@@ -349,6 +354,12 @@ const handleDocumentationSelect = (key) => {
     if (key === 'arco') {
         // Carta editable, se abre en una pestaña nueva, sin AppLayout
         window.open(route('service-orders.solicitud-arco-cfe', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'carta') {
+        // Carta poder editable + hojas de INE, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.carta-poder', props.order.id), '_blank');
         return;
     }
 

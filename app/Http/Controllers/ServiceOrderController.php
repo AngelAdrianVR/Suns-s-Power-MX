@@ -27,6 +27,7 @@ use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Carbon\Carbon;
 
 class ServiceOrderController extends Controller
@@ -1911,6 +1912,272 @@ class ServiceOrderController extends Controller
             'file_name' => $fileName,
             'mime_type' => 'application/pdf',
             'message' => 'Solicitud Arco CFE vinculada a la orden de servicio.',
+        ]);
+    }
+
+    // ========================================================================
+    // CARTA PODER (otorgante = cliente; apoderado y testigos = usuarios)
+    // ========================================================================
+
+    /**
+     * Nombre del mes en español (para la fecha escrita de la carta).
+     */
+    private function mesEnLetra(int $month): string
+    {
+        $meses = [
+            1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
+            5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
+            9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+        ];
+
+        return $meses[$month] ?? '';
+    }
+
+    /**
+     * Convierte el archivo INE de un usuario en una página completa del PDF.
+     */
+    private function inePagePayload(Media $media, string $personName): array
+    {
+        $isImage = in_array($media->mime_type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'], true);
+
+        // DomPDF incrusta JPEG sin GD (lee el archivo directo). PNG/WebP/GIF/BMP sí requieren GD.
+        $isJpeg = $media->mime_type === 'image/jpeg';
+        $gdAvailable = extension_loaded('gd');
+        $path = $media->getPath();
+
+        if ($isImage && file_exists($path) && ($isJpeg || $gdAvailable)) {
+            return $this->imagePagePayload($path, $personName, $media->file_name);
+        }
+
+        return [
+            'person' => $personName,
+            'src' => null,
+            'w' => 192.0,
+            'h' => null,
+            'is_image' => false,
+            'file_name' => $media->file_name,
+            'needs_gd' => $isImage && !$isJpeg && !$gdAvailable,
+        ];
+    }
+
+    /**
+     * Payload de una imagen (ruta local) lista para incrustarse en una hoja.
+     */
+    private function imagePagePayload(string $path, string $personName, string $file_name): array
+    {
+        $dims = @getimagesize($path);
+        $pageW = 192.0;
+        $pageH = 245.0;
+        $width = $pageW;
+        $height = null;
+
+        if ($dims && !empty($dims[0]) && !empty($dims[1])) {
+            $ratio = $dims[1] / $dims[0];
+            if ($ratio > $pageH / $pageW) {
+                $height = $pageH;
+                $width = $pageH / $ratio;
+            } else {
+                $width = $pageW;
+                $height = $width * $ratio;
+            }
+        } else {
+            $height = 150.0;
+        }
+
+        return [
+            'person' => $personName,
+            'src' => $path,
+            'w' => round($width, 1),
+            'h' => round($height, 1),
+            'is_image' => true,
+            'file_name' => $file_name,
+            'needs_gd' => false,
+        ];
+    }
+
+    /**
+     * Vista de la Carta Poder (pestaña nueva, sin AppLayout).
+     * GET /ordenes-servicio/{serviceOrder}/carta-poder
+     */
+    public function cartaPoder(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        $serviceOrder->load('client');
+
+        $today = now();
+
+        $fields = [
+            'ciudad' => (string) ($serviceOrder->installation_municipality ?? ''),
+            'dia' => $today->format('d'),
+            'mes' => $this->mesEnLetra((int) $today->format('n')),
+            'anio' => (string) $today->year,
+            'vigencia' => '6 meses',
+            'otorgante_nombre' => (string) ($serviceOrder->client?->name ?? ''),
+            'otorgante_domicilio' => (string) ($serviceOrder->client?->fullAddress ?? ''),
+            'otorgante_ine' => '',
+            'apoderado_nombre' => '',
+            'apoderado_ine' => '',
+            'testigo1_nombre' => '',
+            'testigo1_ine' => '',
+            'testigo2_nombre' => '',
+            'testigo2_ine' => '',
+        ];
+
+        $users = User::where('branch_id', $branchId)
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone', 'email', 'ine_number'])
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'phone' => $user->phone,
+                    'email' => $user->email,
+                    'ine_number' => $user->ine_number,
+                    'media' => $user->getMedia('documents')->map(fn ($m) => [
+                        'id' => $m->id,
+                        'file_name' => $m->file_name,
+                        'mime_type' => $m->mime_type,
+                        'url' => $m->getUrl(),
+                    ])->values(),
+                ];
+            })
+            ->values();
+
+        return Inertia::render('ServiceOrders/CartaPoder', [
+            'order' => [
+                'id' => $serviceOrder->id,
+                'service_number' => $serviceOrder->service_number,
+            ],
+            'fields' => $fields,
+            'users' => $users,
+            'linked' => $serviceOrder->getMedia('carta_poder')->isNotEmpty(),
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+    }
+
+    /**
+     * Genera el PDF de la Carta Poder (carta + una hoja por INE) y lo vincula a la orden.
+     * POST /ordenes-servicio/{serviceOrder}/carta-poder/vincular
+     */
+    public function linkCartaPoder(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'fields' => 'required|array',
+            'fields.*' => 'nullable|string|max:500',
+            'apoderado_id' => 'nullable|integer',
+            'testigo1_id' => 'nullable|integer',
+            'testigo2_id' => 'nullable|integer',
+            'ine_media' => 'nullable|array',
+            'ine_media.*' => 'nullable|integer',
+            'ine_images' => 'nullable|array',
+            'ine_images.*' => 'nullable|string',
+        ]);
+
+        $fields = array_merge([
+            'ciudad' => '',
+            'dia' => now()->format('d'),
+            'mes' => '',
+            'anio' => (string) now()->year,
+            'vigencia' => '6 meses',
+            'otorgante_nombre' => '',
+            'otorgante_domicilio' => '',
+            'otorgante_ine' => '',
+            'apoderado_nombre' => '',
+            'apoderado_ine' => '',
+            'testigo1_nombre' => '',
+            'testigo1_ine' => '',
+            'testigo2_nombre' => '',
+            'testigo2_ine' => '',
+        ], $validated['fields']);
+
+        $roles = [
+            'apoderado' => 'apoderado_id',
+            'testigo1' => 'testigo1_id',
+            'testigo2' => 'testigo2_id',
+        ];
+
+        $userIds = array_filter(array_map(fn ($key) => (int) ($validated[$key] ?? 0), $roles));
+        $users = User::whereIn('id', $userIds)->get()->keyBy('id');
+
+        $ineImages = $validated['ine_images'] ?? [];
+        $tmpJpgs = [];
+
+        $inePages = [];
+        foreach ($roles as $role => $key) {
+            $userId = (int) ($validated[$key] ?? 0);
+            $personName = (string) ($users[$userId]->name ?? $fields[$role.'_nombre'] ?? $role);
+
+            // 1) Imagen JPEG convertida en el navegador (funciona sin GD)
+            if ($userId && !empty($ineImages[$role]) && str_starts_with((string) $ineImages[$role], 'data:image/')) {
+                $binary = base64_decode((string) preg_replace('/^data:image\/\w+;base64,/', '', $ineImages[$role]), true);
+                if ($binary !== false && $binary !== '') {
+                    $tmpJpg = tempnam(sys_get_temp_dir(), 'ine').'.jpg';
+                    file_put_contents($tmpJpg, $binary);
+                    $tmpJpgs[] = $tmpJpg;
+                    $inePages[$role] = $this->imagePagePayload($tmpJpg, $personName, 'INE.jpg');
+                    continue;
+                }
+            }
+
+            // 2) Respaldo: archivo original vinculado al usuario
+            $mediaId = (int) ($validated['ine_media'][$role] ?? 0);
+            $media = null;
+            if ($userId && $mediaId) {
+                $media = Media::query()
+                    ->where('id', $mediaId)
+                    ->where('model_type', User::class)
+                    ->where('model_id', $userId)
+                    ->first();
+            }
+
+            $inePages[$role] = $media ? $this->inePagePayload($media, $personName) : null;
+        }
+
+        $pdf = Pdf::loadView('pdf.carta-poder', [
+            'fields' => $fields,
+            'ine_pages' => $inePages,
+            'order' => $serviceOrder,
+            'generatedAt' => now(),
+        ])->setPaper('letter');
+
+        $fileName = 'carta-poder-orden-'.$serviceOrder->id.'.pdf';
+
+        // Se reemplaza la carta vinculada anterior (si existe) para no duplicar
+        $serviceOrder->clearMediaCollection('carta_poder');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'cartapoder');
+        file_put_contents($tmpPath, $pdf->output());
+
+        // Limpiar los JPEG temporales generados en este request
+        foreach ($tmpJpgs as $tmpJpg) {
+            @unlink($tmpJpg);
+        }
+
+        try {
+            $serviceOrder->addMedia($tmpPath)
+                ->usingName('Carta Poder')
+                ->usingFileName($fileName)
+                ->withCustomProperties(['category' => 'carta_poder'])
+                ->toMediaCollection('carta_poder');
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'linked' => true,
+            'file_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'message' => 'Carta Poder vinculada a la orden de servicio.',
         ]);
     }
 

@@ -78,6 +78,7 @@ class UserController extends Controller
             'curp' => 'nullable|string|max:18',
             'rfc' => 'nullable|string|max:13',
             'nss' => 'nullable|string|max:11',
+            'ine_number' => 'nullable|string|max:18',
 
             // Domicilio
             'street' => 'nullable|string|max:255',
@@ -232,6 +233,7 @@ class UserController extends Controller
             'curp' => 'nullable|string|max:18',
             'rfc' => 'nullable|string|max:13',
             'nss' => 'nullable|string|max:11',
+            'ine_number' => 'nullable|string|max:18',
 
             // Domicilio
             'street' => 'nullable|string|max:255',
@@ -305,6 +307,56 @@ class UserController extends Controller
         return redirect()->route('users.show', $user->id)->with('flash', [
             'type' => 'success',
             'message' => 'Expediente actualizado correctamente.'
+        ]);
+    }
+
+    /**
+     * Sube uno o múltiples documentos al expediente del usuario desde el Show.
+     */
+    public function uploadDocuments(Request $request, User $user)
+    {
+        $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($user->branch_id !== $currentBranchId) {
+            abort(403, 'No tienes permiso para subir documentos a este usuario.');
+        }
+
+        $request->validate([
+            'documents' => 'required|array',
+            'documents.*' => 'file|max:10240',
+        ]);
+
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                $user->addMedia($file)->toMediaCollection('documents');
+            }
+        }
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => 'Documentos subidos correctamente.'
+        ]);
+    }
+
+    /**
+     * Guarda el número de INE del usuario desde el Show.
+     */
+    public function updateIne(Request $request, User $user)
+    {
+        $currentBranchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($user->branch_id !== $currentBranchId) {
+            abort(403, 'No tienes permiso para actualizar este usuario.');
+        }
+
+        $request->validate([
+            'ine_number' => 'required|string|max:18',
+        ]);
+
+        $user->ine_number = $request->ine_number;
+        $user->save();
+
+        return back()->with('flash', [
+            'type' => 'success',
+            'message' => 'Número de INE actualizado correctamente.'
         ]);
     }
 

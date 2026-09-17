@@ -1,13 +1,13 @@
 <script>
 import { ref, onMounted } from 'vue'; // Importar ref y onMounted
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { usePermissions } from '@/Composables/usePermissions'; 
 import { useSecureFile } from '@/Composables/useSecureFile'; // Importar useSecureFile
 import { 
     NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem, NButton, NIcon, 
     NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, NGrid, NGridItem,
-    createDiscreteApi, NImage, NImageGroup, NTooltip, NPopconfirm
+    createDiscreteApi, NImage, NImageGroup, NTooltip, NPopconfirm, NInput
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, 
@@ -21,7 +21,7 @@ export default {
     components: {
         AppLayout, Head, Link, NCard, NAvatar, NTag, NDescriptions, NDescriptionsItem,
         NButton, NIcon, NDivider, NTabs, NTabPane, NList, NListItem, NThing, NEmpty, NSpin, 
-        NGrid, NGridItem, NImage, NImageGroup, NTooltip, NPopconfirm,
+        NGrid, NGridItem, NImage, NImageGroup, NTooltip, NPopconfirm, NInput,
         // Iconos
         ArrowBackOutline, CreateOutline, MailOutline, BusinessOutline, CalendarOutline,
         PowerOutline, CheckmarkCircleOutline, TimeOutline, AlertCircleOutline,
@@ -39,12 +39,15 @@ export default {
             default: () => []
         }
     },
-    setup() {
+    setup(props) {
         const { notification, dialog } = createDiscreteApi(['notification', 'dialog']);
         const { hasPermission } = usePermissions(); 
         const { isOpeningFile, openFileWithRetry } = useSecureFile(); // Inicializar SecureFile
 
         const activeTab = ref('profile');
+        const fileInput = ref(null);
+        const uploadForm = useForm({ documents: [] });
+        const ineForm = useForm({ ine_number: '' });
 
         // Sincronizar pestaña con la URL al montar
         onMounted(() => {
@@ -62,6 +65,66 @@ export default {
             url.searchParams.set('tab', name);
             window.history.replaceState({}, '', url);
         };
+
+        const triggerFileInput = () => {
+            fileInput.value?.click();
+        };
+
+        const handleFileChange = (event) => {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+
+            uploadForm.documents = files;
+            uploadForm.post(route('users.documents.store', props.user.id), {
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+                onSuccess: () => {
+                    notification.success({
+                        title: 'Documentos subidos',
+                        content: 'Los archivos se agregaron al expediente.',
+                        duration: 3000
+                    });
+                    window.location.reload();
+                },
+                onError: () => {
+                    notification.error({
+                        title: 'Error',
+                        content: 'Hubo un problema al subir los documentos.',
+                        duration: 3000
+                    });
+                }
+            });
+        };
+
+        const saveIne = () => {
+            if (!ineForm.ine_number) {
+                notification.warning({
+                    title: 'Campo requerido',
+                    content: 'Ingresa el número de INE.',
+                    duration: 3000
+                });
+                return;
+            }
+
+            ineForm.patch(route('users.update-ine', props.user.id), {
+                preserveScroll: true,
+                onSuccess: () => {
+                    notification.success({
+                        title: 'INE guardado',
+                        content: 'El número de INE se guardó correctamente.',
+                        duration: 3000
+                    });
+                },
+                onError: () => {
+                    notification.error({
+                        title: 'Error',
+                        content: 'No se pudo guardar el número de INE.',
+                        duration: 3000
+                    });
+                }
+            });
+        };
         
         return { 
             notification,
@@ -70,6 +133,12 @@ export default {
             isOpeningFile,
             openFileWithRetry,
             activeTab,
+            fileInput,
+            uploadForm,
+            triggerFileInput,
+            handleFileChange,
+            ineForm,
+            saveIne,
             handleTabChange,
             CheckmarkCircleOutline,
             AlertCircleOutline,
@@ -299,6 +368,32 @@ export default {
                                                     </div>
                                                 </div>
                                             </n-list-item>
+                                            <n-list-item>
+                                                <span class="text-xs text-gray-400 uppercase">Número de INE</span>
+                                                <div v-if="user.ine_number" class="mt-1">
+                                                    <p class="font-medium text-gray-700">{{ user.ine_number }}</p>
+                                                </div>
+                                                <div v-else-if="hasPermission('users.edit')" class="mt-1 flex items-center gap-2">
+                                                    <n-input
+                                                        v-model:value="ineForm.ine_number"
+                                                        placeholder="N° INE"
+                                                        maxlength="18"
+                                                        uppercase
+                                                        size="small"
+                                                        class="max-w-xs"
+                                                    />
+                                                    <n-button
+                                                        type="primary"
+                                                        size="small"
+                                                        :loading="ineForm.processing"
+                                                        :disabled="!ineForm.ine_number || ineForm.processing"
+                                                        @click="saveIne"
+                                                    >
+                                                        Guardar
+                                                    </n-button>
+                                                </div>
+                                                <p v-else class="font-medium text-gray-700 mt-1">N/A</p>
+                                            </n-list-item>
                                         </n-list>
                                     </section>
 
@@ -444,13 +539,27 @@ export default {
                             <div class="p-2">
                                 <div class="flex justify-between items-center mb-6">
                                     <h3 class="text-lg font-bold text-gray-700">Archivos Adjuntos ({{ user.media?.length || 0 }})</h3>
-                                    <n-button v-if="hasPermission('users.edit')" @click="goToEdit" size="small" type="primary" ghost>
-                                        <template #icon><n-icon><CloudUploadOutline /></n-icon></template> Subir Nuevo
-                                    </n-button>
+                                </div>
+
+                                <input type="file" ref="fileInput" class="hidden" multiple @change="handleFileChange" />
+
+                                <div
+                                    v-if="hasPermission('users.edit')"
+                                    @click="triggerFileInput"
+                                    class="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center mb-6 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer group relative"
+                                >
+                                    <div v-if="uploadForm.processing" class="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-xl">
+                                        <span class="text-indigo-600 font-bold animate-pulse">Subiendo...</span>
+                                    </div>
+                                    <div class="bg-blue-50 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform">
+                                        <n-icon size="20" class="text-blue-500"><CloudUploadOutline /></n-icon>
+                                    </div>
+                                    <h4 class="font-bold text-gray-700 text-sm">Subir documentos</h4>
+                                    <p class="text-gray-400 text-[10px] mt-1">Clic para explorar (soporta múltiples archivos)</p>
                                 </div>
 
                                 <div v-if="user.media && user.media.length > 0">
-                                    <n-grid x-gap="12" y-gap="12" cols="1 sm:2 md:3 lg:4">
+                                    <n-grid x-gap="12" y-gap="12" cols="2 s:3 m:4 l:6" responsive="screen">
                                         <n-grid-item v-for="file in user.media" :key="file.id">
                                             <div class="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden group hover:border-blue-300 transition-all relative">
                                                 

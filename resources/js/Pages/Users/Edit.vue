@@ -82,6 +82,7 @@ export default {
             curp: props.user.curp || '',
             rfc: props.user.rfc || '',
             nss: props.user.nss || '',
+            ine_number: props.user.ine_number || '',
 
             // Domicilio
             street: props.user.street || '',
@@ -261,6 +262,10 @@ export default {
 
                             <n-form-item label="NSS" path="nss">
                                 <n-input v-model:value="form.nss" placeholder="11 dígitos" maxlength="11" />
+                            </n-form-item>
+
+                            <n-form-item label="Número de INE" path="ine_number">
+                                <n-input v-model:value="form.ine_number" placeholder="Clave de elector" maxlength="18" uppercase />
                             </n-form-item>
 
                             <n-form-item label="Correo Electrónico" path="email">

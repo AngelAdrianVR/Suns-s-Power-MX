@@ -238,6 +238,12 @@ Route::get('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe', [ServiceOrderC
 Route::post('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe/vincular', [ServiceOrderController::class, 'linkSolicitudArcoCfe'])
     ->name('service-orders.solicitud-arco-cfe.link')->middleware('auth');
 
+// Carta Poder (carta editable + hojas de INE, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/carta-poder', [ServiceOrderController::class, 'cartaPoder'])
+    ->name('service-orders.carta-poder')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/carta-poder/vincular', [ServiceOrderController::class, 'linkCartaPoder'])
+    ->name('service-orders.carta-poder.link')->middleware('auth');
+
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
 Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
@@ -361,6 +367,8 @@ Route::resource('/payments', PaymentController::class)->middleware('auth');
 // ---------------------------- Rutas de Usuarios --------------------------------
 Route::middleware('auth')->group(function () {
     Route::patch('/usuarios/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggle-status'); // Ruta específica para activar/desactivar usuario (Patch es ideal para actualizaciones parciales)
+    Route::post('/usuarios/{user}/documents', [UserController::class, 'uploadDocuments'])->name('users.documents.store');
+    Route::patch('/usuarios/{user}/ine', [UserController::class, 'updateIne'])->name('users.update-ine');
     Route::resource('usuarios', UserController::class)->names('users')->parameters(['usuarios' => 'user']);
 });
 
