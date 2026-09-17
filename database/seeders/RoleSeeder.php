@@ -79,6 +79,11 @@ class RoleSeeder extends Seeder
                 'description' => 'Ver el tablero de tareas operativas',
                 'module' => 'Ordenes de servicio'
             ],
+            [
+                'name' => 'service_documentation.generate',
+                'description' => 'Generar documentos y expediente de servicio desde la orden',
+                'module' => 'Ordenes de servicio'
+            ],
 
             // --- Módulo: Compras ---
             [
@@ -219,6 +224,11 @@ class RoleSeeder extends Seeder
                 'description' => 'Acceder a configuraciones generales del sistema',
                 'module' => 'Configuraciones'
             ],
+            [
+                'name' => 'service_documentation.config',
+                'description' => 'Configurar los pasos de la documentación de servicio',
+                'module' => 'Configuraciones'
+            ],
 
             // --- Módulo: Portal de Clientes ---
             [
@@ -258,6 +268,7 @@ class RoleSeeder extends Seeder
             'service_orders.create', // Cotizar
             'tasks.view_board',
             'tickets.create',
+            'service_documentation.generate',
         ]);
 
         // Role: Técnico
@@ -269,6 +280,7 @@ class RoleSeeder extends Seeder
             'tasks.view_board',
             'tickets.index',
             'tickets.manage', // Responder tickets asignados
+            'service_documentation.generate',
         ]);
 
         // Role: Almacén

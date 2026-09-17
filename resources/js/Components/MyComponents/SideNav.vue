@@ -263,8 +263,8 @@ export default {
                     label: 'Configuraciones',
                     icon: icons.settings,
                     route: 'roles.index', 
-                    active: current('roles.*') || current('task-templates.*'), 
-                    show: hasPermission('roles.index') || hasPermission('task-templates.index'),
+                    active: current('roles.*') || current('task-templates.*') || current('service-documentation.*'), 
+                    show: hasPermission('roles.index') || hasPermission('task-templates.index') || hasPermission('service_documentation.config'),
                     children: [
                         {
                             label: 'Roles y Permisos',
@@ -277,6 +277,12 @@ export default {
                             route: 'task-templates.index',
                             active: current('task-templates.*'),
                             show: hasPermission('task-templates.index')
+                        },
+                        {
+                            label: 'Documentación de servicio',
+                            route: 'service-documentation.index',
+                            active: current('service-documentation.*'),
+                            show: hasPermission('service_documentation.config')
                         },
                     ]
                 },

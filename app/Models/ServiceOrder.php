@@ -35,6 +35,8 @@ class ServiceOrder extends Model implements HasMedia
         'voltage',           // <-- NUEVO
         'number_of_wires',   // <-- NUEVO
         'number_of_units',   // <-- NUEVO
+        'panel_serials',     // Números de serie de los paneles instalados (arreglo)
+        'microinverters',    // Datos editables de los microinversores (modelo y serie por rama)
         'unit_capacity',     // <-- NUEVO
         'total_capacity',    // <-- NUEVO
         'meter_number',
@@ -70,6 +72,8 @@ class ServiceOrder extends Model implements HasMedia
         'completion_date' => 'datetime',
         'installation_lat' => 'decimal:8',
         'installation_lng' => 'decimal:8',
+        'panel_serials' => 'array',       // Números de serie de paneles
+        'microinverters' => 'array',      // Datos de microinversores del diagrama
         'unit_capacity' => 'decimal:2',   // <-- NUEVO
         'total_capacity' => 'decimal:2',  // <-- NUEVO
         'down_payment' => 'decimal:2',

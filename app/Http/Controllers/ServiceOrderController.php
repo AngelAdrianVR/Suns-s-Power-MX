@@ -16,7 +16,9 @@ use App\Models\SystemType;
 use App\Models\User;
 use App\Models\TaskTemplate; 
 use App\Models\Ticket;
+use App\Models\ServiceDocumentationStep;
 use App\Services\InventoryService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -483,6 +485,14 @@ class ServiceOrderController extends Controller
             });
         }
 
+        // Pasos de documentación de servicio configurados para esta sucursal
+        $documentationSteps = ServiceDocumentationStep::query()
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->orderBy('order')
+            ->orderBy('id')
+            ->get();
+
         return Inertia::render('ServiceOrders/Show', [
             'order' => $serviceOrder, 
             'diagram_data' => $diagramData,
@@ -493,7 +503,8 @@ class ServiceOrderController extends Controller
             ],
             'assignable_users' => $assignableUsers,
             'available_products' => $availableProducts,
-            'can_view_financials' => $canViewFinancials
+            'can_view_financials' => $canViewFinancials,
+            'documentation_steps' => $documentationSteps,
         ]);
     }
 
@@ -1547,6 +1558,359 @@ class ServiceOrderController extends Controller
             'success' => true,
             'price_per_module' => (float) $serviceOrder->price_per_module,
             'message' => 'Precio de mantenimiento actualizado correctamente.',
+        ]);
+    }
+
+    // ========================================================================
+    // NÚMEROS DE SERIE DE PANELES + DIAGRAMA UNIFILAR
+    // ========================================================================
+
+    /**
+     * Arreglo de paneles (número + serie) alineado con number_of_units.
+     */
+    private function unifilarPanels(ServiceOrder $serviceOrder): array
+    {
+        $units = max(0, (int) ($serviceOrder->number_of_units ?? 0));
+        $serials = $serviceOrder->panel_serials ?? [];
+
+        $panels = [];
+        for ($i = 0; $i < $units; $i++) {
+            $panels[] = [
+                'number' => $i + 1,
+                'serial' => trim((string) ($serials[$i] ?? '')),
+            ];
+        }
+
+        return $panels;
+    }
+
+    /**
+     * Microinversores del diagrama (uno por cada rama de 4 paneles),
+     * con valores guardados o los valores por defecto.
+     */
+    private function unifilarMicroinverters(ServiceOrder $serviceOrder, int $groupCount): array
+    {
+        $stored = $serviceOrder->microinverters ?? [];
+        $defaultModel = 'MICROINVERSOR SOLAX POWER X1-MICRO 2500 G2';
+
+        $micros = [];
+        for ($i = 0; $i < $groupCount; $i++) {
+            $micros[] = [
+                'model' => trim((string) ($stored[$i]['model'] ?? '')) ?: $defaultModel,
+                'serial' => trim((string) ($stored[$i]['serial'] ?? '')) ?: 'MI-'.($i + 1),
+            ];
+        }
+
+        return $micros;
+    }
+
+    /**
+     * API: Actualiza los números de serie de los paneles instalados.
+     * PATCH /api/service-orders/{serviceOrder}/panel-serials
+     */
+    public function updatePanelSerials(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'panel_serials' => 'nullable|array',
+            'panel_serials.*' => 'nullable|string|max:255',
+        ]);
+
+        // Solo se conservan tantas series como unidades instaladas haya
+        $units = max(0, (int) ($serviceOrder->number_of_units ?? 0));
+        $serials = [];
+        for ($i = 0; $i < $units; $i++) {
+            $serials[] = trim((string) ($validated['panel_serials'][$i] ?? ''));
+        }
+
+        $serviceOrder->update(['panel_serials' => $serials]);
+
+        return response()->json([
+            'success' => true,
+            'panel_serials' => $serviceOrder->panel_serials,
+            'message' => 'Números de serie guardados correctamente.',
+        ]);
+    }
+
+    /**
+     * API: Actualiza los datos editables del diagrama unifilar
+     * (números de serie de paneles y textos de los microinversores).
+     * PATCH /api/service-orders/{serviceOrder}/diagram-data
+     */
+    public function updateDiagramData(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'panel_serials' => 'nullable|array',
+            'panel_serials.*' => 'nullable|string|max:255',
+            'microinverters' => 'nullable|array',
+            'microinverters.*.model' => 'nullable|string|max:255',
+            'microinverters.*.serial' => 'nullable|string|max:255',
+        ]);
+
+        // Series de paneles: solo tantas como unidades instaladas haya
+        $units = max(0, (int) ($serviceOrder->number_of_units ?? 0));
+        $serials = [];
+        for ($i = 0; $i < $units; $i++) {
+            $serials[] = trim((string) ($validated['panel_serials'][$i] ?? ''));
+        }
+
+        // Microinversores: una entrada por rama (cada 4 paneles)
+        $micros = [];
+        foreach ($validated['microinverters'] ?? [] as $micro) {
+            $micros[] = [
+                'model' => trim((string) ($micro['model'] ?? '')),
+                'serial' => trim((string) ($micro['serial'] ?? '')),
+            ];
+        }
+
+        $serviceOrder->update([
+            'panel_serials' => $serials,
+            'microinverters' => $micros,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'panel_serials' => $serviceOrder->panel_serials,
+            'microinverters' => $serviceOrder->microinverters,
+            'message' => 'Datos del diagrama guardados correctamente.',
+        ]);
+    }
+
+    /**
+     * Vista del diagrama unifilar (se abre en pestaña nueva, sin AppLayout).
+     * GET /ordenes-servicio/{serviceOrder}/diagrama-unifilar
+     */
+    public function unifilarDiagram(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        $serviceOrder->load('client');
+
+        $panels = $this->unifilarPanels($serviceOrder);
+        $microinverters = $this->unifilarMicroinverters(
+            $serviceOrder,
+            (int) ceil(count($panels) / 4)
+        );
+
+        return Inertia::render('ServiceOrders/DiagramUnifilar', [
+            'order' => [
+                'id' => $serviceOrder->id,
+                'service_number' => $serviceOrder->service_number,
+                'status' => $serviceOrder->status,
+                'system_type' => $serviceOrder->system_type,
+                'number_of_units' => max(0, (int) ($serviceOrder->number_of_units ?? 0)),
+                'client' => $serviceOrder->client?->name,
+                'installation_address' => $serviceOrder->full_installation_address,
+            ],
+            'panels' => $panels,
+            'microinverters' => $microinverters,
+            'linked' => $serviceOrder->getMedia('diagram_unifilar')->isNotEmpty(),
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+    }
+
+    /**
+     * Vincula el diagrama unifilar a la orden como archivo adjunto
+     * (aparece en Evidencias y Documentos, igual que un archivo subido desde esa pestaña).
+     * POST /ordenes-servicio/{serviceOrder}/diagrama-unifilar/vincular
+     */
+    public function linkUnifilarDiagram(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $serviceOrder->load('client');
+
+        $panels = $this->unifilarPanels($serviceOrder);
+        $groups = array_chunk($panels, 4);
+        $microinverters = $this->unifilarMicroinverters($serviceOrder, count($groups));
+
+        $pdf = Pdf::loadView('pdf.diagrama-unifilar', [
+            'order' => $serviceOrder,
+            'panels' => $panels,
+            'groups' => $groups,
+            'microinverters' => $microinverters,
+            'generatedAt' => now(),
+        ])->setPaper('letter', 'landscape');
+
+        $fileName = 'diagrama-unifilar-orden-'.$serviceOrder->id.'.pdf';
+
+        // Se reemplaza el diagrama vinculado anterior (si existe) para no duplicar
+        $serviceOrder->clearMediaCollection('diagram_unifilar');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'unifilar');
+        file_put_contents($tmpPath, $pdf->output());
+
+        try {
+            $serviceOrder->addMedia($tmpPath)
+                ->usingName('Diagrama Unifilar')
+                ->usingFileName($fileName)
+                ->withCustomProperties(['category' => 'diagrama_unifilar'])
+                ->toMediaCollection('diagram_unifilar');
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'linked' => true,
+            'file_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'message' => 'Diagrama unifilar vinculado a la orden de servicio.',
+        ]);
+    }
+
+    // ========================================================================
+    // SOLICITUD ARCO CFE (carta editable que se vincula a la orden)
+    // ========================================================================
+
+    /**
+     * Enlace "VER" del domicilio en Google Maps (coordenadas o dirección).
+     */
+    private function mapsUrl(ServiceOrder $serviceOrder): ?string
+    {
+        if ($serviceOrder->installation_lat && $serviceOrder->installation_lng) {
+            return "https://www.google.com/maps/dir/?api=1&destination={$serviceOrder->installation_lat},{$serviceOrder->installation_lng}";
+        }
+
+        $addressQuery = [
+            $serviceOrder->installation_street,
+            $serviceOrder->installation_exterior_number,
+            $serviceOrder->installation_neighborhood,
+            $serviceOrder->installation_municipality,
+            $serviceOrder->installation_state,
+            $serviceOrder->installation_country ?? 'México',
+        ];
+
+        $finalQuery = collect($addressQuery)->filter()->implode(', ') ?: $serviceOrder->installation_address;
+
+        if (!$finalQuery) {
+            return null;
+        }
+
+        return 'https://www.google.com/maps/dir/?api=1&destination='.urlencode($finalQuery);
+    }
+
+    /**
+     * Vista de la Solicitud Arco CFE (pestaña nueva, sin AppLayout).
+     * GET /ordenes-servicio/{serviceOrder}/solicitud-arco-cfe
+     */
+    public function solicitudArcoCfe(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        $serviceOrder->load('client.contacts');
+
+        $contact = $serviceOrder->client?->contacts->first();
+
+        $fields = [
+            'fecha' => now()->format('d/m/Y'),
+            'servicio' => (string) ($serviceOrder->service_number ?? ''),
+            'cliente' => (string) ($serviceOrder->client?->name ?? ''),
+            'domicilio' => (string) $serviceOrder->full_installation_address,
+            'maps_url' => (string) ($this->mapsUrl($serviceOrder) ?? ''),
+            'rfc' => (string) ($serviceOrder->client?->tax_id ?? ''),
+            'regimen' => 'Sueldos y Salarios e Ingresos Asimilados a Salarios',
+            'uso_cfdi' => 'Sin efectos fiscales',
+            'telefono' => (string) ($contact?->phone ?? ''),
+            'correo' => (string) ($contact?->email ?? ''),
+            'calle' => (string) ($serviceOrder->installation_street ?? ''),
+            'entre_calles' => '',
+            'titular' => (string) ($serviceOrder->client?->name ?? ''),
+            'firma_nombre' => '',
+        ];
+
+        return Inertia::render('ServiceOrders/SolicitudArcoCfe', [
+            'order' => [
+                'id' => $serviceOrder->id,
+                'service_number' => $serviceOrder->service_number,
+            ],
+            'fields' => $fields,
+            'linked' => $serviceOrder->getMedia('solicitud_arco_cfe')->isNotEmpty(),
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+    }
+
+    /**
+     * Genera el PDF de la Solicitud Arco CFE con los datos editados y lo vincula a la orden.
+     * POST /ordenes-servicio/{serviceOrder}/solicitud-arco-cfe/vincular
+     */
+    public function linkSolicitudArcoCfe(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'fields' => 'required|array',
+            'fields.*' => 'nullable|string|max:500',
+        ]);
+
+        $fields = array_merge([
+            'fecha' => now()->format('d/m/Y'),
+            'servicio' => '',
+            'cliente' => '',
+            'domicilio' => '',
+            'maps_url' => '',
+            'rfc' => '',
+            'regimen' => 'Sueldos y Salarios e Ingresos Asimilados a Salarios',
+            'uso_cfdi' => 'Sin efectos fiscales',
+            'telefono' => '',
+            'correo' => '',
+            'calle' => '',
+            'entre_calles' => '',
+            'titular' => '',
+            'firma_nombre' => '',
+        ], $validated['fields']);
+
+        $pdf = Pdf::loadView('pdf.solicitud-arco-cfe', [
+            'fields' => $fields,
+            'order' => $serviceOrder,
+            'generatedAt' => now(),
+        ])->setPaper('letter');
+
+        $fileName = 'solicitud-arco-cfe-orden-'.$serviceOrder->id.'.pdf';
+
+        // Se reemplaza la solicitud vinculada anterior (si existe) para no duplicar
+        $serviceOrder->clearMediaCollection('solicitud_arco_cfe');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'arco');
+        file_put_contents($tmpPath, $pdf->output());
+
+        try {
+            $serviceOrder->addMedia($tmpPath)
+                ->usingName('Solicitud Arco CFE')
+                ->usingFileName($fileName)
+                ->withCustomProperties(['category' => 'solicitud_arco_cfe'])
+                ->toMediaCollection('solicitud_arco_cfe');
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'linked' => true,
+            'file_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'message' => 'Solicitud Arco CFE vinculada a la orden de servicio.',
         ]);
     }
 

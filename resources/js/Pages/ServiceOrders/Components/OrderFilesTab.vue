@@ -261,6 +261,10 @@ const isImage = (file) => {
                             <n-spin v-else size="small" />
                             <span class="text-xs text-indigo-600 font-bold">Ver Documento</span>
                         </div>
+                        <!-- Nombre del archivo para identificarlo sin abrirlo -->
+                        <p class="mt-1 text-[11px] text-gray-600 truncate leading-tight" :title="file.name || file.file_name">
+                            {{ file.name || file.file_name }}
+                        </p>
                         <PermissionTooltip permission="service_orders.edit" placement="left" :size="11" />
                         <n-popconfirm v-if="hasPermission('service_orders.edit')" @positive-click="router.delete(route('media.delete-file', file.id), { preserveScroll: true })">
                             <template #trigger>

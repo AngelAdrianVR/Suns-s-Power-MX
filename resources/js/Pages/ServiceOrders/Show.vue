@@ -9,16 +9,17 @@ import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
 import OrderFilesTab from './Components/OrderFilesTab.vue';
 import OrderConditioningTab from './Components/OrderConditioningTab.vue';
+import ServiceDocumentationWizard from './Components/ServiceDocumentationWizard.vue';
 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
     NIcon, NAvatar, NProgress, NStatistic, createDiscreteApi, NPopselect,
-    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
+    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty, NDropdown
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, 
     CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
-    HardwareChipOutline, HomeOutline, SaveOutline
+    HardwareChipOutline, HomeOutline, SaveOutline, DocumentTextOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -28,7 +29,8 @@ const props = defineProps({
     stats: Object,
     assignable_users: Array,
     available_products: Array,
-    can_view_financials: Boolean 
+    can_view_financials: Boolean,
+    documentation_steps: Array
 });
 
 const { hasPermission } = usePermissions();
@@ -308,6 +310,50 @@ const confirmDelete = () => {
         }
     });
 };
+
+// --- GENERACIÓN DE DOCUMENTOS DE SERVICIO ---
+const showDocWizard = ref(false);
+
+// El menú ofrece el expediente completo (asistente paso a paso) y el diagrama unifilar.
+// El diagrama unifilar no depende de los pasos configurados, por eso siempre aparece.
+const documentationOptions = computed(() => {
+    const options = [];
+
+    if (props.documentation_steps?.length) {
+        options.push({
+            label: 'Expediente Completo (guía paso a paso)',
+            key: 'full'
+        });
+    }
+
+    options.push({
+        label: 'Diagrama Unifilar',
+        key: 'unifilar'
+    });
+
+    options.push({
+        label: 'Solicitud Arco CFE',
+        key: 'arco'
+    });
+
+    return options;
+});
+
+const handleDocumentationSelect = (key) => {
+    if (key === 'unifilar') {
+        // Se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.diagram-unifilar', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'arco') {
+        // Carta editable, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.solicitud-arco-cfe', props.order.id), '_blank');
+        return;
+    }
+
+    showDocWizard.value = true;
+};
 </script>
 
 <template>
@@ -348,7 +394,21 @@ const confirmDelete = () => {
                 </div>
 
                 <div class="flex gap-2">
-                    
+                    <PermissionTooltip permission="service_documentation.generate" placement="bottom" :size="13" />
+                    <n-dropdown
+                        v-if="hasPermission('service_documentation.generate') && documentationOptions.length"
+                        :options="documentationOptions"
+                        trigger="click"
+                        placement="bottom-end"
+                        @select="handleDocumentationSelect"
+                    >
+                        <n-button quaternary type="primary">
+                            <template #icon><n-icon><DocumentTextOutline /></n-icon></template>
+                            Generar Documentos
+                            <n-icon size="12" class="ml-1"><ChevronDownOutline /></n-icon>
+                        </n-button>
+                    </n-dropdown>
+
                     <n-button 
                         :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
                         quaternary 
@@ -578,7 +638,7 @@ const confirmDelete = () => {
                         </n-tab-pane>
 
                         <!-- NUEVO: Agregamos el listener @upload-success para forzar el rebote -->
-                        <n-tab-pane name="files" tab="Evidencias">
+                        <n-tab-pane name="files" tab="Evidencias y Documentos">
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
                         </n-tab-pane>
 
@@ -605,8 +665,7 @@ const confirmDelete = () => {
         </div>
 
         <n-modal v-model:show="showCompletionModal" :mask-closable="false">
-            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">
-                <p class="text-gray-600 mb-4 text-sm">
+            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">                <p class="text-gray-600 mb-4 text-sm">
                     Ingresa la cantidad exacta de material que utilizaste en el sitio. Puedes usar hasta 2 puntos decimales (ej. 2.5 metros).
                 </p>
 
@@ -663,6 +722,13 @@ const confirmDelete = () => {
                 </template>
             </n-card>
         </n-modal>
+
+        <!-- ASISTENTE DE DOCUMENTACIÓN DE SERVICIO (EXPEDIENTE COMPLETO) -->
+        <ServiceDocumentationWizard
+            v-model:show="showDocWizard"
+            :order="order"
+            :steps="documentation_steps || []"
+        />
 
     </AppLayout>
 </template>

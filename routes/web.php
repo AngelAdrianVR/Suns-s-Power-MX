@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
 use App\Http\Controllers\SystemTypeProductController;
 use App\Http\Controllers\TechnicalVisitController;
+use App\Http\Controllers\ServiceDocumentationController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -135,6 +136,14 @@ Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderC
 Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
     ->name('api.service-orders.update-maintenance-price')
     ->middleware('auth');
+// API: Guardar números de serie de los paneles instalados
+Route::patch('/api/service-orders/{serviceOrder}/panel-serials', [ServiceOrderController::class, 'updatePanelSerials'])
+    ->name('api.service-orders.update-panel-serials')
+    ->middleware('auth');
+// API: Guardar datos editables del diagrama unifilar (series de paneles y microinversores)
+Route::patch('/api/service-orders/{serviceOrder}/diagram-data', [ServiceOrderController::class, 'updateDiagramData'])
+    ->name('api.service-orders.update-diagram')
+    ->middleware('auth');
 // API: Obtener cuotas proyectadas desde la BD
 Route::get('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'getInstallments'])
     ->name('api.service-orders.installments')
@@ -188,6 +197,46 @@ Route::post('service-orders/conditionings/{conditioning}/media', [ServiceOrderCo
 Route::delete('service-orders/conditionings/{conditioning}/media/{media}', [ServiceOrderController::class, 'deleteConditioningMedia'])
     ->name('service-orders.conditionings.media.delete')
     ->middleware('auth');
+
+
+// ---------------------------- DOCUMENTACIÓN DE SERVICIO (configuración + generación) ----------------------------
+// Configuración de pasos/documentos (sidenav > Configuraciones)
+Route::get('/documentacion-servicio', [ServiceDocumentationController::class, 'index'])
+    ->name('service-documentation.index')->middleware('auth');
+Route::post('/documentacion-servicio', [ServiceDocumentationController::class, 'store'])
+    ->name('service-documentation.store')->middleware('auth');
+Route::put('/documentacion-servicio/{step}', [ServiceDocumentationController::class, 'update'])
+    ->name('service-documentation.update')->middleware('auth');
+Route::delete('/documentacion-servicio/{step}', [ServiceDocumentationController::class, 'destroy'])
+    ->name('service-documentation.destroy')->middleware('auth');
+Route::post('/documentacion-servicio/reorder', [ServiceDocumentationController::class, 'reorder'])
+    ->name('service-documentation.reorder')->middleware('auth');
+Route::post('/documentacion-servicio/defaults', [ServiceDocumentationController::class, 'defaults'])
+    ->name('service-documentation.defaults')->middleware('auth');
+
+// Asistente y generación desde la orden de servicio
+Route::get('/ordenes-servicio/{serviceOrder}/documentacion/wizard', [ServiceDocumentationController::class, 'wizard'])
+    ->name('service-orders.documentation.wizard')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/documentacion/upload', [ServiceDocumentationController::class, 'upload'])
+    ->name('service-orders.documentation.upload')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/documentacion/link', [ServiceDocumentationController::class, 'link'])
+    ->name('service-orders.documentation.link')->middleware('auth');
+Route::delete('/ordenes-servicio/{serviceOrder}/documentacion/attachments/{attachment}', [ServiceDocumentationController::class, 'removeAttachment'])
+    ->name('service-orders.documentation.attachment.destroy')->middleware('auth');
+Route::get('/ordenes-servicio/{serviceOrder}/documentacion/imprimir', [ServiceDocumentationController::class, 'printDocumentation'])
+    ->name('service-orders.documentation.print')->middleware('auth');
+
+// Diagrama unifilar (se abre en pestaña nueva) y su vinculación a la orden como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/diagrama-unifilar', [ServiceOrderController::class, 'unifilarDiagram'])
+    ->name('service-orders.diagram-unifilar')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/diagrama-unifilar/vincular', [ServiceOrderController::class, 'linkUnifilarDiagram'])
+    ->name('service-orders.diagram-unifilar.link')->middleware('auth');
+
+// Solicitud Arco CFE (carta editable, pestaña nueva) y su vinculación a la orden como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe', [ServiceOrderController::class, 'solicitudArcoCfe'])
+    ->name('service-orders.solicitud-arco-cfe')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe/vincular', [ServiceOrderController::class, 'linkSolicitudArcoCfe'])
+    ->name('service-orders.solicitud-arco-cfe.link')->middleware('auth');
 
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
