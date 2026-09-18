@@ -77,6 +77,9 @@ const registerPayment = (client) => {
 const goToEdit = (id) => router.visit(route('clients.edit', id));
 const goToShow = (id) => router.visit(route('clients.show', id));
 
+// Estado de cuenta: se abre en pestaña nueva (ahí se imprime / guarda como PDF).
+const goToStatement = (id) => window.open(route('clients.statement.view', id), '_blank', 'noopener');
+
 const confirmDelete = (client) => {
     dialog.warning({
         title: 'Eliminar Cliente',
@@ -198,7 +201,7 @@ const createColumns = () => [
     {
         title: '',
         key: 'actions',
-        width: 190, // Ajusté un poco el ancho
+        width: 240, // Espacio para: ver, estado de cuenta, editar y eliminar
         render(row) {
             return h(NSpace, { justify: 'end', align: 'center' }, () => [
                 // row.has_debt && hasPermission('collection.create') ? h(NTooltip, { trigger: 'hover' }, {
@@ -210,25 +213,47 @@ const createColumns = () => [
                 //     default: () => 'Registrar Abono'
                 // }) : null,
 
-                h(NButton, {
-                    circle: true, size: 'small', quaternary: true, type: 'success',
-                    onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
-                }, { icon: () => h(NIcon, { component: CashOutline }) }),
+                // Ver expediente del cliente
+                h(NTooltip, { trigger: 'hover' }, {
+                    trigger: () => h(NButton, {
+                        circle: true, size: 'small', quaternary: true, type: 'success',
+                        onClick: (e) => { e.stopPropagation(); goToShow(row.id); }
+                    }, { icon: () => h(NIcon, { component: EyeOutline }) }),
+                    default: () => 'Ver expediente'
+                }),
+
+                // Estado de cuenta del cliente (pestaña nueva; requiere clients.index)
+                hasPermission('clients.index') ? h('div', { class: 'flex items-center gap-0.5' }, [
+                    h(PermissionTooltip, { permission: 'clients.index', placement: 'top', size: 11 }),
+                    h(NTooltip, { trigger: 'hover' }, {
+                        trigger: () => h(NButton, {
+                            circle: true, size: 'small', quaternary: true, type: 'info',
+                            onClick: (e) => { e.stopPropagation(); goToStatement(row.id); }
+                        }, { icon: () => h(NIcon, { component: DocumentTextOutline }) }),
+                        default: () => 'Estado de cuenta (imprimir / guardar PDF)'
+                    })
+                ]) : null,
 
                 hasPermission('clients.edit') ? h('div', { class: 'flex items-center gap-0.5' }, [
                     h(PermissionTooltip, { permission: 'clients.edit', placement: 'top', size: 11 }),
-                    h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'warning',
-                        onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
-                    }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) })
+                    h(NTooltip, { trigger: 'hover' }, {
+                        trigger: () => h(NButton, {
+                            circle: true, size: 'small', quaternary: true, type: 'warning',
+                            onClick: (e) => { e.stopPropagation(); goToEdit(row.id); }
+                        }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
+                        default: () => 'Editar cliente'
+                    })
                 ]) : null,
 
                 hasPermission('clients.delete') ? h('div', { class: 'flex items-center gap-0.5' }, [
                     h(PermissionTooltip, { permission: 'clients.delete', placement: 'top', size: 11 }),
-                    h(NButton, {
-                        circle: true, size: 'small', quaternary: true, type: 'error',
-                        onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
-                    }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) })
+                    h(NTooltip, { trigger: 'hover' }, {
+                        trigger: () => h(NButton, {
+                            circle: true, size: 'small', quaternary: true, type: 'error',
+                            onClick: (e) => { e.stopPropagation(); confirmDelete(row); }
+                        }, { icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) }),
+                        default: () => 'Eliminar cliente'
+                    })
                 ]) : null
             ]);
         }
@@ -394,14 +419,18 @@ const rowProps = (row) => ({
                                         </div>
                                     </div>
                                     <div class="absolute top-4 right-4 flex flex-col gap-2">
-                                        <PermissionTooltip permission="clients.edit" placement="left" :size="11" />
-                                        <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full">
+                                        <button v-if="hasPermission('clients.index')" @click.stop="goToStatement(client.id)" class="text-blue-500 hover:bg-blue-50 p-2 rounded-full" title="Estado de cuenta (imprimir / guardar PDF)">
+                                            <n-icon size="20"><DocumentTextOutline /></n-icon>
+                                        </button>
+                                        <PermissionTooltip permission="clients.index" placement="left" :size="11" />
+                                        <button v-if="hasPermission('clients.edit')" @click.stop="goToEdit(client.id)" class="text-amber-500 hover:bg-amber-50 p-2 rounded-full" title="Editar cliente">
                                             <n-icon size="20"><CreateOutline /></n-icon>
                                         </button>
-                                        <PermissionTooltip permission="clients.delete" placement="left" :size="11" />
-                                        <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full">
+                                        <PermissionTooltip permission="clients.edit" placement="left" :size="11" />
+                                        <button v-if="hasPermission('clients.delete')" @click.stop="confirmDelete(client)" class="text-red-500 hover:bg-red-50 p-2 rounded-full" title="Eliminar cliente">
                                             <n-icon size="20"><TrashOutline /></n-icon>
                                         </button>
+                                        <PermissionTooltip permission="clients.delete" placement="left" :size="11" />
                                     </div>
                                 </div>
                                 <div class="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">

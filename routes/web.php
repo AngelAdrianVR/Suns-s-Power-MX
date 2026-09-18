@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\SystemTypeController;
 use App\Http\Controllers\SystemTypeProductController;
 use App\Http\Controllers\TechnicalVisitController;
+use App\Http\Controllers\ServiceDocumentationController;
 
 // Ruta Raíz: Muestra el estado de carga (animación)
 Route::get('/', function () {
@@ -135,6 +136,18 @@ Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderC
 Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
     ->name('api.service-orders.update-maintenance-price')
     ->middleware('auth');
+// Actualizar coordenadas (latitud/longitud) de la instalación
+Route::patch('/api/service-orders/{serviceOrder}/coordinates', [ServiceOrderController::class, 'updateCoordinates'])
+    ->name('api.service-orders.update-coordinates')
+    ->middleware('auth');
+// API: Guardar números de serie de los paneles instalados
+Route::patch('/api/service-orders/{serviceOrder}/panel-serials', [ServiceOrderController::class, 'updatePanelSerials'])
+    ->name('api.service-orders.update-panel-serials')
+    ->middleware('auth');
+// API: Guardar datos editables del diagrama unifilar (series de paneles y microinversores)
+Route::patch('/api/service-orders/{serviceOrder}/diagram-data', [ServiceOrderController::class, 'updateDiagramData'])
+    ->name('api.service-orders.update-diagram')
+    ->middleware('auth');
 // API: Obtener cuotas proyectadas desde la BD
 Route::get('/api/service-orders/{serviceOrder}/installments', [ServiceOrderController::class, 'getInstallments'])
     ->name('api.service-orders.installments')
@@ -188,6 +201,77 @@ Route::post('service-orders/conditionings/{conditioning}/media', [ServiceOrderCo
 Route::delete('service-orders/conditionings/{conditioning}/media/{media}', [ServiceOrderController::class, 'deleteConditioningMedia'])
     ->name('service-orders.conditionings.media.delete')
     ->middleware('auth');
+
+
+// ---------------------------- DOCUMENTACIÓN DE SERVICIO (configuración + generación) ----------------------------
+// Configuración de pasos/documentos (sidenav > Configuraciones)
+Route::get('/documentacion-servicio', [ServiceDocumentationController::class, 'index'])
+    ->name('service-documentation.index')->middleware('auth');
+Route::post('/documentacion-servicio', [ServiceDocumentationController::class, 'store'])
+    ->name('service-documentation.store')->middleware('auth');
+Route::put('/documentacion-servicio/{step}', [ServiceDocumentationController::class, 'update'])
+    ->name('service-documentation.update')->middleware('auth');
+Route::delete('/documentacion-servicio/{step}', [ServiceDocumentationController::class, 'destroy'])
+    ->name('service-documentation.destroy')->middleware('auth');
+Route::post('/documentacion-servicio/reorder', [ServiceDocumentationController::class, 'reorder'])
+    ->name('service-documentation.reorder')->middleware('auth');
+Route::post('/documentacion-servicio/defaults', [ServiceDocumentationController::class, 'defaults'])
+    ->name('service-documentation.defaults')->middleware('auth');
+
+// Asistente y generación desde la orden de servicio
+Route::get('/ordenes-servicio/{serviceOrder}/documentacion/wizard', [ServiceDocumentationController::class, 'wizard'])
+    ->name('service-orders.documentation.wizard')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/documentacion/upload', [ServiceDocumentationController::class, 'upload'])
+    ->name('service-orders.documentation.upload')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/documentacion/link', [ServiceDocumentationController::class, 'link'])
+    ->name('service-orders.documentation.link')->middleware('auth');
+Route::delete('/ordenes-servicio/{serviceOrder}/documentacion/attachments/{attachment}', [ServiceDocumentationController::class, 'removeAttachment'])
+    ->name('service-orders.documentation.attachment.destroy')->middleware('auth');
+Route::get('/ordenes-servicio/{serviceOrder}/documentacion/imprimir', [ServiceDocumentationController::class, 'printDocumentation'])
+    ->name('service-orders.documentation.print')->middleware('auth');
+
+// Diagrama unifilar (se abre en pestaña nueva) y su vinculación a la orden como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/diagrama-unifilar', [ServiceOrderController::class, 'unifilarDiagram'])
+    ->name('service-orders.diagram-unifilar')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/diagrama-unifilar/vincular', [ServiceOrderController::class, 'linkUnifilarDiagram'])
+    ->name('service-orders.diagram-unifilar.link')->middleware('auth');
+
+// Solicitud Arco CFE (carta editable, pestaña nueva) y su vinculación a la orden como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe', [ServiceOrderController::class, 'solicitudArcoCfe'])
+    ->name('service-orders.solicitud-arco-cfe')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/solicitud-arco-cfe/vincular', [ServiceOrderController::class, 'linkSolicitudArcoCfe'])
+    ->name('service-orders.solicitud-arco-cfe.link')->middleware('auth');
+
+// Carta Poder (carta editable + hojas de INE, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/carta-poder', [ServiceOrderController::class, 'cartaPoder'])
+    ->name('service-orders.carta-poder')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/carta-poder/vincular', [ServiceOrderController::class, 'linkCartaPoder'])
+    ->name('service-orders.carta-poder.link')->middleware('auth');
+
+// Cambio de Nombre (solicitud de contrato por cambio de titular, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/cambio-de-nombre', [ServiceOrderController::class, 'cambioDeNombre'])
+    ->name('service-orders.cambio-de-nombre')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/cambio-de-nombre/vincular', [ServiceOrderController::class, 'linkCambioDeNombre'])
+    ->name('service-orders.cambio-de-nombre.link')->middleware('auth');
+
+// Anexo 2 (solicitud de interconexión, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/anexo-2', [ServiceOrderController::class, 'anexo2'])
+    ->name('service-orders.anexo2')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/anexo-2/vincular', [ServiceOrderController::class, 'linkAnexo2'])
+    ->name('service-orders.anexo2.link')->middleware('auth');
+
+// Worker de pdf.js servido por Laravel en desarrollo (mismo origen que la página,
+// el navegador bloquea workers cross-origin desde el dev server de Vite).
+// En producción se usa el asset emitido por Vite en public/build.
+if (app()->environment('local')) {
+    Route::get('/pdf-worker.mjs', function () {
+        $path = base_path('node_modules/pdfjs-dist/build/pdf.worker.min.mjs');
+        abort_unless(is_file($path), 404);
+        return response(file_get_contents($path), 200, [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+        ]);
+    })->name('pdf.worker');
+}
 
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
@@ -295,6 +379,10 @@ Route::get('/clientes/{client}/estado-cuenta/servicios/{serviceOrder}', [ClientS
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
 Route::get('/api/clients/{client}/details', [ClientController::class, 'getClientDetails'])
     ->name('api.clients.details'); 
+// Actualizar coordenadas (latitud/longitud) de un cliente
+Route::patch('/api/clients/{client}/coordinates', [ClientController::class, 'updateCoordinates'])
+    ->name('api.clients.update-coordinates')
+    ->middleware('auth');
 // API interna para el componente Vue (obtener deudas)
 Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
 ->name('api.clients.pending-orders');
@@ -312,6 +400,8 @@ Route::resource('/payments', PaymentController::class)->middleware('auth');
 // ---------------------------- Rutas de Usuarios --------------------------------
 Route::middleware('auth')->group(function () {
     Route::patch('/usuarios/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('users.toggle-status'); // Ruta específica para activar/desactivar usuario (Patch es ideal para actualizaciones parciales)
+    Route::post('/usuarios/{user}/documents', [UserController::class, 'uploadDocuments'])->name('users.documents.store');
+    Route::patch('/usuarios/{user}/ine', [UserController::class, 'updateIne'])->name('users.update-ine');
     Route::resource('usuarios', UserController::class)->names('users')->parameters(['usuarios' => 'user']);
 });
 

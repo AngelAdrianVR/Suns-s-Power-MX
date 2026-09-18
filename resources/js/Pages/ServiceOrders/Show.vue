@@ -9,16 +9,17 @@ import OrderItemsTab from './Components/OrderItemsTab.vue';
 import OrderDetailsTab from './Components/OrderDetailsTab.vue';
 import OrderFilesTab from './Components/OrderFilesTab.vue';
 import OrderConditioningTab from './Components/OrderConditioningTab.vue';
+import ServiceDocumentationWizard from './Components/ServiceDocumentationWizard.vue';
 
 import { 
     NButton, NTag, NCard, NGrid, NGridItem, NTabs, NTabPane, 
     NIcon, NAvatar, NProgress, NStatistic, createDiscreteApi, NPopselect,
-    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty
+    NModal, NForm, NFormItem, NInputNumber, NInput, NEmpty, NDropdown
 } from 'naive-ui';
 import { 
     ArrowBackOutline, CreateOutline, TrashOutline, LocationOutline, ChevronDownOutline, 
     CheckmarkCircleOutline, ClipboardOutline, InformationCircleOutline, CashOutline, 
-    HardwareChipOutline, HomeOutline, SaveOutline
+    HardwareChipOutline, HomeOutline, SaveOutline, DocumentTextOutline, CopyOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -28,7 +29,8 @@ const props = defineProps({
     stats: Object,
     assignable_users: Array,
     available_products: Array,
-    can_view_financials: Boolean 
+    can_view_financials: Boolean,
+    documentation_steps: Array
 });
 
 const { hasPermission } = usePermissions();
@@ -190,6 +192,69 @@ const refreshOrder = () => {
     router.reload({ only: ['order'] });
 };
 
+// --- INLINE EDIT: COORDENADAS (LATITUD / LONGITUD) ---
+const isEditingCoords = ref(false);
+const isSavingCoords = ref(false);
+const coordsForm = ref({ lat: null, lng: null });
+
+const hasCoordinates = computed(() => {
+    const lat = props.order.installation_lat;
+    const lng = props.order.installation_lng;
+    return lat !== null && lat !== undefined && lat !== '' && lng !== null && lng !== undefined && lng !== '';
+});
+
+const startEditCoords = () => {
+    coordsForm.value = {
+        lat: hasCoordinates.value ? Number(props.order.installation_lat) : null,
+        lng: hasCoordinates.value ? Number(props.order.installation_lng) : null
+    };
+    isEditingCoords.value = true;
+};
+
+const cancelEditCoords = () => {
+    isEditingCoords.value = false;
+    coordsForm.value = { lat: null, lng: null };
+};
+
+const saveCoords = async () => {
+    const hasLat = coordsForm.value.lat !== null && coordsForm.value.lat !== '';
+    const hasLng = coordsForm.value.lng !== null && coordsForm.value.lng !== '';
+
+    if (hasLat !== hasLng) {
+        notification.warning({
+            title: 'Datos incompletos',
+            content: 'Ingresa latitud y longitud, o deja ambos campos vacíos para quitar las coordenadas.',
+            duration: 5000
+        });
+        return;
+    }
+
+    isSavingCoords.value = true;
+    try {
+        await axios.patch(
+            route('api.service-orders.update-coordinates', props.order.id),
+            { installation_lat: hasLat ? coordsForm.value.lat : null, installation_lng: hasLng ? coordsForm.value.lng : null }
+        );
+        isEditingCoords.value = false;
+        notification.success({ title: 'Ubicación actualizada', content: 'Las coordenadas se guardaron correctamente.', duration: 3000 });
+        router.reload({ only: ['order'] });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudieron guardar las coordenadas.', duration: 4000 });
+    } finally {
+        isSavingCoords.value = false;
+    }
+};
+
+const copyCoordinates = async () => {
+    const text = `${props.order.installation_lat}, ${props.order.installation_lng}`;
+    try {
+        await navigator.clipboard.writeText(text);
+        notification.success({ title: 'Copiado', content: 'Coordenadas copiadas al portapapeles.', duration: 2500 });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudieron copiar las coordenadas.', duration: 3000 });
+    }
+};
+
 // --- CONCILIACIÓN DE MATERIAL ---
 const hasNoMaterials = computed(() => {
     return !props.order.items || props.order.items.length === 0;
@@ -308,6 +373,83 @@ const confirmDelete = () => {
         }
     });
 };
+
+// --- GENERACIÓN DE DOCUMENTOS DE SERVICIO ---
+const showDocWizard = ref(false);
+
+// El menú ofrece el expediente completo (asistente paso a paso) y el diagrama unifilar.
+// El diagrama unifilar no depende de los pasos configurados, por eso siempre aparece.
+const documentationOptions = computed(() => {
+    const options = [];
+
+    options.push({
+        label: 'Diagrama Unifilar',
+        key: 'unifilar'
+    });
+
+    options.push({
+        label: 'Solicitud Arco CFE',
+        key: 'arco'
+    });
+
+    options.push({
+        label: 'Carta Poder',
+        key: 'carta'
+    });
+
+    options.push({
+        label: 'Cambio de Nombre',
+        key: 'cambio'
+    });
+
+    options.push({
+        label: 'Anexo 2',
+        key: 'anexo2'
+    });
+
+    if (props.documentation_steps?.length) {
+        options.push({
+            label: 'Expediente Completo (guía paso a paso)',
+            key: 'full'
+        });
+    }
+
+    return options;
+});
+
+const handleDocumentationSelect = (key) => {
+    if (key === 'unifilar') {
+        // Se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.diagram-unifilar', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'arco') {
+        // Carta editable, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.solicitud-arco-cfe', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'carta') {
+        // Carta poder editable + hojas de INE, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.carta-poder', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'cambio') {
+        // Solicitud de cambio de nombre editable, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.cambio-de-nombre', props.order.id), '_blank');
+        return;
+    }
+
+    if (key === 'anexo2') {
+        // Anexo 2 (solicitud de interconexión) editable, se abre en una pestaña nueva, sin AppLayout
+        window.open(route('service-orders.anexo2', props.order.id), '_blank');
+        return;
+    }
+
+    showDocWizard.value = true;
+};
 </script>
 
 <template>
@@ -348,7 +490,21 @@ const confirmDelete = () => {
                 </div>
 
                 <div class="flex gap-2">
-                    
+                    <PermissionTooltip permission="service_documentation.generate" placement="bottom" :size="13" />
+                    <n-dropdown
+                        v-if="hasPermission('service_documentation.generate') && documentationOptions.length"
+                        :options="documentationOptions"
+                        trigger="click"
+                        placement="bottom-end"
+                        @select="handleDocumentationSelect"
+                    >
+                        <n-button quaternary type="primary">
+                            <template #icon><n-icon><DocumentTextOutline /></n-icon></template>
+                            Generar Documentos
+                            <n-icon size="12" class="ml-1"><ChevronDownOutline /></n-icon>
+                        </n-button>
+                    </n-dropdown>
+
                     <n-button 
                         :type="hasNoMaterials ? 'default' : (materialsReported ? 'success' : 'primary')" 
                         quaternary 
@@ -445,8 +601,63 @@ const confirmDelete = () => {
                                 <p class="text-sm text-gray-600 line-clamp-3 leading-snug">
                                     {{ formattedAddress }}
                                 </p>
-                                <div v-if="order.installation_lat && order.installation_lng" class="mt-2 text-xs text-gray-500 font-mono">
-                                    📍 {{ order.installation_lat }}, {{ order.installation_lng }}
+
+                                <!-- Coordenadas: modo vista -->
+                                <div v-if="!isEditingCoords" class="mt-2">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-[10px] text-gray-400 uppercase font-bold">Coordenadas</span>
+                                        <div class="flex items-center gap-1">
+                                            <n-button
+                                                v-if="hasCoordinates"
+                                                size="tiny" text type="default"
+                                                @click="copyCoordinates"
+                                            >
+                                                <template #icon><n-icon><CopyOutline /></n-icon></template>
+                                            </n-button>
+                                            <n-button
+                                                v-if="hasPermission('service_orders.edit')"
+                                                size="tiny" text type="primary"
+                                                @click="startEditCoords"
+                                            >
+                                                <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                                {{ hasCoordinates ? 'Editar' : 'Agregar' }}
+                                            </n-button>
+                                        </div>
+                                    </div>
+                                    <div v-if="hasCoordinates" class="text-xs text-gray-500 font-mono mt-0.5 truncate">
+                                        📍 {{ order.installation_lat }}, {{ order.installation_lng }}
+                                    </div>
+                                    <div v-else class="text-xs text-gray-400 italic mt-0.5">
+                                        Sin coordenadas registradas
+                                    </div>
+                                </div>
+
+                                <!-- Coordenadas: modo edición -->
+                                <div v-else class="mt-2 rounded-lg bg-white border border-blue-200 p-2">
+                                    <div class="text-[10px] text-gray-400 uppercase font-bold mb-1">Coordenadas (Google Maps)</div>
+                                    <div class="flex items-center gap-2">
+                                        <n-input-number
+                                            v-model:value="coordsForm.lat"
+                                            :min="-90" :max="90" :precision="6" :show-button="false"
+                                            size="small" placeholder="Latitud" class="w-full"
+                                        />
+                                        <n-input-number
+                                            v-model:value="coordsForm.lng"
+                                            :min="-180" :max="180" :precision="6" :show-button="false"
+                                            size="small" placeholder="Longitud" class="w-full"
+                                        />
+                                    </div>
+                                    <div class="flex justify-end gap-2 mt-2">
+                                        <n-button size="tiny" @click="cancelEditCoords">Cancelar</n-button>
+                                        <n-button size="tiny" type="primary" :loading="isSavingCoords" @click="saveCoords">
+                                            <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                            Guardar
+                                        </n-button>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 leading-tight mt-2">
+                                        Copia cada valor desde Google Maps (clic derecho sobre el punto → coordenadas).
+                                        Deja ambos campos vacíos para quitarlas.
+                                    </p>
                                 </div>
                             </div>
                             <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" class="mt-3 text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
@@ -578,7 +789,7 @@ const confirmDelete = () => {
                         </n-tab-pane>
 
                         <!-- NUEVO: Agregamos el listener @upload-success para forzar el rebote -->
-                        <n-tab-pane name="files" tab="Evidencias">
+                        <n-tab-pane name="files" tab="Evidencias y Documentos">
                             <OrderFilesTab :order="order" @upload-success="bounceTab" />
                         </n-tab-pane>
 
@@ -605,8 +816,7 @@ const confirmDelete = () => {
         </div>
 
         <n-modal v-model:show="showCompletionModal" :mask-closable="false">
-            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">
-                <p class="text-gray-600 mb-4 text-sm">
+            <n-card style="width: 700px" title="📝 Conciliar Material Utilizado" :bordered="false" size="huge" closable @close="showCompletionModal = false">                <p class="text-gray-600 mb-4 text-sm">
                     Ingresa la cantidad exacta de material que utilizaste en el sitio. Puedes usar hasta 2 puntos decimales (ej. 2.5 metros).
                 </p>
 
@@ -663,6 +873,13 @@ const confirmDelete = () => {
                 </template>
             </n-card>
         </n-modal>
+
+        <!-- ASISTENTE DE DOCUMENTACIÓN DE SERVICIO (EXPEDIENTE COMPLETO) -->
+        <ServiceDocumentationWizard
+            v-model:show="showDocWizard"
+            :order="order"
+            :steps="documentation_steps || []"
+        />
 
     </AppLayout>
 </template>

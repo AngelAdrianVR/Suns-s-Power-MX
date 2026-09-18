@@ -48,6 +48,7 @@ class User extends Authenticatable implements HasMedia
         'curp',
         'rfc',
         'nss',
+        'ine_number',
 
         // Domicilio
         'street',
