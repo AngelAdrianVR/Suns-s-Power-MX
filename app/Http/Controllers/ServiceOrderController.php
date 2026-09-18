@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\TaskTemplate; 
 use App\Models\Ticket;
 use App\Models\ServiceDocumentationStep;
+use App\Models\TechnicalVisit;
 use App\Services\InventoryService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -1562,6 +1563,38 @@ class ServiceOrderController extends Controller
         ]);
     }
 
+    /**
+     * API: Actualiza (o limpia) las coordenadas de la instalación.
+     * PATCH /api/service-orders/{serviceOrder}/coordinates
+     */
+    public function updateCoordinates(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'installation_lat' => 'nullable|numeric|between:-90,90',
+            'installation_lng' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        // Solo se guardan coordenadas si vienen ambas; una sola no es útil para el mapa.
+        $hasBoth = $request->filled('installation_lat') && $request->filled('installation_lng');
+
+        $serviceOrder->update([
+            'installation_lat' => $hasBoth ? $request->input('installation_lat') : null,
+            'installation_lng' => $hasBoth ? $request->input('installation_lng') : null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'installation_lat' => $serviceOrder->installation_lat,
+            'installation_lng' => $serviceOrder->installation_lng,
+            'message' => 'Ubicación actualizada correctamente.',
+        ]);
+    }
+
     // ========================================================================
     // NÚMEROS DE SERIE DE PANELES + DIAGRAMA UNIFILAR
     // ========================================================================
@@ -2178,6 +2211,443 @@ class ServiceOrderController extends Controller
             'file_name' => $fileName,
             'mime_type' => 'application/pdf',
             'message' => 'Carta Poder vinculada a la orden de servicio.',
+        ]);
+    }
+
+    // ========================================================================
+    // CAMBIO DE NOMBRE (solicitud de contrato por cambio de titular ante CFE)
+    // ========================================================================
+
+    /**
+     * Vista de la solicitud Cambio de Nombre (pestaña nueva, sin AppLayout).
+     * GET /ordenes-servicio/{serviceOrder}/cambio-de-nombre
+     */
+    public function cambioDeNombre(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        $serviceOrder->load('client.contacts');
+
+        $contact = $serviceOrder->client?->contacts->first();
+
+        $fields = [
+            'fecha' => now()->format('d/m/Y'),
+            'solicitante_nombre' => (string) ($serviceOrder->client?->name ?? ''),
+            'solicitante_calidad' => 'Propietario',
+            'id_tipo' => 'ife',
+            'id_otro' => '',
+            'id_numero' => '',
+            'rep_tipo' => 'na',
+            'rep_acta_no' => '',
+            'rep_no' => '',
+            'rep_otro' => '',
+            'servicio' => (string) ($serviceOrder->service_number ?? ''),
+            'titular_actual' => (string) ($serviceOrder->client?->name ?? ''),
+            'domicilio' => (string) ($serviceOrder->full_installation_address ?? ''),
+            'motivo' => '',
+            'nuevo_titular' => (string) ($serviceOrder->client?->name ?? ''),
+            'doc_escritura' => false,
+            'doc_compraventa' => false,
+            'doc_gravamen' => false,
+            'doc_predial' => false,
+            'doc_ine' => true,
+            'doc_arrendamiento_certificado' => false,
+            'doc_arrendamiento_simple' => false,
+            'doc_constancia' => false,
+            'tiene_rfc' => (bool) ($serviceOrder->client?->tax_id ?? ''),
+            'rfc' => (string) ($serviceOrder->client?->tax_id ?? ''),
+            'tiene_telefono' => (bool) ($contact?->phone ?? ''),
+            'telefono' => (string) ($contact?->phone ?? ''),
+            'tiene_celular' => false,
+            'celular' => '',
+            'tiene_correo' => (bool) ($contact?->email ?? ''),
+            'correo' => (string) ($contact?->email ?? ''),
+            'timbrado' => 'No',
+            'csf_nombre' => (string) ($serviceOrder->client?->name ?? ''),
+            'csf_cp' => (string) ($serviceOrder->installation_zip_code ?? ''),
+            'csf_regimen' => 'Sueldos y Salarios e Ingresos Asimilados a Salarios',
+            'csf_uso' => 'Sin efectos fiscales',
+            'csf_residencia' => '',
+            'csf_registro' => '',
+            'firma_nombre' => '',
+        ];
+
+        $users = User::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone', 'email', 'ine_number', 'rfc'])
+            ->values();
+
+        return Inertia::render('ServiceOrders/CambioDeNombre', [
+            'order' => [
+                'id' => $serviceOrder->id,
+                'service_number' => $serviceOrder->service_number,
+            ],
+            'fields' => $fields,
+            'users' => $users,
+            'linked' => $serviceOrder->getMedia('cambio_de_nombre')->isNotEmpty(),
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+    }
+
+    /**
+     * Genera el PDF de Cambio de Nombre con los datos editados y lo vincula a la orden.
+     * POST /ordenes-servicio/{serviceOrder}/cambio-de-nombre/vincular
+     */
+    public function linkCambioDeNombre(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'fields' => 'required|array',
+            'fields.*' => 'nullable|string|max:1000',
+            'user_id' => 'nullable|integer',
+        ]);
+
+        $fields = array_merge([
+            'fecha' => now()->format('d/m/Y'),
+            'solicitante_nombre' => '',
+            'solicitante_calidad' => 'Propietario',
+            'id_tipo' => 'ife',
+            'id_otro' => '',
+            'id_numero' => '',
+            'rep_tipo' => 'na',
+            'rep_acta_no' => '',
+            'rep_no' => '',
+            'rep_otro' => '',
+            'servicio' => '',
+            'titular_actual' => '',
+            'domicilio' => '',
+            'motivo' => '',
+            'nuevo_titular' => '',
+            'doc_escritura' => false,
+            'doc_compraventa' => false,
+            'doc_gravamen' => false,
+            'doc_predial' => false,
+            'doc_ine' => false,
+            'doc_arrendamiento_certificado' => false,
+            'doc_arrendamiento_simple' => false,
+            'doc_constancia' => false,
+            'tiene_rfc' => false,
+            'rfc' => '',
+            'tiene_telefono' => false,
+            'telefono' => '',
+            'tiene_celular' => false,
+            'celular' => '',
+            'tiene_correo' => false,
+            'correo' => '',
+            'timbrado' => 'No',
+            'csf_nombre' => '',
+            'csf_cp' => '',
+            'csf_regimen' => '',
+            'csf_uso' => '',
+            'csf_residencia' => '',
+            'csf_registro' => '',
+            'firma_nombre' => '',
+        ], $validated['fields']);
+
+        // Las casillas llegan como '1'/'0' desde el front
+        $booleanFields = [
+            'doc_escritura', 'doc_compraventa', 'doc_gravamen', 'doc_predial', 'doc_ine',
+            'doc_arrendamiento_certificado', 'doc_arrendamiento_simple', 'doc_constancia',
+            'tiene_rfc', 'tiene_telefono', 'tiene_celular', 'tiene_correo',
+        ];
+        foreach ($booleanFields as $key) {
+            $fields[$key] = filter_var($fields[$key] ?? false, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        $pdf = Pdf::loadView('pdf.cambio-de-nombre', [
+            'fields' => $fields,
+            'order' => $serviceOrder,
+            'generatedAt' => now(),
+        ])->setPaper('letter');
+
+        $fileName = 'cambio-de-nombre-orden-'.$serviceOrder->id.'.pdf';
+
+        // Se reemplaza la solicitud vinculada anterior (si existe) para no duplicar
+        $serviceOrder->clearMediaCollection('cambio_de_nombre');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'cambionombre');
+        file_put_contents($tmpPath, $pdf->output());
+
+        try {
+            $serviceOrder->addMedia($tmpPath)
+                ->usingName('Cambio de Nombre')
+                ->usingFileName($fileName)
+                ->withCustomProperties(['category' => 'cambio_de_nombre'])
+                ->toMediaCollection('cambio_de_nombre');
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'linked' => true,
+            'file_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'message' => 'Cambio de Nombre vinculado a la orden de servicio.',
+        ]);
+    }
+
+    // ========================================================================
+    // ANEXO 2 (Solicitud de Interconexión - datos del solicitante y contacto)
+    // ========================================================================
+
+    /**
+     * Convierte a mayúsculas todos los valores de texto del formulario,
+     * respetando las claves de opciones que controlan las casillas.
+     */
+    private function upperCaseFields(array $fields): array
+    {
+        $optionKeys = ['modalidad', 'utilizacion', 'tecnologia', 'manifiesto'];
+
+        foreach ($fields as $key => $value) {
+            if (is_string($value) && ! in_array($key, $optionKeys, true)) {
+                $fields[$key] = mb_strtoupper($value, 'UTF-8');
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Vista del Anexo 2 (pestaña nueva, sin AppLayout).
+     * GET /ordenes-servicio/{serviceOrder}/anexo-2
+     */
+    public function anexo2(ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            abort(403);
+        }
+
+        $serviceOrder->load('client.contacts');
+
+        $client = $serviceOrder->client;
+        $contact = $client?->contacts->first();
+
+        // Generación promedio mensual estimada = generación diaria × 30.
+        // Se toma de la visita técnica de la orden; si no hay datos, se estima con la capacidad instalada.
+        $visit = TechnicalVisit::where('service_order_id', $serviceOrder->id)->latest('id')->first();
+
+        $dailyGeneration = (float) ($visit?->estimated_daily_generation ?? 0);
+        $monthlyGeneration = (float) ($visit?->estimated_monthly_generation ?? 0);
+
+        if ($monthlyGeneration <= 0 && $dailyGeneration > 0) {
+            $monthlyGeneration = $dailyGeneration * 30;
+        }
+
+        if ($monthlyGeneration <= 0 && $serviceOrder->total_capacity) {
+            // Mismo criterio de visitas técnicas: capacidad bruta (kW) × 3.76 kWh al día
+            $monthlyGeneration = (float) $serviceOrder->total_capacity * 3.76 * 30;
+        }
+
+        $fields = [
+            'fecha' => '', // En blanco, editable
+            'num_solicitud' => '',
+
+            // I. Datos del Solicitante (cliente de la orden)
+            'sol_nombre' => (string) ($client?->name ?? ''),
+            'sol_calle' => (string) ($client?->street ?? ''),
+            'sol_num_ext' => (string) ($client?->exterior_number ?? ''),
+            'sol_num_int' => (string) ($client?->interior_number ?? ''),
+            'sol_cp' => (string) ($client?->zip_code ?? ''),
+            'sol_colonia' => (string) ($client?->neighborhood ?? ''),
+            'sol_municipio' => (string) ($client?->municipality ?? ''),
+            'sol_estado' => (string) ($client?->state ?? ''),
+            'sol_telefono' => (string) ($contact?->phone ?? ''),
+            'sol_correo' => (string) ($contact?->email ?? ''),
+            'sol_fax' => '',
+
+            // II. Datos de Contacto (usuario del ERP)
+            'con_nombre' => '',
+            'con_puesto' => '',
+            'con_calle' => '',
+            'con_num_ext' => '',
+            'con_num_int' => '',
+            'con_cp' => '',
+            'con_colonia' => '',
+            'con_municipio' => '',
+            'con_estado' => '',
+            'con_telefono' => '',
+            'con_correo' => '',
+            'con_fax' => '',
+
+            // III. Datos de la Solicitud
+            'modalidad' => 'baja',
+
+            // IV. Utilización de la energía
+            'utilizacion' => 'centros',
+
+            // V. Datos del Servicio Suministro Actual
+            'rpu' => (string) ($serviceOrder->service_number ?? ''),
+            'nivel_tension' => (string) ($serviceOrder->voltage ?? ''),
+
+            // VI. Central Eléctrica
+            'fecha_operacion' => '',
+            'capacidad_bruta' => $serviceOrder->total_capacity !== null ? (string) $serviceOrder->total_capacity : '',
+            'capacidad_incrementar' => '',
+            'generacion_promedio' => $monthlyGeneration > 0 ? (string) round($monthlyGeneration, 2) : '',
+
+            // VII. Manifestación y especificaciones
+            'manifiesto' => 'Si',
+            'tecnologia' => 'solar',
+            'tecnologia_otro' => '',
+            'num_unidades' => $serviceOrder->number_of_units !== null ? (string) $serviceOrder->number_of_units : '',
+            'combustible_principal' => '',
+            'combustible_secundario' => '',
+
+            // Firma
+            'firma_nombre' => (string) ($client?->name ?? ''),
+            'firma_cargo' => 'TITULAR',
+            'firma_fecha' => '',
+        ];
+
+        // Coordenadas UTM (6 filas editables)
+        for ($i = 1; $i <= 6; $i++) {
+            $fields["utm_x{$i}"] = '';
+            $fields["utm_y{$i}"] = '';
+        }
+
+        // Fila 1: X = latitud, Y = longitud (si la orden cuenta con coordenadas)
+        if ($serviceOrder->installation_lat) {
+            $fields['utm_x1'] = (string) $serviceOrder->installation_lat;
+        }
+        if ($serviceOrder->installation_lng) {
+            $fields['utm_y1'] = (string) $serviceOrder->installation_lng;
+        }
+
+        // Todo el texto del documento en mayúsculas
+        $fields = $this->upperCaseFields($fields);
+
+        $users = User::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->with('roles')
+            ->orderBy('name')
+            ->get([
+                'id', 'name', 'phone', 'email', 'rfc', 'ine_number',
+                'street', 'exterior_number', 'interior_number', 'neighborhood',
+                'zip_code', 'municipality', 'state',
+            ])
+            ->map(fn ($user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'phone' => $user->phone,
+                'email' => $user->email,
+                'rfc' => $user->rfc,
+                'ine_number' => $user->ine_number,
+                'street' => $user->street,
+                'exterior_number' => $user->exterior_number,
+                'interior_number' => $user->interior_number,
+                'neighborhood' => $user->neighborhood,
+                'zip_code' => $user->zip_code,
+                'municipality' => $user->municipality,
+                'state' => $user->state,
+                'role' => $user->roles->pluck('name')->implode(', '),
+            ])
+            ->values();
+
+        return Inertia::render('ServiceOrders/Anexo2', [
+            'order' => [
+                'id' => $serviceOrder->id,
+                'service_number' => $serviceOrder->service_number,
+            ],
+            'fields' => $fields,
+            'users' => $users,
+            'linked' => $serviceOrder->getMedia('anexo2')->isNotEmpty(),
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+    }
+
+    /**
+     * Genera el PDF del Anexo 2 con los datos editados y lo vincula a la orden.
+     * POST /ordenes-servicio/{serviceOrder}/anexo-2/vincular
+     */
+    public function linkAnexo2(Request $request, ServiceOrder $serviceOrder)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($serviceOrder->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $validated = $request->validate([
+            'fields' => 'required|array',
+            'fields.*' => 'nullable|string|max:1000',
+            'user_id' => 'nullable|integer',
+        ]);
+
+        $fields = array_merge([
+            'fecha' => '',
+            'num_solicitud' => '',
+            'sol_nombre' => '', 'sol_calle' => '', 'sol_num_ext' => '', 'sol_num_int' => '',
+            'sol_cp' => '', 'sol_colonia' => '', 'sol_municipio' => '', 'sol_estado' => '',
+            'sol_telefono' => '', 'sol_correo' => '', 'sol_fax' => '',
+            'con_nombre' => '', 'con_puesto' => '', 'con_calle' => '', 'con_num_ext' => '',
+            'con_num_int' => '', 'con_cp' => '', 'con_colonia' => '', 'con_municipio' => '',
+            'con_estado' => '', 'con_telefono' => '', 'con_correo' => '', 'con_fax' => '',
+            'modalidad' => 'baja',
+            'utilizacion' => 'centros',
+            'rpu' => '',
+            'nivel_tension' => '',
+            'fecha_operacion' => '',
+            'capacidad_bruta' => '',
+            'capacidad_incrementar' => '',
+            'generacion_promedio' => '',
+            'manifiesto' => 'Si',
+            'tecnologia' => 'solar',
+            'tecnologia_otro' => '',
+            'num_unidades' => '',
+            'combustible_principal' => '',
+            'combustible_secundario' => '',
+            'firma_nombre' => '',
+            'firma_cargo' => 'TITULAR',
+            'firma_fecha' => '',
+        ], $validated['fields']);
+
+        for ($i = 1; $i <= 6; $i++) {
+            $fields["utm_x{$i}"] = (string) ($fields["utm_x{$i}"] ?? '');
+            $fields["utm_y{$i}"] = (string) ($fields["utm_y{$i}"] ?? '');
+        }
+
+        // Todo el texto del documento en mayúsculas
+        $fields = $this->upperCaseFields($fields);
+
+        $pdf = Pdf::loadView('pdf.anexo2', [
+            'fields' => $fields,
+            'order' => $serviceOrder,
+            'generatedAt' => now(),
+        ])->setPaper('letter');
+
+        $fileName = 'anexo-2-orden-'.$serviceOrder->id.'.pdf';
+
+        // Se reemplaza el anexo vinculado anterior (si existe) para no duplicar
+        $serviceOrder->clearMediaCollection('anexo2');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'anexo2');
+        file_put_contents($tmpPath, $pdf->output());
+
+        try {
+            $serviceOrder->addMedia($tmpPath)
+                ->usingName('Anexo 2')
+                ->usingFileName($fileName)
+                ->withCustomProperties(['category' => 'anexo2'])
+                ->toMediaCollection('anexo2');
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        return response()->json([
+            'success' => true,
+            'linked' => true,
+            'file_name' => $fileName,
+            'mime_type' => 'application/pdf',
+            'message' => 'Anexo 2 vinculado a la orden de servicio.',
         ]);
     }
 

@@ -10,7 +10,7 @@ import {
 import { 
     CloudUploadOutline, DocumentOutline, 
     CloudDownloadOutline, TrashOutline, CameraOutline, CheckmarkCircleOutline, AddOutline,
-    DocumentTextOutline 
+    DocumentTextOutline, RefreshOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -131,10 +131,68 @@ const isImage = (file) => {
     if (file.mime_type) return file.mime_type.startsWith('image/');
     return /\.(jpg|jpeg|png|gif|webp)$/i.test(file.file_name);
 };
+
+// --- ACTUALIZAR / CARGAR TODOS LOS ARCHIVOS ---
+// Vuelve a pedir la orden al servidor para traer los archivos recién vinculados
+// (documentos generados en otra pestaña, PDFs, evidencias, etc.).
+const isRefreshing = ref(false);
+
+const refreshFiles = () => {
+    if (isRefreshing.value) return;
+    isRefreshing.value = true;
+
+    router.reload({
+        only: ['order'],
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            notification.success({
+                title: 'Archivos actualizados',
+                content: 'Se cargaron todos los archivos de la orden.',
+                duration: 3000
+            });
+            // Fuerza al padre a re-renderizar las imágenes (mismo mecanismo que al subir)
+            emit('upload-success');
+        },
+        onError: () => {
+            notification.error({
+                title: 'Error',
+                content: 'No se pudieron actualizar los archivos.',
+                duration: 3000
+            });
+        },
+        onFinish: () => {
+            isRefreshing.value = false;
+        }
+    });
+};
 </script>
 
 <template>
     <div class="p-4 space-y-8">
+
+        <!-- BARRA DE ACCIONES: ACTUALIZAR / CARGAR TODOS LOS ARCHIVOS -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-indigo-50/60 border border-indigo-100 rounded-2xl px-4 py-3">
+            <div class="flex items-start gap-2">
+                <n-icon size="18" class="text-indigo-500 mt-0.5"><CloudDownloadOutline /></n-icon>
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Expediente de la orden</p>
+                    <p class="text-[11px] text-gray-500">
+                        Si no ves un archivo recién generado o vinculado, actualiza la lista para cargar todos los archivos.
+                    </p>
+                </div>
+            </div>
+            <n-button
+                type="primary"
+                secondary
+                :loading="isRefreshing"
+                @click="refreshFiles"
+                class="shrink-0"
+            >
+                <template #icon><n-icon><RefreshOutline /></n-icon></template>
+                Actualizar / Cargar todos
+            </n-button>
+        </div>
         
         <div v-if="order.evidences?.length">
             <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">

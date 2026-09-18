@@ -48,7 +48,7 @@ class ClientStatementController extends Controller
     {
         abort_unless((int) $serviceOrder->client_id === (int) $client->id, 404);
 
-        $serviceOrder->load(['payments', 'paymentInstallments']);
+        $serviceOrder->load(['payments', 'paymentInstallments.payment']);
 
         $payload = $this->serviceStatement($serviceOrder);
 
@@ -118,6 +118,9 @@ class ClientStatementController extends Controller
         $paidPrincipal = (float) $o->payments->sum('amount') - (float) $o->payments->sum('interest_amount');
         $balance = round(max(0.0, (float) $o->total_amount - $paidPrincipal), 2);
 
+        // Interés moratorio realmente cobrado en cada cuota (puede ser 0).
+        $paidBreakdown = $this->paidBreakdownByInstallment($o);
+
         return [
             'id' => $o->id,
             'service_number' => $o->service_number ?: 'Orden #'.$o->id,
@@ -137,15 +140,25 @@ class ClientStatementController extends Controller
             'installments' => $o->paymentInstallments
                 ->sortBy('installment_number')
                 ->values()
-                ->map(fn ($i) => [
-                    'installment_number' => $i->installment_number,
-                    'label' => $i->label,
-                    'projected_date' => $i->projected_date?->format('Y-m-d'),
-                    'amount' => round((float) $i->amount, 2),
-                    'status' => $this->installmentStatus($i),
-                    'interest' => $i->calculateInterest(),
-                    'total_with_interest' => $i->total_with_interest,
-                ])
+                ->map(function ($i) use ($paidBreakdown) {
+                    // Interés cobrado y total pagado de ESTA cuota (0 si no se ha pagado).
+                    $paidInterest = round((float) ($paidBreakdown[$i->id]['interest_paid'] ?? 0), 2);
+                    $paidTotal = round((float) ($paidBreakdown[$i->id]['total_paid'] ?? 0), 2);
+
+                    return [
+                        'installment_number' => $i->installment_number,
+                        'label' => $i->label,
+                        'projected_date' => $i->projected_date?->format('Y-m-d'),
+                        'amount' => round((float) $i->amount, 2),
+                        'status' => $this->installmentStatus($i),
+                        // Interés moratorio pendiente (0 en cuotas ya pagadas).
+                        'interest' => $i->calculateInterest(),
+                        'total_with_interest' => $i->total_with_interest,
+                        // Lo que realmente se pagó en esta cuota.
+                        'paid_interest' => $paidInterest,
+                        'paid_total' => $paidTotal,
+                    ];
+                })
                 ->all(),
             // Del más antiguo al más reciente (mismo orden en pantalla y PDF).
             'payments' => $o->payments
@@ -153,13 +166,68 @@ class ClientStatementController extends Controller
                 ->values()
                 ->map(fn ($p) => [
                     'payment_date' => $p->payment_date?->format('Y-m-d'),
+                    // `amount` es el total recibido (capital + interés).
                     'amount' => round((float) $p->amount, 2),
                     'interest_amount' => round((float) $p->interest_amount, 2),
+                    'principal' => round((float) $p->amount - (float) $p->interest_amount, 2),
                     'method' => $p->method,
                     'reference' => $p->reference,
                 ])
                 ->all(),
         ];
+    }
+
+    /**
+     * Desglose de lo realmente pagado en cada cuota: capital, interés y total.
+     *
+     * Un mismo pago puede cubrir varias cuotas (p. ej. al liquidar la orden), por
+     * eso el capital se asigna en orden de cuota y el interés del pago se reparte
+     * proporcionalmente al monto de cada cuota (la última absorbe el redondeo).
+     *
+     * @return array<int, array{interest_paid: float, total_paid: float}>
+     */
+    private function paidBreakdownByInstallment(ServiceOrder $order): array
+    {
+        $breakdown = [];
+
+        foreach ($order->paymentInstallments->groupBy('payment_id') as $paymentId => $group) {
+            if (! $paymentId) {
+                continue;
+            }
+
+            $payment = $group->first()->payment;
+
+            if (! $payment) {
+                continue;
+            }
+
+            $installments = $group->sortBy('installment_number')->values();
+            $capitalRemaining = round(max(0.0, (float) $payment->amount - (float) $payment->interest_amount), 2);
+            $interestRemaining = round((float) $payment->interest_amount, 2);
+            $totalCapital = (float) $installments->sum(fn ($i) => (float) $i->amount);
+
+            foreach ($installments as $index => $installment) {
+                $isLast = $index === $installments->count() - 1;
+
+                $capitalPaid = round(min((float) $installment->amount, $capitalRemaining), 2);
+                $capitalRemaining = round($capitalRemaining - $capitalPaid, 2);
+
+                $interestPaid = $isLast
+                    ? $interestRemaining
+                    : ($totalCapital > 0
+                        ? round((float) $payment->interest_amount * ((float) $installment->amount / $totalCapital), 2)
+                        : 0.0);
+
+                $interestRemaining = round($interestRemaining - $interestPaid, 2);
+
+                $breakdown[$installment->id] = [
+                    'interest_paid' => $interestPaid,
+                    'total_paid' => round($capitalPaid + $interestPaid, 2),
+                ];
+            }
+        }
+
+        return $breakdown;
     }
 
     /**
@@ -211,7 +279,7 @@ class ClientStatementController extends Controller
     {
         return $client->serviceOrders()
             ->whereIn('status', self::VISIBLE_STATUSES)
-            ->with(['payments', 'paymentInstallments'])
+            ->with(['payments', 'paymentInstallments.payment'])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (ServiceOrder $o) => $this->serviceStatement($o))

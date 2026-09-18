@@ -220,7 +220,12 @@ const linkSelection = async () => {
         else if (st.source === 'product') st.selectedProduct = [];
         else st.selectedOrder = [];
 
-        notification.success({ title: 'Vinculado', content: 'Archivo(s) vinculados a este paso.', duration: 3000 });
+        const created = data.attachments || [];
+        if (created.length) {
+            notification.success({ title: 'Vinculado', content: `Se vincularon ${created.length} archivo(s) a este paso.`, duration: 3000 });
+        } else {
+            notification.warning({ title: 'Sin cambios', content: 'Ninguno de los archivos seleccionados pudo vincularse.', duration: 5000 });
+        }
     } catch (error) {
         notification.error({ title: 'Error al vincular', content: extractErrorMessage(error), duration: 6000 });
     } finally {

@@ -266,6 +266,7 @@ class ClientController extends Controller
                 'created_at' => $media->created_at->toISOString(),
                 'url' => $media->getUrl(), 
                 'size' => $media->human_readable_size,
+                'mime_type' => $media->mime_type,
             ];
         });
 
@@ -438,6 +439,43 @@ class ClientController extends Controller
             'state' => $client->state,
             'zip_code' => $client->zip_code,
             'country' => $client->country,
+        ]);
+    }
+
+    /**
+     * API: Actualiza (o limpia) las coordenadas del cliente.
+     * PATCH /api/clients/{client}/coordinates
+     *
+     * Se guardan en el campo `coordinates` con el formato "lat,lng", que es el
+     * que ya usa la tabla de clientes.
+     */
+    public function updateCoordinates(Request $request, Client $client)
+    {
+        $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
+        if ($client->branch_id !== $branchId) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $request->validate([
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        // Solo se guardan coordenadas si vienen ambas; una sola no es útil para el mapa.
+        $hasBoth = $request->filled('latitude') && $request->filled('longitude');
+
+        $client->update([
+            'coordinates' => $hasBoth
+                ? round((float) $request->input('latitude'), 6).','.round((float) $request->input('longitude'), 6)
+                : null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'coordinates' => $client->coordinates,
+            'latitude' => $client->latitude,
+            'longitude' => $client->longitude,
+            'message' => 'Ubicación actualizada correctamente.',
         ]);
     }
 

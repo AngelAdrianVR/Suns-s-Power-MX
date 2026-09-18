@@ -45,7 +45,48 @@ class Client extends Model implements HasMedia
         // 'phone_secondary',<-- ELIMINADO
     ];
 
+    /**
+     * Latitud y longitud expuestas al frontend (se derivan de `coordinates`).
+     */
+    protected $appends = ['latitude', 'longitude'];
+
     // --- Accessors ---
+
+    /**
+     * Latitud del cliente, derivada de `coordinates` (formato "lat,lng").
+     */
+    protected function latitude(): Attribute
+    {
+        return Attribute::make(get: fn () => $this->coordinatePart(0));
+    }
+
+    /**
+     * Longitud del cliente, derivada de `coordinates` (formato "lat,lng").
+     */
+    protected function longitude(): Attribute
+    {
+        return Attribute::make(get: fn () => $this->coordinatePart(1));
+    }
+
+    /**
+     * Extrae una parte de `coordinates` ("lat,lng"). Null si no es válido.
+     */
+    private function coordinatePart(int $index): ?float
+    {
+        $raw = $this->attributes['coordinates'] ?? null;
+
+        if ($raw === null || trim((string) $raw) === '') {
+            return null;
+        }
+
+        $parts = array_map('trim', explode(',', (string) $raw));
+
+        if (count($parts) < 2 || ! is_numeric($parts[$index])) {
+            return null;
+        }
+
+        return (float) $parts[$index];
+    }
 
     /**
      * Obtener la dirección completa concatenada.

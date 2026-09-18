@@ -136,6 +136,10 @@ Route::patch('/api/service-orders/{serviceOrder}/payment-method', [ServiceOrderC
 Route::patch('/api/service-orders/{serviceOrder}/maintenance-price', [ServiceOrderController::class, 'updateMaintenancePrice'])
     ->name('api.service-orders.update-maintenance-price')
     ->middleware('auth');
+// Actualizar coordenadas (latitud/longitud) de la instalación
+Route::patch('/api/service-orders/{serviceOrder}/coordinates', [ServiceOrderController::class, 'updateCoordinates'])
+    ->name('api.service-orders.update-coordinates')
+    ->middleware('auth');
 // API: Guardar números de serie de los paneles instalados
 Route::patch('/api/service-orders/{serviceOrder}/panel-serials', [ServiceOrderController::class, 'updatePanelSerials'])
     ->name('api.service-orders.update-panel-serials')
@@ -244,6 +248,31 @@ Route::get('/ordenes-servicio/{serviceOrder}/carta-poder', [ServiceOrderControll
 Route::post('/ordenes-servicio/{serviceOrder}/carta-poder/vincular', [ServiceOrderController::class, 'linkCartaPoder'])
     ->name('service-orders.carta-poder.link')->middleware('auth');
 
+// Cambio de Nombre (solicitud de contrato por cambio de titular, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/cambio-de-nombre', [ServiceOrderController::class, 'cambioDeNombre'])
+    ->name('service-orders.cambio-de-nombre')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/cambio-de-nombre/vincular', [ServiceOrderController::class, 'linkCambioDeNombre'])
+    ->name('service-orders.cambio-de-nombre.link')->middleware('auth');
+
+// Anexo 2 (solicitud de interconexión, pestaña nueva) y su vinculación como PDF
+Route::get('/ordenes-servicio/{serviceOrder}/anexo-2', [ServiceOrderController::class, 'anexo2'])
+    ->name('service-orders.anexo2')->middleware('auth');
+Route::post('/ordenes-servicio/{serviceOrder}/anexo-2/vincular', [ServiceOrderController::class, 'linkAnexo2'])
+    ->name('service-orders.anexo2.link')->middleware('auth');
+
+// Worker de pdf.js servido por Laravel en desarrollo (mismo origen que la página,
+// el navegador bloquea workers cross-origin desde el dev server de Vite).
+// En producción se usa el asset emitido por Vite en public/build.
+if (app()->environment('local')) {
+    Route::get('/pdf-worker.mjs', function () {
+        $path = base_path('node_modules/pdfjs-dist/build/pdf.worker.min.mjs');
+        abort_unless(is_file($path), 404);
+        return response(file_get_contents($path), 200, [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+        ]);
+    })->name('pdf.worker');
+}
+
 
 // ---------------------------------- RUTAS DE VISITAS TECNICAS ----------------------------------
 Route::resource('visitas-tecnicas', TechnicalVisitController::class)->names('technical-visits')->parameters(['visitas-tecnicas' => 'technicalVisit'])->middleware('auth');
@@ -350,6 +379,10 @@ Route::get('/clientes/{client}/estado-cuenta/servicios/{serviceOrder}', [ClientS
 // API interna para obtener detalles del cliente (Dirección para Orden de Servicio)
 Route::get('/api/clients/{client}/details', [ClientController::class, 'getClientDetails'])
     ->name('api.clients.details'); 
+// Actualizar coordenadas (latitud/longitud) de un cliente
+Route::patch('/api/clients/{client}/coordinates', [ClientController::class, 'updateCoordinates'])
+    ->name('api.clients.update-coordinates')
+    ->middleware('auth');
 // API interna para el componente Vue (obtener deudas)
 Route::get('/api/clients/{client}/pending-orders', [PaymentController::class, 'getPendingOrders'])
 ->name('api.clients.pending-orders');

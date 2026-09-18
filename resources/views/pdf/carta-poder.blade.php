@@ -120,10 +120,10 @@
     @foreach (['apoderado', 'testigo1', 'testigo2'] as $roleIndex => $role)
         @if (!empty($ine_pages[$role]))
             <div class="ine-page{{ $roleIndex === 2 ? ' last' : '' }}">
-                <div class="ine-caption">
+                {{-- <div class="ine-caption">
                     INE — {{ ['apoderado' => 'Apoderado', 'testigo1' => 'Testigo 1', 'testigo2' => 'Testigo 2'][$role] }}:
                     <strong>{{ $ine_pages[$role]['person'] }}</strong>
-                </div>
+                </div> --}}
                 @if ($ine_pages[$role]['is_image'])
                     <img class="ine-image" src="{{ $ine_pages[$role]['src'] }}"
                          style="width: {{ $ine_pages[$role]['w'] }}mm; {{ $ine_pages[$role]['h'] !== null ? 'height: '.$ine_pages[$role]['h'].'mm;' : '' }}" />

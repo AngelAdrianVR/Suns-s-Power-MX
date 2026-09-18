@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ServiceDocumentationAttachment;
 use App\Models\ServiceDocumentationStep;
 use App\Models\ServiceOrder;
+use App\Models\ServiceOrderEvidence;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -329,6 +330,13 @@ class ServiceDocumentationController extends Controller
                 $allowed = $media->model_type === Product::class && in_array((int) $media->model_id, $allowedProductIds, true);
             } else {
                 $allowed = $media->model_type === ServiceOrder::class && $media->model_id === $serviceOrder->id;
+
+                // Evidencias del checklist: el media pertenece a ServiceOrderEvidence de esta orden
+                if (!$allowed && $media->model_type === ServiceOrderEvidence::class) {
+                    $allowed = ServiceOrderEvidence::where('id', $media->model_id)
+                        ->where('service_order_id', $serviceOrder->id)
+                        ->exists();
+                }
             }
 
             if (!$allowed) {
