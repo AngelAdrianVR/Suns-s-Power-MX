@@ -4,6 +4,7 @@ import { usePermissions } from '@/Composables/usePermissions';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import PaymentModal from '@/Components/MyComponents/PaymentModal.vue';
+import axios from 'axios';
 
 // Importación de Componentes Hijos
 import ClientOrderDetail from './Components/ClientOrderDetail.vue';
@@ -12,13 +13,13 @@ import ClientDocumentsTab from './Components/ClientDocumentsTab.vue';
 import ClientTicketsTab from './Components/ClientTicketsTab.vue';
 
 import { 
-    NButton, NIcon, NTabs, NTabPane, NAvatar, NBadge, NAlert, NTooltip, createDiscreteApi
+    NButton, NIcon, NTabs, NTabPane, NAvatar, NBadge, NAlert, NTooltip, NInputNumber, createDiscreteApi
 } from 'naive-ui';
 import { 
     ArrowBackOutline, PersonOutline, MailOutline, CallOutline, LocationOutline, 
     ConstructOutline, PeopleOutline, DocumentTextOutline,
     CreateOutline, MapOutline, ReceiptOutline, CheckmarkCircleOutline, AlertCircleOutline,
-    TicketOutline, InformationCircleOutline
+    TicketOutline, InformationCircleOutline, SaveOutline, CopyOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
@@ -99,6 +100,11 @@ const formattedAddress = computed(() => {
 });
 
 const googleMapsUrl = computed(() => {
+    // Las coordenadas tienen SIEMPRE preferencia sobre la dirección.
+    if (hasCoordinates.value) {
+        return `https://www.google.com/maps/search/?api=1&query=${props.client.latitude},${props.client.longitude}`;
+    }
+
     if (!props.client.street && !props.client.municipality) return null;
     const addressQuery = [
         props.client.street, props.client.exterior_number, props.client.neighborhood,
@@ -106,6 +112,69 @@ const googleMapsUrl = computed(() => {
     ].filter(Boolean).join(', ');
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressQuery)}`;
 });
+
+// --- COORDENADAS (LATITUD / LONGITUD) ---
+const isEditingCoords = ref(false);
+const isSavingCoords = ref(false);
+const coordsForm = ref({ lat: null, lng: null });
+
+const hasCoordinates = computed(() => {
+    return props.client.latitude !== null && props.client.latitude !== undefined
+        && props.client.longitude !== null && props.client.longitude !== undefined;
+});
+
+const coordinatesLabel = computed(() => `${props.client.latitude}, ${props.client.longitude}`);
+
+const startEditCoords = () => {
+    coordsForm.value = {
+        lat: hasCoordinates.value ? Number(props.client.latitude) : null,
+        lng: hasCoordinates.value ? Number(props.client.longitude) : null
+    };
+    isEditingCoords.value = true;
+};
+
+const cancelEditCoords = () => {
+    isEditingCoords.value = false;
+    coordsForm.value = { lat: null, lng: null };
+};
+
+const saveCoords = async () => {
+    const hasLat = coordsForm.value.lat !== null && coordsForm.value.lat !== '';
+    const hasLng = coordsForm.value.lng !== null && coordsForm.value.lng !== '';
+
+    if (hasLat !== hasLng) {
+        notification.warning({
+            title: 'Datos incompletos',
+            content: 'Ingresa latitud y longitud, o deja ambos campos vacíos para quitar las coordenadas.',
+            duration: 5000
+        });
+        return;
+    }
+
+    isSavingCoords.value = true;
+    try {
+        await axios.patch(
+            route('api.clients.update-coordinates', props.client.id),
+            { latitude: hasLat ? coordsForm.value.lat : null, longitude: hasLng ? coordsForm.value.lng : null }
+        );
+        isEditingCoords.value = false;
+        notification.success({ title: 'Ubicación actualizada', content: 'Las coordenadas se guardaron correctamente.', duration: 3000 });
+        router.reload({ only: ['client'] });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudieron guardar las coordenadas.', duration: 4000 });
+    } finally {
+        isSavingCoords.value = false;
+    }
+};
+
+const copyCoordinates = async () => {
+    try {
+        await navigator.clipboard.writeText(coordinatesLabel.value);
+        notification.success({ title: 'Copiado', content: 'Coordenadas copiadas al portapapeles.', duration: 2500 });
+    } catch (error) {
+        notification.error({ title: 'Error', content: 'No se pudieron copiar las coordenadas.', duration: 3000 });
+    }
+};
 </script>
 
 <template>
@@ -182,11 +251,66 @@ const googleMapsUrl = computed(() => {
                                             <n-icon class="mt-0.5 text-red-500 flex-shrink-0"><LocationOutline /></n-icon> 
                                             <span class="leading-snug">{{ formattedAddress }}</span>
                                         </div>
-                                        <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-block">
-                                            <n-button size="tiny" secondary round type="info">
-                                                <template #icon><n-icon><MapOutline/></n-icon></template> Ver en Mapa
+                                    </div>
+
+                                    <!-- Coordenadas (latitud / longitud) -->
+                                    <div class="mt-2">
+                                        <!-- Modo vista -->
+                                        <div v-if="!isEditingCoords" class="flex flex-wrap items-center gap-2">
+                                            <span class="text-[10px] text-gray-400 uppercase font-bold">Coordenadas</span>
+                                            <span v-if="hasCoordinates" class="font-mono text-xs text-gray-500 truncate max-w-[220px]">
+                                                📍 {{ coordinatesLabel }}
+                                            </span>
+                                            <span v-else class="text-xs text-gray-400 italic">Sin coordenadas registradas</span>
+
+                                            <n-button v-if="hasCoordinates" size="tiny" text @click="copyCoordinates">
+                                                <template #icon><n-icon><CopyOutline /></n-icon></template>
                                             </n-button>
-                                        </a>
+
+                                            <n-button
+                                                v-if="hasPermission('clients.edit')"
+                                                size="tiny" text type="primary"
+                                                @click="startEditCoords"
+                                            >
+                                                <template #icon><n-icon><CreateOutline /></n-icon></template>
+                                                {{ hasCoordinates ? 'Editar' : 'Agregar' }}
+                                            </n-button>
+                                            <PermissionTooltip permission="clients.edit" placement="top" :size="12" />
+
+                                            <a v-if="googleMapsUrl" :href="googleMapsUrl" target="_blank" rel="noopener noreferrer" class="inline-block">
+                                                <n-button size="tiny" secondary round type="info">
+                                                    <template #icon><n-icon><MapOutline/></n-icon></template> Ver en Mapa
+                                                </n-button>
+                                            </a>
+                                        </div>
+
+                                        <!-- Modo edición -->
+                                        <div v-else class="rounded-lg border border-indigo-200 bg-indigo-50/40 p-2 max-w-md">
+                                            <div class="text-[10px] text-gray-400 uppercase font-bold mb-1">Coordenadas (Google Maps)</div>
+                                            <div class="flex items-center gap-2">
+                                                <n-input-number
+                                                    v-model:value="coordsForm.lat"
+                                                    :min="-90" :max="90" :precision="6" :show-button="false"
+                                                    size="small" placeholder="Latitud" class="w-full"
+                                                />
+                                                <n-input-number
+                                                    v-model:value="coordsForm.lng"
+                                                    :min="-180" :max="180" :precision="6" :show-button="false"
+                                                    size="small" placeholder="Longitud" class="w-full"
+                                                />
+                                            </div>
+                                            <div class="flex justify-end gap-2 mt-2">
+                                                <n-button size="tiny" @click="cancelEditCoords">Cancelar</n-button>
+                                                <n-button size="tiny" type="primary" :loading="isSavingCoords" @click="saveCoords">
+                                                    <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                                    Guardar
+                                                </n-button>
+                                            </div>
+                                            <p class="text-[10px] text-gray-400 leading-tight mt-2">
+                                                Copia cada valor desde Google Maps (clic derecho sobre el punto → coordenadas).
+                                                Deja ambos campos vacíos para quitarlas.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

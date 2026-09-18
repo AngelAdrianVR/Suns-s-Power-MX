@@ -3,8 +3,8 @@ import { ref, h } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { usePermissions } from '@/Composables/usePermissions';
 import { useSecureFile } from '@/Composables/useSecureFile';
-import { NButton, NIcon, NTag, NDataTable, NTooltip, createDiscreteApi } from 'naive-ui';
-import { CloudDownloadOutline, TrashOutline, CloudUploadOutline } from '@vicons/ionicons5';
+import { NButton, NIcon, NTag, NDataTable, NTooltip, NImage, createDiscreteApi } from 'naive-ui';
+import { CloudDownloadOutline, TrashOutline, CloudUploadOutline, DocumentOutline } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 
 const props = defineProps({
@@ -21,7 +21,49 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
+// Detecta si el documento es una imagen (para mostrar miniatura)
+const isImage = (row) => {
+    if (row.mime_type) return row.mime_type.startsWith('image/');
+    return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(row.name || '');
+};
+
 const docColumns = [
+    {
+        title: 'Vista',
+        key: 'preview',
+        width: 82,
+        render: (row) => {
+            if (isImage(row)) {
+                // Miniatura de la imagen (clic para ampliar)
+                return h('div', { class: 'flex items-center justify-center py-1' },
+                    h(NImage, {
+                        src: row.url,
+                        width: 58,
+                        height: 58,
+                        objectFit: 'cover',
+                        class: 'rounded-lg border border-gray-200 cursor-pointer bg-gray-50',
+                        onClick: (e) => e.stopPropagation(),
+                    })
+                );
+            }
+
+            // Documento no imagen (PDF, Word, etc.): ícono + etiqueta
+            return h('div', { class: 'flex items-center justify-center py-1' },
+                h('div', {
+                    class: 'w-[58px] h-[58px] rounded-lg border border-gray-200 bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors',
+                    onClick: (e) => {
+                        e.stopPropagation();
+                        openFileWithRetry(row.url);
+                    }
+                }, [
+                    h(NIcon, { size: 20, class: 'text-indigo-400' }, { default: () => h(DocumentOutline) }),
+                    h('span', { class: 'text-[9px] text-indigo-600 font-bold mt-0.5' },
+                        (row.name || '').split('.').pop()?.toUpperCase() || 'DOC'
+                    ),
+                ])
+            );
+        }
+    },
     { 
         title: 'Nombre', 
         key: 'name', 

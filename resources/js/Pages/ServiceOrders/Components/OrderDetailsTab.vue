@@ -1,18 +1,74 @@
 <script setup>
-import { NDescriptions, NDescriptionsItem, NIcon, NAvatar } from 'naive-ui';
+import { ref, computed, watch } from 'vue';
+import axios from 'axios';
+import {
+    NDescriptions, NDescriptionsItem, NIcon, NAvatar,
+    NInput, NButton, createDiscreteApi
+} from 'naive-ui';
 import {
     CalendarOutline, CheckmarkCircleOutline, FlashOutline,
-    PricetagOutline, HardwareChipOutline
+    PricetagOutline, HardwareChipOutline, SaveOutline, BarcodeOutline
 } from '@vicons/ionicons5';
 
 const props = defineProps({
     order: Object
 });
 
+const { notification } = createDiscreteApi(['notification']);
+
 const formatDate = (dateString) => {
     if (!dateString) return 'Sin definir';
     const date = new Date(dateString);
     return date.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// --- NÚMEROS DE SERIE DE PANELES (siempre editables) ---
+const units = computed(() => Number(props.order.number_of_units) || 0);
+
+const localSerials = ref([]);
+const originalSerials = ref([]);
+const isSavingSerials = ref(false);
+
+const syncSerials = () => {
+    const stored = Array.isArray(props.order.panel_serials) ? props.order.panel_serials : [];
+    localSerials.value = Array.from({ length: units.value }, (_, i) => stored[i] ?? '');
+    originalSerials.value = [...localSerials.value];
+};
+
+watch(units, syncSerials, { immediate: true });
+
+const hasDirtySerials = computed(() =>
+    localSerials.value.some((serial, i) => serial.trim() !== (originalSerials.value[i] ?? '').trim())
+);
+
+const saveSerials = async () => {
+    if (!hasDirtySerials.value || isSavingSerials.value) return;
+
+    isSavingSerials.value = true;
+    try {
+        const payload = Array.from({ length: units.value }, (_, i) => (localSerials.value[i] || '').trim());
+
+        await axios.patch(route('api.service-orders.update-panel-serials', props.order.id), {
+            panel_serials: payload
+        });
+
+        originalSerials.value = [...payload];
+        localSerials.value = [...payload];
+
+        notification.success({
+            title: 'Números de serie guardados',
+            content: 'Los datos quedaron registrados y listos para el diagrama unifilar.',
+            duration: 3000
+        });
+    } catch (error) {
+        notification.error({
+            title: 'Error',
+            content: 'No se pudieron guardar los números de serie.',
+            duration: 3000
+        });
+    } finally {
+        isSavingSerials.value = false;
+    }
 };
 </script>
 
@@ -100,16 +156,58 @@ const formatDate = (dateString) => {
                     <span v-else class="text-gray-400 italic">-</span>
                 </n-descriptions-item>
 
+                <n-descriptions-item label="Capacidad Unitaria">
+                    <span v-if="order.unit_capacity" class="font-medium text-gray-800">{{ order.unit_capacity }}
+                        W</span>
+                    <span v-else class="text-gray-400 italic">-</span>
+                </n-descriptions-item>
+
                 <n-descriptions-item label="Unidades instaladas">
                     <span v-if="order.number_of_units" class="font-medium text-gray-800">{{ order.number_of_units }}
                         pzs</span>
                     <span v-else class="text-gray-400 italic">-</span>
                 </n-descriptions-item>
 
-                <n-descriptions-item label="Capacidad Unitaria">
-                    <span v-if="order.unit_capacity" class="font-medium text-gray-800">{{ order.unit_capacity }}
-                        W</span>
-                    <span v-else class="text-gray-400 italic">-</span>
+                <!-- NÚMEROS DE SERIE POR UNIDAD (SIEMPRE EDITABLES) -->
+                <n-descriptions-item label="Números de Serie por Unidad" :span="4">
+                    <div v-if="units" class="space-y-3">
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <n-icon class="text-indigo-500">
+                                <BarcodeOutline />
+                            </n-icon>
+                            Captura el número de serie de cada panel. Se guarda automáticamente y se usa en el
+                            diagrama unifilar.
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                            <div v-for="index in units" :key="index" class="flex items-center gap-2">
+                                <span class="shrink-0 w-14 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-1 text-center font-mono">
+                                    PV-{{ index }}
+                                </span>
+                                <n-input
+                                    v-model:value="localSerials[index - 1]"
+                                    size="small"
+                                    placeholder="Número de serie"
+                                    @blur="saveSerials"
+                                    @keyup.enter="saveSerials"
+                                />
+                            </div>
+                        </div>
+                        <div class="flex justify-end min-h-[32px]">
+                            <n-button
+                                v-if="hasDirtySerials"
+                                size="small"
+                                type="primary"
+                                @click="saveSerials"
+                                :loading="isSavingSerials"
+                            >
+                                <template #icon><n-icon><SaveOutline /></n-icon></template>
+                                Guardar series
+                            </n-button>
+                        </div>
+                    </div>
+                    <span v-else class="text-gray-400 italic text-sm">
+                        Define la cantidad de unidades instaladas para capturar los números de serie de cada panel.
+                    </span>
                 </n-descriptions-item>
 
                 <n-descriptions-item label="Capacidad Total (Generación)" :span="4">
