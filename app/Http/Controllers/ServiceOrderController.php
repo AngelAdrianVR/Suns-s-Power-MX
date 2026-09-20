@@ -12,6 +12,7 @@ use App\Models\PaymentInstallment;
 use App\Models\EvidenceTemplate;
 use App\Mail\PaymentReminderMail;
 use App\Models\ServiceOrderEvidence;
+use App\Models\ServiceDocumentationAttachment;
 use App\Models\SystemType;
 use App\Models\User;
 use App\Models\TaskTemplate; 
@@ -24,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\URL;
@@ -1971,61 +1973,140 @@ class ServiceOrderController extends Controller
      */
     private function inePagePayload(Media $media, string $personName): array
     {
-        $isImage = in_array($media->mime_type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'], true);
-
-        // DomPDF incrusta JPEG sin GD (lee el archivo directo). PNG/WebP/GIF/BMP sí requieren GD.
-        $isJpeg = $media->mime_type === 'image/jpeg';
         $gdAvailable = extension_loaded('gd');
         $path = $media->getPath();
+        $payload = null;
+        $needsGd = false;
 
-        if ($isImage && file_exists($path) && ($isJpeg || $gdAvailable)) {
-            return $this->imagePagePayload($path, $personName, $media->file_name);
+        if (is_file($path) && is_readable($path) && filesize($path) > 0) {
+            $binary = @file_get_contents($path);
+            $dims = $binary !== false ? @getimagesizefromstring($binary) : false;
+
+            if ($dims && !empty($dims[0]) && !empty($dims[1])) {
+                $mime = strtolower((string) ($dims['mime'] ?? ''));
+
+                // Dompdf incrusta JPEG sin GD. PNG/WebP/GIF/BMP sí requieren GD.
+                if ($mime === 'image/jpeg' || $gdAvailable) {
+                    $payload = $this->imagePagePayloadFromBinary($binary, $mime, $personName, $media->file_name);
+                } else {
+                    $needsGd = true;
+                }
+            }
         }
 
-        return [
+        return $payload ?? [
             'person' => $personName,
             'src' => null,
             'w' => 192.0,
             'h' => null,
             'is_image' => false,
             'file_name' => $media->file_name,
-            'needs_gd' => $isImage && !$isJpeg && !$gdAvailable,
+            'needs_gd' => $needsGd,
         ];
     }
 
     /**
-     * Payload de una imagen (ruta local) lista para incrustarse en una hoja.
+     * Payload de una imagen incrustada en el HTML como Data URI.
+     *
+     * Los bytes de la imagen van dentro del propio HTML (y no la ruta del
+     * archivo) porque en producción Dompdf puede no poder resolver rutas
+     * temporales o de disco (permisos, chroot, open_basedir, etc.) y en su
+     * lugar dibuja un recuadro con una "X". Con Data URI Dompdf solo necesita
+     * su carpeta temporal, que se configura dentro de storage.
      */
-    private function imagePagePayload(string $path, string $personName, string $file_name): array
+    private function imagePagePayloadFromBinary(string $binary, string $mime, string $personName, string $file_name): ?array
     {
-        $dims = @getimagesize($path);
+        $dims = @getimagesizefromstring($binary);
+
+        if (!$dims || empty($dims[0]) || empty($dims[1])) {
+            return null;
+        }
+
         $pageW = 192.0;
         $pageH = 245.0;
         $width = $pageW;
         $height = null;
 
-        if ($dims && !empty($dims[0]) && !empty($dims[1])) {
-            $ratio = $dims[1] / $dims[0];
-            if ($ratio > $pageH / $pageW) {
-                $height = $pageH;
-                $width = $pageH / $ratio;
-            } else {
-                $width = $pageW;
-                $height = $width * $ratio;
-            }
+        $ratio = $dims[1] / $dims[0];
+
+        if ($ratio > $pageH / $pageW) {
+            $height = $pageH;
+            $width = $pageH / $ratio;
         } else {
-            $height = 150.0;
+            $width = $pageW;
+            $height = $width * $ratio;
         }
 
         return [
             'person' => $personName,
-            'src' => $path,
+            'src' => 'data:'.$mime.';base64,'.base64_encode($binary),
             'w' => round($width, 1),
             'h' => round($height, 1),
             'is_image' => true,
             'file_name' => $file_name,
             'needs_gd' => false,
         ];
+    }
+
+    /**
+     * Imagen a partir del Data URI JPEG que convierte el navegador (no requiere GD).
+     */
+    private function imagePagePayloadFromDataUrl(string $dataUrl, string $personName, string $file_name): ?array
+    {
+        if (!preg_match('#^data:(image/[a-z0-9.+-]+);base64,(.+)$#is', trim($dataUrl), $matches)) {
+            return null;
+        }
+
+        $binary = base64_decode(preg_replace('/\s+/', '', $matches[2]), true);
+
+        if ($binary === false || $binary === '') {
+            return null;
+        }
+
+        return $this->imagePagePayloadFromBinary($binary, strtolower($matches[1]), $personName, $file_name);
+    }
+
+    /**
+     * Si Dompdf no pudo incrustar alguna imagen (dibuja una "X" en su lugar),
+     * el motivo queda registrado en el log para poder diagnosticarlo.
+     */
+    private function logDompdfImageWarnings(int $serviceOrderId): void
+    {
+        foreach ((array) ($GLOBALS['_dompdf_warnings'] ?? []) as $warning) {
+            $warning = (string) $warning;
+
+            if (stripos($warning, 'image') === false) {
+                continue;
+            }
+
+            Log::warning('Dompdf no pudo incrustar una imagen en la Carta Poder', [
+                'service_order_id' => $serviceOrderId,
+                'warning' => $warning,
+            ]);
+        }
+    }
+
+    /**
+     * Reapunta los adjuntos del expediente que apuntaban a la versión anterior
+     * de un documento regenerado (carta poder, etc.). Sin esto, el expediente
+     * sigue apuntando al archivo viejo (ya eliminado) y no puede imprimirlo.
+     */
+    private function relinkDocumentationAttachments(ServiceOrder $serviceOrder, array $oldMediaIds, Media $newMedia): void
+    {
+        if (empty($oldMediaIds)) {
+            return;
+        }
+
+        ServiceDocumentationAttachment::query()
+            ->where('service_order_id', $serviceOrder->id)
+            ->whereIn('media_id', $oldMediaIds)
+            ->update([
+                'media_id' => $newMedia->id,
+                'file_name' => $newMedia->file_name,
+                'mime_type' => $newMedia->mime_type,
+                'file_path' => $newMedia->getPath(),
+                'url' => $newMedia->getUrl(),
+            ]);
     }
 
     /**
@@ -2142,21 +2223,19 @@ class ServiceOrderController extends Controller
         $users = User::whereIn('id', $userIds)->get()->keyBy('id');
 
         $ineImages = $validated['ine_images'] ?? [];
-        $tmpJpgs = [];
 
         $inePages = [];
         foreach ($roles as $role => $key) {
             $userId = (int) ($validated[$key] ?? 0);
             $personName = (string) ($users[$userId]->name ?? $fields[$role.'_nombre'] ?? $role);
 
-            // 1) Imagen JPEG convertida en el navegador (funciona sin GD)
-            if ($userId && !empty($ineImages[$role]) && str_starts_with((string) $ineImages[$role], 'data:image/')) {
-                $binary = base64_decode((string) preg_replace('/^data:image\/\w+;base64,/', '', $ineImages[$role]), true);
-                if ($binary !== false && $binary !== '') {
-                    $tmpJpg = tempnam(sys_get_temp_dir(), 'ine').'.jpg';
-                    file_put_contents($tmpJpg, $binary);
-                    $tmpJpgs[] = $tmpJpg;
-                    $inePages[$role] = $this->imagePagePayload($tmpJpg, $personName, 'INE.jpg');
+            // 1) Imagen JPEG convertida en el navegador: se incrusta directo en el
+            //    PDF como Data URI (no depende de archivos temporales ni de GD).
+            if ($userId && !empty($ineImages[$role])) {
+                $payload = $this->imagePagePayloadFromDataUrl((string) $ineImages[$role], $personName, 'INE.jpg');
+
+                if ($payload !== null) {
+                    $inePages[$role] = $payload;
                     continue;
                 }
             }
@@ -2175,7 +2254,18 @@ class ServiceOrderController extends Controller
             $inePages[$role] = $media ? $this->inePagePayload($media, $personName) : null;
         }
 
-        $pdf = Pdf::loadView('pdf.carta-poder', [
+        // Las imágenes van dentro del HTML como Data URI y Dompdf las copia a su
+        // carpeta temporal para poder incrustarlas. Se usa una carpeta dentro de
+        // storage (escribible siempre) en lugar de la del sistema, que en
+        // producción puede estar restringida y provocar los recuadros con "X".
+        $dompdfTempDir = storage_path('app/dompdf-temp');
+        if (!is_dir($dompdfTempDir)) {
+            @mkdir($dompdfTempDir, 0775, true);
+        }
+
+        unset($GLOBALS['_dompdf_warnings']);
+
+        $pdf = Pdf::setOption('temp_dir', $dompdfTempDir)->loadView('pdf.carta-poder', [
             'fields' => $fields,
             'ine_pages' => $inePages,
             'order' => $serviceOrder,
@@ -2185,18 +2275,17 @@ class ServiceOrderController extends Controller
         $fileName = 'carta-poder-orden-'.$serviceOrder->id.'.pdf';
 
         // Se reemplaza la carta vinculada anterior (si existe) para no duplicar
+        $oldCartaMediaIds = $serviceOrder->getMedia('carta_poder')->pluck('id')->all();
         $serviceOrder->clearMediaCollection('carta_poder');
 
-        $tmpPath = tempnam(sys_get_temp_dir(), 'cartapoder');
+        $tmpPath = $dompdfTempDir.'/carta-poder-orden-'.$serviceOrder->id.'-'.uniqid().'.pdf';
         file_put_contents($tmpPath, $pdf->output());
 
-        // Limpiar los JPEG temporales generados en este request
-        foreach ($tmpJpgs as $tmpJpg) {
-            @unlink($tmpJpg);
-        }
+        // Si Dompdf no pudo incrustar alguna imagen, el motivo queda en el log.
+        $this->logDompdfImageWarnings($serviceOrder->id);
 
         try {
-            $serviceOrder->addMedia($tmpPath)
+            $newMedia = $serviceOrder->addMedia($tmpPath)
                 ->usingName('Carta Poder')
                 ->usingFileName($fileName)
                 ->withCustomProperties(['category' => 'carta_poder'])
@@ -2204,6 +2293,10 @@ class ServiceOrderController extends Controller
         } finally {
             @unlink($tmpPath);
         }
+
+        // El expediente apunta a la versión anterior (ya eliminada): se reapunta
+        // a la nueva para que muestre e imprima siempre la última carta.
+        $this->relinkDocumentationAttachments($serviceOrder, $oldCartaMediaIds, $newMedia);
 
         return response()->json([
             'success' => true,
