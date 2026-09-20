@@ -100,9 +100,13 @@ onMounted(() => {
 
 // Convierte una imagen a JPEG (data URL) usando canvas, para que el servidor
 // la pueda incrustar en el PDF sin depender de la extensión GD de PHP.
+// Se limita el lado mayor a MAX_INE_EDGE px: en una hoja carta (~190 mm de
+// ancho) equivale a más de 250 DPI, y evita PDFs/peticiones innecesariamente
+// pesadas (en producción PHP suele tener límites de memoria y de POST).
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp'];
+const MAX_INE_EDGE = 2000;
 
-const mediaToJpegDataUrl = (url, mimeType) => new Promise((resolve, reject) => {
+const mediaToJpegDataUrl = (url, mimeType) => new Promise((resolve) => {
     if (!IMAGE_MIMES.includes(mimeType)) {
         resolve(null);
         return;
@@ -111,14 +115,20 @@ const mediaToJpegDataUrl = (url, mimeType) => new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
         try {
+            const naturalWidth = img.naturalWidth || 1;
+            const naturalHeight = img.naturalHeight || 1;
+            const factor = Math.min(1, MAX_INE_EDGE / Math.max(naturalWidth, naturalHeight));
+            const width = Math.max(1, Math.round(naturalWidth * factor));
+            const height = Math.max(1, Math.round(naturalHeight * factor));
+
             const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || 1;
-            canvas.height = img.naturalHeight || 1;
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/jpeg', 0.92));
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
         } catch (error) {
             resolve(null);
         }
@@ -133,10 +143,16 @@ const linkToOrder = async () => {
     try {
         // Convierte las INE seleccionadas a JPEG en el navegador
         const ineImages = {};
+        const notConverted = [];
         for (const role of ROLES) {
             const media = selectedIneMedia(role);
-            if (media) {
-                ineImages[role] = await mediaToJpegDataUrl(media.url, media.mime_type);
+            if (!media) continue;
+
+            const dataUrl = await mediaToJpegDataUrl(media.url, media.mime_type);
+            if (dataUrl) {
+                ineImages[role] = dataUrl;
+            } else {
+                notConverted.push(ROLE_LABELS[role]);
             }
         }
 
@@ -154,6 +170,15 @@ const linkToOrder = async () => {
         });
         linked.value = true;
         updateSnapshot();
+
+        if (notConverted.length) {
+            notification.warning({
+                title: 'Algunas INE no se pudieron convertir',
+                content: `No se pudo leer ${notConverted.join(', ')} en este navegador (los formatos HEIC de iPhone no son compatibles). Se intentó usar el archivo original; si el PDF no muestra la imagen, vuelve a subir la INE en formato JPG.`,
+                duration: 8000
+            });
+        }
+
         notification.success({
             title: 'Carta Poder vinculada',
             content: 'El PDF se guardó como documento de la orden (pestaña Evidencias y Documentos).',

@@ -15,6 +15,21 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class ServiceDocumentationController extends Controller
 {
+    /**
+     * Colecciones de documentos que se regeneran desde la propia orden
+     * (carta poder, anexo 2, etc.). Al regenerarlos se crea una media nueva y
+     * se elimina la anterior, así que los adjuntos del expediente pueden
+     * quedarse apuntando a una versión vieja (la que en producción se imprime
+     * con los recuadros de "X").
+     */
+    private const REGENERATED_DOCUMENT_COLLECTIONS = [
+        'carta_poder',
+        'cambio_de_nombre',
+        'solicitud_arco_cfe',
+        'anexo2',
+        'diagram_unifilar',
+    ];
+
     private function branchId()
     {
         return session('current_branch_id') ?? Auth::user()->branch_id;
@@ -235,7 +250,7 @@ class ServiceDocumentationController extends Controller
         $attachments = ServiceDocumentationAttachment::where('service_order_id', $serviceOrder->id)
             ->orderBy('id')
             ->get()
-            ->map(fn ($attachment) => $this->attachmentPayload($attachment))
+            ->map(fn ($attachment) => $this->attachmentPayloadForOrder($serviceOrder, $attachment))
             ->groupBy('step_id');
 
         return response()->json([
@@ -430,14 +445,14 @@ class ServiceDocumentationController extends Controller
 
         return Inertia::render('ServiceOrders/DocumentationPrint', [
             'order' => $orderPayload,
-            'steps' => $steps->map(function ($step) use ($attachments) {
+            'steps' => $steps->map(function ($step) use ($attachments, $serviceOrder) {
                 $stepAttachments = $attachments[$step->id] ?? collect();
 
                 return [
                     'id' => $step->id,
                     'title' => $step->title,
                     'description' => $step->description,
-                    'attachments' => $stepAttachments->map(fn ($attachment) => $this->attachmentPayload($attachment))->values(),
+                    'attachments' => $stepAttachments->map(fn ($attachment) => $this->attachmentPayloadForOrder($serviceOrder, $attachment))->values(),
                 ];
             })->values(),
             'single' => (bool) $stepId,
@@ -473,5 +488,96 @@ class ServiceDocumentationController extends Controller
             'mime_type' => $attachment->mime_type,
             'url' => $attachment->url,
         ];
+    }
+
+    /**
+     * Payload del adjunto asegurando que apunte a la versión ACTUAL del
+     * documento generado por la orden (carta poder, anexo 2, etc.). Si quedó
+     * apuntando a una versión anterior (o a una media ya eliminada), se corrige
+     * y se guarda para que el expediente muestre e imprima la última versión.
+     */
+    private function attachmentPayloadForOrder(ServiceOrder $serviceOrder, ServiceDocumentationAttachment $attachment): array
+    {
+        $current = $this->resolveRegeneratedDocumentMedia($serviceOrder, $attachment);
+
+        if ($current) {
+            $attachment->media_id = $current->id;
+            $attachment->file_name = $current->file_name;
+            $attachment->mime_type = $current->mime_type;
+            $attachment->file_path = $current->getPath();
+            $attachment->url = $current->getUrl();
+            $attachment->source = ServiceDocumentationAttachment::SOURCE_ORDER;
+            $attachment->save();
+        }
+
+        return $this->attachmentPayload($attachment);
+    }
+
+    /**
+     * Busca la versión más reciente, en la orden, del documento al que apunta
+     * un adjunto del expediente. Devuelve null cuando no hay nada que corregir.
+     */
+    private function resolveRegeneratedDocumentMedia(ServiceOrder $serviceOrder, ServiceDocumentationAttachment $attachment): ?Media
+    {
+        $media = $attachment->media_id ? Media::find($attachment->media_id) : null;
+
+        // El adjunto apunta a un documento que la orden regenera: se usa la
+        // versión actual de esa colección.
+        if ($media && in_array($media->collection_name, self::REGENERATED_DOCUMENT_COLLECTIONS, true)) {
+            $current = $serviceOrder->getMedia($media->collection_name)->sortByDesc('id')->first();
+
+            return $current && $current->id !== $media->id ? $current : null;
+        }
+
+        // La media ya no existe (o es una copia subida a mano): se identifica el
+        // documento por su nombre de archivo (carta-poder-orden-495.pdf, etc.).
+        if (!in_array($attachment->source, [ServiceDocumentationAttachment::SOURCE_ORDER, ServiceDocumentationAttachment::SOURCE_UPLOAD], true)) {
+            return null;
+        }
+
+        $targetName = $this->normalizeDocumentName($attachment->file_name);
+
+        if ($targetName === '') {
+            return null;
+        }
+
+        foreach (self::REGENERATED_DOCUMENT_COLLECTIONS as $collection) {
+            $candidate = $serviceOrder->getMedia($collection)
+                ->sortByDesc('id')
+                ->first(fn ($item) => $this->normalizeDocumentName($item->file_name) === $targetName);
+
+            if (!$candidate) {
+                continue;
+            }
+
+            if ((int) $attachment->media_id === $candidate->id) {
+                return null;
+            }
+
+            // Si es una copia subida a mano (no vinculada desde la orden), solo
+            // se reemplaza cuando es más antigua que el documento actual; así se
+            // respeta una copia firmada o escaneada subida después de generarlo.
+            if ($attachment->source === ServiceDocumentationAttachment::SOURCE_UPLOAD
+                && $attachment->created_at
+                && $candidate->created_at
+                && $attachment->created_at->gt($candidate->created_at)) {
+                return null;
+            }
+
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    /**
+     * Normaliza un nombre de archivo para compararlo (sin acentos, espacios ni
+     * extensión): "Carta Poder · Orden 495.pdf" = "carta-poder-orden-495.pdf".
+     */
+    private function normalizeDocumentName(?string $name): string
+    {
+        $normalized = preg_replace('/[^a-z0-9]/', '', strtolower((string) $name));
+
+        return (string) preg_replace('/pdf$/', '', (string) $normalized);
     }
 }

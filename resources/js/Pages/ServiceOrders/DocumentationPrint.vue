@@ -53,7 +53,10 @@ const renderPdf = async (attachment) => {
     pdfState.value[key] = { status: 'loading', pages: [] };
 
     try {
-        const pdf = await pdfjsLib.getDocument(toRelative(attachment.url)).promise;
+        // pdf.js v6 solo acepta un objeto de parámetros. Pasar la URL como cadena
+        // directa lanza "getDocument - expected either `data`, `range`, or `url` parameter"
+        // y los PDFs (carta poder, cambio de nombre, etc.) no se previsualizan.
+        const pdf = await pdfjsLib.getDocument({ url: toRelative(attachment.url) }).promise;
         const pages = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -87,6 +90,12 @@ onMounted(() => {
     pdfAttachments.value.forEach(renderPdf);
 });
 
+// Mientras haya PDFs renderizándose conviene esperar: si se imprime antes,
+// el expediente saldría con hojas de "Cargando páginas del PDF…".
+const isRendering = computed(() =>
+    pdfAttachments.value.some((file) => (pdfState.value[file.id]?.status ?? 'loading') === 'loading')
+);
+
 const print = () => window.print();
 </script>
 
@@ -99,7 +108,7 @@ const print = () => window.print();
 
                 <!-- IMAGEN: una hoja completa por imagen -->
                 <div v-if="kind(attachment) === 'image'" class="sheet-page">
-                    <!-- ENCABEZADO DE HOJA (paso + archivo). Para quitarlo: eliminar los bloques .sheet-caption de este template (la imagen queda a página completa). -->
+                    <!-- ENCABEZADO DE HOJA (paso + archivo): solo visible en pantalla; al imprimir se oculta -->
                     <div class="sheet-caption">
                         <span class="step-label">{{ stepIndex + 1 }}. {{ step.title }}</span>
                         <span class="file-label">{{ attachment.file_name }}</span>
@@ -142,7 +151,8 @@ const print = () => window.print();
                             </svg>
                             <span class="file-type-label">PDF</span>
                             <span v-if="pdfState[attachment.id]?.status === 'error'" class="placeholder-note">
-                                No se pudo previsualizar este PDF. Ábrelo desde la orden para verlo.
+                                No se pudo previsualizar este PDF.
+                                <a :href="toRelative(attachment.url)" target="_blank" class="placeholder-link">Ábrelo en una pestaña nueva</a>
                             </span>
                             <span v-else class="placeholder-note">Cargando páginas del PDF…</span>
                         </div>
@@ -175,12 +185,13 @@ const print = () => window.print();
         <div class="fixed bottom-8 right-8 print:hidden">
             <button
                 @click="print"
-                class="bg-gray-900 text-white px-5 py-3 rounded-full shadow-lg hover:bg-gray-800 transition-colors flex items-center gap-2 font-bold text-sm"
+                :disabled="isRendering"
+                class="bg-gray-900 text-white px-5 py-3 rounded-full shadow-lg hover:bg-gray-800 transition-colors flex items-center gap-2 font-bold text-sm disabled:opacity-60 disabled:cursor-not-allowed"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" />
                 </svg>
-                Imprimir / Guardar como PDF
+                {{ isRendering ? 'Preparando documentos…' : 'Imprimir / Guardar como PDF' }}
             </button>
         </div>
     </div>
@@ -207,8 +218,8 @@ const print = () => window.print();
     break-after: auto;
 }
 
-/* ENCABEZADO DE HOJA (título del paso + archivo). Para ocultarlo sin borrar:
-   display:none aquí; o eliminar los bloques .sheet-caption del template. */
+/* ENCABEZADO DE HOJA (título del paso + archivo): guía visual en pantalla.
+   Al imprimir se oculta desde @media print para que la hoja salga limpia. */
 .sheet-caption {
     flex: 0 0 auto;
     display: flex;
@@ -281,6 +292,12 @@ const print = () => window.print();
     padding: 0 1rem;
 }
 
+.placeholder-link {
+    color: #4f46e5;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 .empty-note {
     font-size: 12px;
     font-style: italic;
@@ -314,6 +331,12 @@ const print = () => window.print();
         box-shadow: none;
         padding: 10mm 12mm !important;
         margin: 0;
+    }
+
+    /* El encabezado de cada hoja (número de paso, título y archivo) es solo una
+       guía en pantalla: al imprimir se oculta para que la hoja salga limpia. */
+    .sheet-caption {
+        display: none !important;
     }
 
     .print\:hidden {

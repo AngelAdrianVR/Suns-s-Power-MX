@@ -130,12 +130,13 @@
                 @elseif (!empty($ine_pages[$role]['needs_gd']))
                     <div class="ine-fallback">
                         La INE ({{ $ine_pages[$role]['file_name'] }}) está en formato PNG/WEBP y el servidor no tiene habilitada
-                        la extensión GD de PHP para incrustarla. Súbela en formato JPG o adjúntala por separado en Evidencias y Documentos.
+                        la extensión GD de PHP para incrustarla. Vuelve a vincular la carta desde el navegador (la convierte
+                        a JPG automáticamente) o súbela en formato JPG.
                     </div>
                 @else
                     <div class="ine-fallback">
                         La INE seleccionada ({{ $ine_pages[$role]['file_name'] }}) no pudo incluirse como imagen en este PDF.
-                        Adjúntala por separado en Evidencias y Documentos.
+                        Vuelve a vincular la carta desde el navegador o adjúntala por separado en Evidencias y Documentos.
                     </div>
                 @endif
             </div>
