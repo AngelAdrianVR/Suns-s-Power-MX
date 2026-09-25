@@ -2510,6 +2510,29 @@ class ServiceOrderController extends Controller
     }
 
     /**
+     * Texto del campo "No de unidades de generación": N UNIDADES DE C W
+     * (cantidad de unidades y capacidad unitaria en Watts de la orden).
+     */
+    private function generationUnitsText(ServiceOrder $serviceOrder): string
+    {
+        $units = (int) ($serviceOrder->number_of_units ?? 0);
+        $capacity = (float) ($serviceOrder->unit_capacity ?? 0);
+
+        $parts = [];
+
+        if ($units > 0) {
+            $parts[] = $units.' UNIDADES';
+        }
+
+        if ($capacity > 0) {
+            $watts = rtrim(rtrim(number_format($capacity, 2, '.', ''), '0'), '.');
+            $parts[] = $watts.' W';
+        }
+
+        return implode(' DE ', $parts);
+    }
+
+    /**
      * Vista del Anexo 2 (pestaña nueva, sin AppLayout).
      * GET /ordenes-servicio/{serviceOrder}/anexo-2
      */
@@ -2592,9 +2615,12 @@ class ServiceOrderController extends Controller
             'manifiesto' => 'Si',
             'tecnologia' => 'solar',
             'tecnologia_otro' => '',
-            'num_unidades' => $serviceOrder->number_of_units !== null ? (string) $serviceOrder->number_of_units : '',
+            'num_unidades' => $this->generationUnitsText($serviceOrder),
             'combustible_principal' => '',
             'combustible_secundario' => '',
+
+            // Titular del servicio (renglón legal, editable)
+            'titular_nombre' => (string) ($client?->name ?? ''),
 
             // Firma
             'firma_nombre' => (string) ($client?->name ?? ''),
@@ -2698,6 +2724,7 @@ class ServiceOrderController extends Controller
             'num_unidades' => '',
             'combustible_principal' => '',
             'combustible_secundario' => '',
+            'titular_nombre' => '',
             'firma_nombre' => '',
             'firma_cargo' => 'TITULAR',
             'firma_fecha' => '',

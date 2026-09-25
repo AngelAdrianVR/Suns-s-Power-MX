@@ -4,28 +4,41 @@
     <meta charset="utf-8">
     <title>Anexo 2 · Orden {{ $order->id }}</title>
     <style>
-        @page { size: letter; margin: 6mm 7mm; }
+        /* Márgenes: 15mm 22mm menos 3px (≈0.79mm) por lado para dar más alto a los recuadros finales */
+        @page { size: letter; margin: 14.21mm 21.21mm; }
 
         * { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5px; color: #000; }
         body { margin: 0; padding: 0; line-height: 1.15; }
 
-        .head-table { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
-        .head-table td { padding: 0 14px; vertical-align: bottom; }
-        .head-label { font-weight: bold; font-size: 10.5px; }
-        .head-value { border-bottom: 1.2px solid #000; font-size: 9px; padding: 0 3px 1px; min-height: 11px; }
+        .head-table { width: 100%; border-collapse: collapse; margin: 0 0 2px; }
+        .head-table td { vertical-align: bottom; padding: 0 4px; }
+        .head-table td.head-label-cell { font-weight: bold; font-size: 8.5px; padding: 0 8px 1px 4px; white-space: nowrap; }
+        .head-table td.head-value-cell { border-bottom: 2px solid #000; font-size: 9px; padding: 0 4px 1px; min-height: 11px; text-align: right; }
 
-        .section-header { background-color: #e5e7eb; font-weight: bold; font-size: 9.5px; padding: 1px 5px; margin: 4px 0 2px; }
+        .section-header { background-color: #d9d9d9; font-weight: bold; font-size: 9.5px; padding: 1px 5px; margin: 1px 0 1px; }
 
         /* Rejillas de campos */
-        table.grid { width: 100%; border-collapse: collapse; margin-bottom: 2px; }
+        table.grid { width: 100%; border-collapse: collapse; margin-bottom: 1px; }
         table.grid td { padding: 0 3px; vertical-align: top; }
 
-        .field-bracket { border: 1.2px solid #000; border-top: none; min-height: 10px; padding: 0 2px; }
-        .bv { font-size: 9px; }
-        .field-label { font-size: 6.5px; line-height: 1.05; padding-left: 1px; }
+        /* Secciones III a VI: un poco más de aire arriba y abajo */
+        table.grid.section-body { margin-top: 7px; margin-bottom: 7px; }
+
+        /* Campos: línea inferior corrida; las verticales sólo recorren la zona de
+           captura, es decir quedan por debajo de los títulos de cada campo */
+        table.grid.fields td {
+            border-bottom: 2px solid #000;
+            padding: 0;
+            vertical-align: bottom;
+        }
+
+        .field-value { font-size: 9px; line-height: 1; min-height: 7px; padding: 0 4px; }
+        table.grid.fields .field-value { border-right: 2px solid #000; }
+        table.grid.fields td:first-child .field-value { border-left: 2px solid #000; }
+        .field-label { font-size: 6.5px; line-height: 1; padding: 0 4px 1px; }
         .field-label.center { text-align: center; }
 
-        .sub-label { font-size: 9px; font-weight: bold; margin: 1px 0; }
+        .sub-label { font-size: 9px; font-weight: bold; margin: 0; }
 
         /* Casillas */
         .check-box { display: inline-block; border: 1.2px solid #000; width: 36px; height: 11px; text-align: center; font-weight: bold; font-size: 8px; line-height: 11px; }
@@ -41,28 +54,41 @@
         .manifest-text { font-size: 8.5px; text-align: justify; }
 
         /* Tabla UTM */
-        table.utm-table { width: 100%; border-collapse: collapse; border: 1.2px solid #000; text-align: center; margin: 4px 0 2px; }
-        table.utm-table td { border: 0.8px solid #000; height: 10px; padding: 0 3px; font-size: 9px; }
+        table.utm-table { width: 100%; border-collapse: collapse; border: 2px solid #000; text-align: center; margin: 2px 0 2px; }
+        table.utm-table td { border: 2px solid #000; height: 7px; padding: 1px 3px; font-size: 8px; line-height: 1; }
         .utm-title { width: 25%; font-weight: bold; text-align: left; }
-        .utm-head { font-weight: bold; }
+        /* Encabezados UTM: texto a la izquierda y sin línea inferior. En dompdf el borde
+           compartido se resuelve por ancho, por eso también se anula el superior de la fila 1. */
+        table.utm-table td.utm-head { font-weight: bold; text-align: left; border-bottom: 0; }
+        table.utm-table td.utm-first { border-top: 0; }
 
         /* Textos legales */
-        .legal { font-size: 7px; text-align: justify; line-height: 1.15; margin-bottom: 4px; }
+        .legal { font-size: 6px; text-align: justify; line-height: 1.15; margin-bottom: 1px; }
         .legal p { margin: 0 0 1px; }
-        .legal-right { text-align: right; }
+
+        /* Renglón del titular: la línea cubre el espacio libre a su izquierda */
+        table.legal-row { width: 100%; border-collapse: collapse; margin: 0 0 1px; }
+        table.legal-row td { vertical-align: bottom; font-size: 6px; padding: 0; }
+        table.legal-row td.legal-name-cell { width: 58%; border-bottom: 2px solid #000; padding: 0 3px; font-weight: bold; }
+        table.legal-row td.legal-name-text { width: 42%; padding-left: 3px; text-align: right; }
 
         /* Firmas */
-        table.sign-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+        table.sign-table { width: 100%; border-collapse: collapse; margin-top: 0; }
         table.sign-table td { vertical-align: top; padding: 0 10px 0 0; }
-        .firma-box { border: 1.2px solid #000; height: 52px; text-align: center; padding-top: 2px; margin-bottom: 3px; }
-        .firma-title { font-size: 8px; }
-        .firma-line { width: 78%; border-bottom: 1.2px solid #000; margin: 22px auto 2px; }
-        .firma-foot { font-size: 8px; }
-        .sign-line { margin-bottom: 2px; font-size: 9px; }
+        table.firma-box { width: 80%; height: 76px; border: 2px solid #000; border-collapse: collapse; margin-bottom: 3px; }
+        table.firma-box td { text-align: center; vertical-align: top; font-size: 8px; padding: 1px 4px 0; }
+        table.firma-box td.firma-foot { vertical-align: bottom; padding: 0 4px 2px; }
+        .sign-line { margin-bottom: 1px; font-size: 8px; padding-left: 24px; }
         .sign-line .lbl { display: inline-block; width: 40px; }
-        .sign-line .val { display: inline-block; border-bottom: 1.2px solid #000; min-width: 150px; padding: 0 3px; font-size: 9px; }
-        .cfe-box { border: 1.2px solid #000; height: 70px; text-align: center; }
-        .cfe-box .cfe-text { margin-top: 50px; font-size: 8px; line-height: 1.2; }
+        .sign-line .val { display: inline-block; border-bottom: 2px solid #000; min-width: 150px; padding: 0 3px; font-size: 8px; }
+        table.cfe-wrap { width: 100%; border-collapse: collapse; }
+        table.cfe-wrap td.cfe-gap { padding: 0; }
+        table.cfe-wrap td.cfe-cell { padding: 0; }
+        table.cfe-box { width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse; text-align: center; }
+        table.cfe-box td { vertical-align: bottom; font-size: 8px; line-height: 1.2; padding: 0 4px 5px; }
+
+        /* Línea horizontal de cierre, al final de la hoja */
+        .sheet-end-line { margin-top: 6px; border-bottom: 2px solid #000; }
     </style>
 </head>
 <body>
@@ -71,8 +97,8 @@
         $f = function ($key, $label, $center = false) use ($fields) {
             $v = e((string) ($fields[$key] ?? ''));
             $cls = $center ? ' center' : '';
-            return '<div class="field-bracket"><span class="bv">'.$v.'</span></div>'
-                .'<div class="field-label'.$cls.'">'.e($label).'</div>';
+            return '<div class="field-label'.$cls.'">'.e($label).'</div>'
+                .'<div class="field-value">'.($v !== '' ? $v : '&nbsp;').'</div>';
         };
 
         $chk = function ($key, $value) use ($fields) {
@@ -87,28 +113,26 @@
     {{-- ENCABEZADO --}}
     <table class="head-table">
         <tr>
-            <td style="width: 40%;">
-                <span class="head-label">Fecha</span>
-                <div class="head-value">{{ $fields['fecha'] ?: ' ' }}</div>
-            </td>
-            <td style="width: 45%;">
-                <span class="head-label">Número de Solicitud</span>
-                <div class="head-value">{{ $fields['num_solicitud'] ?: ' ' }}</div>
-            </td>
+            <td class="head-label-cell" style="width: 12%;">Fecha</td>
+            <td class="head-value-cell" style="width: 19%;">{{ $fields['fecha'] ?: ' ' }}</td>
+            <td style="width: 3.4%;">&nbsp;</td>
+            <td class="head-label-cell" style="width: 22%;">Número de Solicitud</td>
+            <td class="head-value-cell" style="width: 30.4%;">{{ $fields['num_solicitud'] ?: ' ' }}</td>
+            <td style="width: 13.2%;">&nbsp;</td>
         </tr>
     </table>
 
     {{-- I. DATOS DEL SOLICITANTE --}}
     <div class="section-header">I. &nbsp;&nbsp;&nbsp; Datos del Solicitante</div>
 
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 100%;">{!! $f('sol_nombre', 'Nombre, Denominación o Razón Social') !!}</td>
         </tr>
     </table>
 
     <div class="sub-label">Domicilio</div>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 40%;">{!! $f('sol_calle', 'Calle') !!}</td>
             <td style="width: 20%;">{!! $f('sol_num_ext', 'Número exterior') !!}</td>
@@ -116,14 +140,14 @@
             <td style="width: 20%;">{!! $f('sol_cp', 'Código Postal') !!}</td>
         </tr>
     </table>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 35%;">{!! $f('sol_colonia', 'Colonia/Población') !!}</td>
             <td style="width: 35%;">{!! $f('sol_municipio', 'Delegación/Municipio') !!}</td>
             <td style="width: 30%;">{!! $f('sol_estado', 'Estado') !!}</td>
         </tr>
     </table>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 33%;">{!! $f('sol_telefono', 'Teléfono') !!}</td>
             <td style="width: 33%;">{!! $f('sol_correo', 'Correo Electrónico') !!}</td>
@@ -134,7 +158,7 @@
     {{-- II. DATOS DE CONTACTO --}}
     <div class="section-header">II. &nbsp;&nbsp; Datos de Contacto</div>
 
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 50%;">{!! $f('con_nombre', 'Nombre') !!}</td>
             <td style="width: 50%;">{!! $f('con_puesto', 'Puesto') !!}</td>
@@ -142,7 +166,7 @@
     </table>
 
     <div class="sub-label">Domicilio</div>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 40%;">{!! $f('con_calle', 'Calle') !!}</td>
             <td style="width: 20%;">{!! $f('con_num_ext', 'Número exterior') !!}</td>
@@ -150,14 +174,14 @@
             <td style="width: 20%;">{!! $f('con_cp', 'Código Postal') !!}</td>
         </tr>
     </table>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 35%;">{!! $f('con_colonia', 'Colonia/Población') !!}</td>
             <td style="width: 35%;">{!! $f('con_municipio', 'Delegación/Municipio') !!}</td>
             <td style="width: 30%;">{!! $f('con_estado', 'Estado') !!}</td>
         </tr>
     </table>
-    <table class="grid">
+    <table class="grid fields">
         <tr>
             <td style="width: 33%;">{!! $f('con_telefono', 'Teléfono') !!}</td>
             <td style="width: 33%;">{!! $f('con_correo', 'Correo Electrónico') !!}</td>
@@ -168,7 +192,7 @@
     {{-- III. DATOS DE LA SOLICITUD --}}
     <div class="section-header">III. &nbsp; Datos de la Solicitud</div>
 
-    <table class="grid">
+    <table class="grid section-body">
         <tr>
             <td style="width: 32%; font-size: 9.5px;">Modalidad de la Solicitud</td>
             <td style="width: 34%;"><span class="opt">Baja Tensión</span> {!! $box($fields['modalidad'] === 'baja') !!}</td>
@@ -179,7 +203,7 @@
     {{-- IV. UTILIZACIÓN DE LA ENERGÍA --}}
     <div class="section-header">IV. &nbsp; Utilización de la Energía Eléctrica Producida</div>
 
-    <table class="grid">
+    <table class="grid section-body">
         <tr>
             <td style="width: 33%;"><span class="opt">Consumo de Centros de Carga</span> {!! $box($fields['utilizacion'] === 'centros') !!}</td>
             <td style="width: 40%;"><span class="opt">Consumo de Centros de Carga y Venta de Excedentes</span> {!! $box($fields['utilizacion'] === 'excedentes') !!}</td>
@@ -190,7 +214,7 @@
     {{-- V. DATOS DEL SERVICIO --}}
     <div class="section-header">V. &nbsp;&nbsp; Datos del Servicio Suministro Actual</div>
 
-    <table class="grid">
+    <table class="grid fields section-body">
         <tr>
             <td style="width: 50%;">{!! $f('rpu', 'Registro Público de Usuario (RPU)') !!}</td>
             <td style="width: 50%;">{!! $f('nivel_tension', 'Nivel de Tensión de Suministro') !!}</td>
@@ -200,7 +224,7 @@
     {{-- VI. CENTRAL ELÉCTRICA --}}
     <div class="section-header">VI. &nbsp; Central Eléctrica</div>
 
-    <table class="grid">
+    <table class="grid fields section-body">
         <tr>
             <td style="width: 25%;">{!! $f('fecha_operacion', 'Fecha estimada de Operación Normal (DD/MM/AAAA)', true) !!}</td>
             <td style="width: 25%;">{!! $f('capacidad_bruta', 'Capacidad Bruta Instalada (Kw)', true) !!}</td>
@@ -243,13 +267,13 @@
             <td style="width: 52%;">
                 <table class="plain">
                     <tr><td style="width: 70px;">Otro</td><td>{!! $box($fields['tecnologia'] === 'otro') !!}</td></tr>
-                    <tr><td>Especificar</td><td style="border-bottom: 1.2px solid #000;">{{ $fields['tecnologia_otro'] ?: ' ' }}</td></tr>
+                    <tr><td>Especificar</td><td style="border-bottom: 2px solid #000;">{{ $fields['tecnologia_otro'] ?: ' ' }}</td></tr>
                 </table>
             </td>
         </tr>
     </table>
 
-    <table class="grid" style="margin-top: 4px;">
+    <table class="grid fields" style="margin-top: 4px;">
         <tr>
             <td style="width: 33%;">{!! $f('num_unidades', 'No de unidades de generación') !!}</td>
             <td style="width: 33%;">{!! $f('combustible_principal', 'Combustible principal') !!}</td>
@@ -260,23 +284,28 @@
     {{-- TABLA COORDENADAS UTM --}}
     <table class="utm-table">
         <tr>
-            <td class="utm-title" rowspan="7">Coordenadas UTM</td>
-            <td class="utm-head" style="width: 37.5%;"></td>
+            {{-- <td class="utm-title" rowspan="7">Coordenadas UTM</td> --}}
+            <td class="utm-head" style="width: 37.5%;">Coordenadas UTM</td>
             <td class="utm-head" style="width: 37.5%;">X</td>
             <td class="utm-head" style="width: 37.5%;">Y</td>
         </tr>
         @for ($i = 1; $i <= 6; $i++)
             <tr>
-                <td>{{ $i }}</td>
-                <td>{{ $fields["utm_x{$i}"] ?: ' ' }}</td>
-                <td>{{ $fields["utm_y{$i}"] ?: ' ' }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $i }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_x{$i}"] ?: ' ' }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_y{$i}"] ?: ' ' }}</td>
             </tr>
         @endfor
     </table>
 
     {{-- TEXTOS LEGALES --}}
     <div class="legal">
-        <p class="legal-right">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</p>
+        <table class="legal-row">
+            <tr>
+                <td class="legal-name-cell">{{ $fields['titular_nombre'] ?: ' ' }}</td>
+                <td class="legal-name-text">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</td>
+            </tr>
+        </table>
         <p>
             información proporcionada en la presente solicitud es apropiada, precisa y verídica. El solicitante acepta
             que los datos proporcionados sean utilizados para llevar a cabo los Estudios de Interconexión para
@@ -295,23 +324,52 @@
     <table class="sign-table">
         <tr>
             <td style="width: 58%;">
-                <div class="firma-box">
-                    <div class="firma-title">Firma de Conformidad</div>
-                    <div class="firma-line">&nbsp;</div>
-                    <div class="firma-foot">Solicitante</div>
-                </div>
+                <table class="firma-box" style="width: 100%;">
+                    <tr>
+                        <td class="firma-title" style="height: 50px;">Firma de Conformidad</td>
+                    </tr>
+                    <tr>
+                        <td class="firma-foot">Solicitante</td>
+                    </tr>
+                </table>
 
-                <div class="sign-line"><span class="lbl">Nombre</span> <span class="val">{{ $fields['firma_nombre'] ?: ' ' }}</span></div>
-                <div class="sign-line"><span class="lbl">Cargo</span> <span class="val">{{ $fields['firma_cargo'] ?: ' ' }}</span></div>
-                <div class="sign-line"><span class="lbl">Fecha</span> <span class="val">{{ $fields['firma_fecha'] ?: ' ' }}</span></div>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Nombre</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_nombre'] ?: ' ' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Cargo</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_cargo'] ?: ' ' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Fecha</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_fecha'] ?: ' ' }}</td>
+                    </tr>
+                </table>
             </td>
             <td style="width: 42%; padding-right: 0;">
-                <div class="cfe-box">
-                    <div class="cfe-text">sello y firma<br>Centro de Atención</div>
-                </div>
+                <table class="cfe-wrap">
+                    <tr>
+                        <td class="cfe-gap" style="width: 15%;">&nbsp;</td>
+                        <td class="cfe-cell" style="width: 85%;">
+                            <table class="cfe-box" style="width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse;">
+                                <tr>
+                                    <td style="height: 90px;">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: center; vertical-align: bottom; font-size: 8px; line-height: 1.2; padding-bottom: 3px;">
+                                        sello y firma<br>Centro de Atención
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
             </td>
-        </tr>
-    </table>
+
+    {{-- LÍNEA DE CIERRE AL FINAL DE LA HOJA --}}
+    <div class="sheet-end-line"></div>
 
 </body>
 </html>

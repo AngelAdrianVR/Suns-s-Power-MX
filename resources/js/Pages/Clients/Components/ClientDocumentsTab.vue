@@ -152,10 +152,14 @@ const handleFileChange = (event) => {
         preserveScroll: true,
         preserveState: true,
         replace: true,
+        // Recarga parcial: solo se vuelve a pedir el prop `client` (incluye client.documents).
+        // Así la página no se reinicia y únicamente se actualiza la tabla de documentos.
+        only: ['client'],
         onSuccess: () => {
             notification.success({ title: 'Éxito', content: 'Documentos subidos correctamente.', duration: 3000 });
-            // Recargar página completamente tras subida exitosa
-            window.location.reload();
+            // Limpiar el formulario y el input para poder subir otra vez el mismo archivo
+            uploadForm.reset();
+            if (fileInput.value) fileInput.value.value = '';
         },
         onError: () => notification.error({ title: 'Error', content: 'Hubo un problema al subir los documentos.', duration: 3000 })
     });
