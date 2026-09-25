@@ -566,7 +566,7 @@ const removeConditioningTask = (index) => {
                             <n-grid-item class="hidden m:block"></n-grid-item>
 
                             <n-grid-item>
-                                <n-form-item label="Cantidad de Unidades" path="number_of_units">
+                                <n-form-item label="Cantidad de Uni. (microinversores)" path="number_of_units">
                                     <n-input-number v-model:value="form.number_of_units" :min="0" placeholder="Ej. 10" class="w-full" clearable />
                                 </n-form-item>
                             </n-grid-item>
