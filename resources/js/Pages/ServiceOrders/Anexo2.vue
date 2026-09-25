@@ -188,72 +188,74 @@ const print = () => window.print();
         <div class="doc-sheet">
 
             <!-- ENCABEZADO -->
-            <div class="head-row">
+            <div class="head-row !flex !justify-end">
                 <div class="head-item">
                     <span class="head-label">Fecha</span>
-                    <input v-model="fields.fecha" class="line-input" style="min-width: 110px;" />
+                    <input v-model="fields.fecha" class="line-input" style="width: 121px;" />
                 </div>
                 <div class="head-item">
                     <span class="head-label">Número de Solicitud</span>
-                    <input v-model="fields.num_solicitud" class="line-input" style="min-width: 150px;" />
+                    <input v-model="fields.num_solicitud" class="line-input" style="width: 121px;" />
                 </div>
             </div>
 
             <!-- I. DATOS DEL SOLICITANTE (CLIENTE) -->
             <div class="section-header">I. &nbsp;&nbsp;&nbsp; Datos del Solicitante</div>
 
-            <div class="field">
-                <div class="field-bracket"><input v-model="fields.sol_nombre" class="bracket-input" /></div>
-                <div class="field-label">Nombre, Denominación o Razón Social</div>
+            <div class="row">
+                <div class="field w100">
+                    <div class="field-label">Nombre, Denominación o Razón Social</div>
+                    <input v-model="fields.sol_nombre" class="bracket-input" />
+                </div>
             </div>
 
             <div class="sub-label">Domicilio</div>
             <div class="row">
                 <div class="field w40">
-                    <div class="field-bracket"><input v-model="fields.sol_calle" class="bracket-input" /></div>
                     <div class="field-label">Calle</div>
+                    <input v-model="fields.sol_calle" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.sol_num_ext" class="bracket-input" /></div>
                     <div class="field-label">Número exterior</div>
+                    <input v-model="fields.sol_num_ext" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.sol_num_int" class="bracket-input" /></div>
                     <div class="field-label">Número Interior</div>
+                    <input v-model="fields.sol_num_int" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.sol_cp" class="bracket-input" /></div>
                     <div class="field-label">Código Postal</div>
+                    <input v-model="fields.sol_cp" class="bracket-input" />
                 </div>
             </div>
 
             <div class="row">
                 <div class="field w35">
-                    <div class="field-bracket"><input v-model="fields.sol_colonia" class="bracket-input" /></div>
                     <div class="field-label">Colonia/Población</div>
+                    <input v-model="fields.sol_colonia" class="bracket-input" />
                 </div>
                 <div class="field w35">
-                    <div class="field-bracket"><input v-model="fields.sol_municipio" class="bracket-input" /></div>
                     <div class="field-label">Delegación/Municipio</div>
+                    <input v-model="fields.sol_municipio" class="bracket-input" />
                 </div>
                 <div class="field w30">
-                    <div class="field-bracket"><input v-model="fields.sol_estado" class="bracket-input" /></div>
                     <div class="field-label">Estado</div>
+                    <input v-model="fields.sol_estado" class="bracket-input" />
                 </div>
             </div>
 
             <div class="row">
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.sol_telefono" class="bracket-input" /></div>
                     <div class="field-label">Teléfono</div>
+                    <input v-model="fields.sol_telefono" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.sol_correo" class="bracket-input" /></div>
                     <div class="field-label">Correo Electrónico</div>
+                    <input v-model="fields.sol_correo" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.sol_fax" class="bracket-input" /></div>
                     <div class="field-label">Fax</div>
+                    <input v-model="fields.sol_fax" class="bracket-input" />
                 </div>
             </div>
 
@@ -262,69 +264,69 @@ const print = () => window.print();
 
             <div class="row">
                 <div class="field w50">
-                    <div class="field-bracket"><input v-model="fields.con_nombre" class="bracket-input" /></div>
                     <div class="field-label">Nombre</div>
+                    <input v-model="fields.con_nombre" class="bracket-input" />
                 </div>
                 <div class="field w50">
-                    <div class="field-bracket"><input v-model="fields.con_puesto" class="bracket-input" /></div>
                     <div class="field-label">Puesto</div>
+                    <input v-model="fields.con_puesto" class="bracket-input" />
                 </div>
             </div>
 
             <div class="sub-label">Domicilio</div>
             <div class="row">
                 <div class="field w40">
-                    <div class="field-bracket"><input v-model="fields.con_calle" class="bracket-input" /></div>
                     <div class="field-label">Calle</div>
+                    <input v-model="fields.con_calle" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.con_num_ext" class="bracket-input" /></div>
                     <div class="field-label">Número exterior</div>
+                    <input v-model="fields.con_num_ext" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.con_num_int" class="bracket-input" /></div>
                     <div class="field-label">Número Interior</div>
+                    <input v-model="fields.con_num_int" class="bracket-input" />
                 </div>
                 <div class="field w20">
-                    <div class="field-bracket"><input v-model="fields.con_cp" class="bracket-input" /></div>
                     <div class="field-label">Código Postal</div>
+                    <input v-model="fields.con_cp" class="bracket-input" />
                 </div>
             </div>
 
             <div class="row">
                 <div class="field w35">
-                    <div class="field-bracket"><input v-model="fields.con_colonia" class="bracket-input" /></div>
                     <div class="field-label">Colonia/Población</div>
+                    <input v-model="fields.con_colonia" class="bracket-input" />
                 </div>
                 <div class="field w35">
-                    <div class="field-bracket"><input v-model="fields.con_municipio" class="bracket-input" /></div>
                     <div class="field-label">Delegación/Municipio</div>
+                    <input v-model="fields.con_municipio" class="bracket-input" />
                 </div>
                 <div class="field w30">
-                    <div class="field-bracket"><input v-model="fields.con_estado" class="bracket-input" /></div>
                     <div class="field-label">Estado</div>
+                    <input v-model="fields.con_estado" class="bracket-input" />
                 </div>
             </div>
 
             <div class="row">
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.con_telefono" class="bracket-input" /></div>
                     <div class="field-label">Teléfono</div>
+                    <input v-model="fields.con_telefono" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.con_correo" class="bracket-input" /></div>
                     <div class="field-label">Correo Electrónico</div>
+                    <input v-model="fields.con_correo" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.con_fax" class="bracket-input" /></div>
                     <div class="field-label">Fax</div>
+                    <input v-model="fields.con_fax" class="bracket-input" />
                 </div>
             </div>
 
             <!-- III. DATOS DE LA SOLICITUD -->
             <div class="section-header">III. &nbsp; Datos de la Solicitud</div>
 
-            <div class="check-row">
+            <div class="check-row section-body">
                 <div class="check-label" style="width: 32%;">Modalidad de la Solicitud</div>
                 <div class="check-opts" style="width: 68%;">
                     <span class="opt" @click="setOption('modalidad', 'baja')">Baja Tensión
@@ -339,7 +341,7 @@ const print = () => window.print();
             <!-- IV. UTILIZACIÓN DE LA ENERGÍA -->
             <div class="section-header">IV. &nbsp; Utilización de la Energía Eléctrica Producida</div>
 
-            <div class="check-row spread">
+            <div class="check-row spread section-body">
                 <span class="opt">Consumo de Centros de Carga
                     <span class="check-box">{{ fields.utilizacion === 'centros' ? 'X' : '' }}</span>
                 </span>
@@ -354,36 +356,36 @@ const print = () => window.print();
             <!-- V. DATOS DEL SERVICIO -->
             <div class="section-header">V. &nbsp;&nbsp; Datos del Servicio Suministro Actual</div>
 
-            <div class="row">
+            <div class="row section-body">
                 <div class="field w50">
-                    <div class="field-bracket"><input v-model="fields.rpu" class="bracket-input" /></div>
                     <div class="field-label">Registro Público de Usuario (RPU)</div>
+                    <input v-model="fields.rpu" class="bracket-input" />
                 </div>
                 <div class="field w50">
-                    <div class="field-bracket"><input v-model="fields.nivel_tension" class="bracket-input" /></div>
                     <div class="field-label">Nivel de Tensión de Suministro</div>
+                    <input v-model="fields.nivel_tension" class="bracket-input" />
                 </div>
             </div>
 
             <!-- VI. CENTRAL ELÉCTRICA -->
             <div class="section-header">VI. &nbsp; Central Eléctrica</div>
 
-            <div class="row">
+            <div class="row section-body">
                 <div class="field w25">
-                    <div class="field-bracket"><input v-model="fields.fecha_operacion" class="bracket-input" /></div>
                     <div class="field-label center">Fecha estimada de Operación Normal (DD/MM/AAAA)</div>
+                    <input v-model="fields.fecha_operacion" class="bracket-input" />
                 </div>
                 <div class="field w25">
-                    <div class="field-bracket"><input v-model="fields.capacidad_bruta" class="bracket-input" /></div>
                     <div class="field-label center">Capacidad Bruta Instalada (Kw)</div>
+                    <input v-model="fields.capacidad_bruta" class="bracket-input" />
                 </div>
                 <div class="field w25">
-                    <div class="field-bracket"><input v-model="fields.capacidad_incrementar" class="bracket-input" /></div>
                     <div class="field-label center">Capacidad a Incrementar (kw) (Opcional)</div>
+                    <input v-model="fields.capacidad_incrementar" class="bracket-input" />
                 </div>
                 <div class="field w25">
-                    <div class="field-bracket"><input v-model="fields.generacion_promedio" class="bracket-input" /></div>
                     <div class="field-label center">Generación Promedio Mensual Estimada (kwh/Mes)</div>
+                    <input v-model="fields.generacion_promedio" class="bracket-input" />
                 </div>
             </div>
 
@@ -429,26 +431,26 @@ const print = () => window.print();
 
             <div class="row">
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.num_unidades" class="bracket-input" /></div>
                     <div class="field-label">No de unidades de generación</div>
+                    <input v-model="fields.num_unidades" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.combustible_principal" class="bracket-input" /></div>
                     <div class="field-label">Combustible principal</div>
+                    <input v-model="fields.combustible_principal" class="bracket-input" />
                 </div>
                 <div class="field w33">
-                    <div class="field-bracket"><input v-model="fields.combustible_secundario" class="bracket-input" /></div>
                     <div class="field-label">Combustible secundario</div>
+                    <input v-model="fields.combustible_secundario" class="bracket-input" />
                 </div>
             </div>
 
             <!-- TABLA COORDENADAS UTM -->
             <table class="utm-table">
                 <tr>
-                    <td class="utm-title" rowspan="7">Coordenadas UTM</td>
-                    <td class="utm-head"></td>
-                    <td class="utm-head">X</td>
-                    <td class="utm-head">Y</td>
+                    <!-- <td class="utm-title" rowspan="7">Coordenadas UTM</td> -->
+                    <td class="utm-head border !border-b-transparent text-left">Coordenadas UTM</td>
+                    <td class="utm-head border !border-b-transparent text-left">X</td>
+                    <td class="utm-head border !border-b-transparent text-left">Y</td>
                 </tr>
                 <tr v-for="i in 6" :key="i">
                     <td class="utm-num">{{ i }}</td>
@@ -459,7 +461,10 @@ const print = () => window.print();
 
             <!-- TEXTOS LEGALES -->
             <div class="legal">
-                <p class="legal-right">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</p>
+                <div class="legal-right">
+                    <input v-model="fields.titular_nombre" class="line-input legal-name" />
+                    <span class="legal-text">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</span>
+                </div>
                 <p>
                     información proporcionada en la presente solicitud es apropiada, precisa y verídica. El solicitante
                     acepta que los datos proporcionados sean utilizados para llevar a cabo los Estudios de Interconexión
@@ -479,7 +484,7 @@ const print = () => window.print();
                 <div class="sign-left">
                     <div class="firma-box">
                         <div class="firma-title">Firma de Conformidad</div>
-                        <div class="firma-line"></div>
+                        <!-- <div class="firma-line"></div> -->
                         <div class="firma-foot">Solicitante</div>
                     </div>
 
@@ -503,6 +508,9 @@ const print = () => window.print();
                     </div>
                 </div>
             </div>
+
+            <!-- LÍNEA DE CIERRE -->
+            <div class="sheet-end-line"></div>
         </div>
 
         <!-- BOTONES FLOTANTES (NO IMPRIMIBLES) -->
@@ -589,7 +597,7 @@ const print = () => window.print();
 
 /* Encabezados de sección */
 .section-header {
-    background-color: #e5e7eb;
+    background-color: #d9d9d9;
     font-weight: bold;
     font-size: 11px;
     padding: 2px 8px;
@@ -597,13 +605,38 @@ const print = () => window.print();
     margin-bottom: 4px;
 }
 
-/* Campos tipo corchete */
-.field-bracket {
-    border: 1.5px solid #000;
-    border-top: none;
-    min-height: 14px;
+/* Campos: fila con línea inferior corrida y divisiones verticales por campo */
+.row {
     display: flex;
-    align-items: center;
+    border-bottom: 2.5px solid #000;
+    margin-bottom: 5px;
+}
+
+.row .field {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 20px;
+    padding: 0;
+    min-width: 0;
+}
+
+/* Etiquetas de campo (van arriba, dentro del recuadro) */
+.field-label {
+    font-size: 8.5px;
+    line-height: 1;
+    margin: 0 0 1px;
+    padding: 0 4px;
+}
+
+.field-label.center {
+    text-align: center;
+}
+
+.sub-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    margin: 2px 0 1px;
 }
 
 .bracket-input {
@@ -614,7 +647,7 @@ const print = () => window.print();
     font-size: inherit;
     color: #000;
     width: 100%;
-    padding: 0 3px;
+    padding: 0;
     margin: 0;
     text-transform: uppercase;
 }
@@ -624,36 +657,18 @@ const print = () => window.print();
     background: #fefce8;
 }
 
-.field-label {
-    font-size: 8.5px;
-    margin-top: 1px;
-    padding-left: 2px;
-    line-height: 1.1;
+/* Las líneas verticales separadoras sólo recorren la zona de captura
+   (quedan por debajo de los títulos de cada campo). */
+.row .field .bracket-input {
+    border-right: 2.5px solid #000;
+    padding: 0 4px;
+    height: 12px;
+    font-size: 11px;
+    line-height: 1;
 }
 
-.field-label.center {
-    text-align: center;
-    padding-left: 0;
-}
-
-.sub-label {
-    font-size: 10.5px;
-    font-weight: 600;
-    margin: 2px 0 1px;
-}
-
-.row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 4px;
-}
-
-.row:last-child {
-    margin-bottom: 0;
-}
-
-.field {
-    min-width: 0;
+.row .field:first-child .bracket-input {
+    border-left: 2.5px solid #000;
 }
 
 .w20 { width: 20%; }
@@ -663,6 +678,7 @@ const print = () => window.print();
 .w35 { width: 35%; }
 .w40 { width: 40%; }
 .w50 { width: 50%; }
+.w100 { width: 100%; }
 
 /* Filas de casillas */
 .check-row {
@@ -675,6 +691,12 @@ const print = () => window.print();
 
 .check-row.spread {
     gap: 8px;
+}
+
+/* Secciones III a VI: un poco más de aire arriba y abajo */
+.section-body {
+    margin-top: 7px;
+    margin-bottom: 7px;
 }
 
 .check-label {
@@ -778,17 +800,18 @@ const print = () => window.print();
 .utm-table {
     width: 100%;
     border-collapse: collapse;
-    border: 1.5px solid #000;
+    border: 2.5px solid #000;
     text-align: center;
-    font-size: 10.5px;
+    font-size: 9.5px;
     margin: 8px 0 6px;
     table-layout: fixed;
 }
 
 .utm-table td {
-    border: 1px solid #000;
-    padding: 0;
-    height: 15px;
+    border: 2.5px solid #000;
+    padding: 1px 3px;
+    height: 9px;
+    line-height: 1;
 }
 
 .utm-title {
@@ -816,6 +839,8 @@ const print = () => window.print();
     width: 100%;
     text-align: center;
     padding: 0;
+    height: 9px;
+    line-height: 1;
     text-transform: uppercase;
 }
 
@@ -837,13 +862,30 @@ const print = () => window.print();
 }
 
 .legal-right {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin-bottom: 2px;
+}
+
+.legal-text {
+    flex: 0 1 auto;
     text-align: right;
+    line-height: 1.15;
+}
+
+/* Nombre del titular del servicio (renglón legal): la línea cubre el espacio libre a su izquierda */
+.legal-name {
+    flex: 1 1 auto;
+    min-width: 180px;
+    font-size: 8px;
+    font-weight: bold;
 }
 
 /* Campos de línea simple */
 .line-input {
     border: none;
-    border-bottom: 1.5px solid #000;
+    border-bottom: 2.5px solid #000;
     outline: none;
     background: transparent;
     font-family: inherit;
@@ -878,7 +920,8 @@ const print = () => window.print();
 }
 
 .firma-box {
-    border: 1.5px solid #000;
+    border: 2.5px solid #000;
+    width: 80%;
     height: 76px;
     padding: 3px;
     display: flex;
@@ -894,7 +937,7 @@ const print = () => window.print();
 
 .firma-line {
     width: 78%;
-    border-bottom: 1.5px solid #000;
+    border-bottom: 2.5px solid #000;
 }
 
 .firma-foot {
@@ -906,18 +949,23 @@ const print = () => window.print();
     align-items: flex-end;
     gap: 8px;
     margin-bottom: 4px;
+    padding-left: 24px;
 }
 
 .sign-label {
-    font-size: 10.5px;
+    font-size: 9.5px;
     width: 45px;
     white-space: nowrap;
 }
 
+.sign-line .line-input {
+    font-size: 10px;
+}
+
 .cfe-box {
-    border: 1.5px solid #000;
-    width: 100%;
-    height: 96px;
+    border: 2.5px solid #000;
+    width: 80%;
+    height: 115px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -930,11 +978,17 @@ const print = () => window.print();
     line-height: 1.2;
 }
 
+/* Línea horizontal de cierre, al final de la hoja */
+.sheet-end-line {
+    margin-top: 10px;
+    border-bottom: 2.5px solid #000;
+}
+
 /* Impresión: compactar para una sola hoja */
 @media print {
     @page {
         size: letter;
-        margin: 8mm 9mm;
+        margin: 15mm 18mm;
     }
 
     html,
@@ -947,29 +1001,34 @@ const print = () => window.print();
         min-height: auto;
         border: none;
         margin: 0;
-        padding: 20px;
+        padding: 0;
         font-size: 10px;
         line-height: 1.15;
     }
 
     .head-row { margin-bottom: 5px; }
     .section-header { font-size: 9.5px; padding: 1px 5px; margin-top: 5px; margin-bottom: 2px; }
-    .field-bracket { min-height: 12px; }
-    .field-label { font-size: 7px; }
+    .row { margin-bottom: 3px; }
+    .row .field { min-height: 15px; }
+    .field-label { font-size: 7px; margin: 0 0 1px; padding: 0 3px; }
+    .row .field .bracket-input { padding: 0 3px; height: 10px; font-size: 9.5px; }
     .sub-label { font-size: 9px; margin: 1px 0; }
-    .row { margin-bottom: 2px; gap: 7px; }
     .check-row { margin-bottom: 2px; }
     .opt { font-size: 9px; gap: 5px; }
     .check-box { height: 13px; width: 40px; font-size: 9.5px; }
     .manifest-text { font-size: 8.5px; }
     .tech-label { font-size: 9px; }
     .tech-item { font-size: 9px; }
-    .utm-table { margin: 5px 0 3px; }
-    .utm-table td { height: 12px; }
+    .utm-table { margin: 5px 0 3px; font-size: 9px; }
+    .utm-table td { height: 7px; padding: 1px 2px; }
+    .cell-input { height: 7px; }
     .legal { font-size: 7px; margin-bottom: 5px; }
+    .legal-name { min-width: 150px; font-size: 7px; }
     .firma-box { height: 56px; }
-    .cfe-box { height: 72px; }
-    .sign-line { margin-bottom: 3px; }
+    .cfe-box { height: 86px; }
+    .sign-line { margin-bottom: 3px; padding-left: 20px; }
+    .sign-label { font-size: 8.5px; }
+    .sign-line .line-input { font-size: 9px; }
 
     .bracket-input,
     .cell-input,
