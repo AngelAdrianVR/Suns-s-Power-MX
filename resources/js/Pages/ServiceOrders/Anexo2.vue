@@ -959,7 +959,7 @@ const print = () => window.print();
 }
 
 .sign-line .line-input {
-    font-size: 10px;
+    font-size: 8px;
 }
 
 .cfe-box {

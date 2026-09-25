@@ -4,17 +4,18 @@
     <meta charset="utf-8">
     <title>Anexo 2 · Orden {{ $order->id }}</title>
     <style>
-        @page { size: letter; margin: 15mm 22mm; }
+        /* Márgenes: 15mm 22mm menos 3px (≈0.79mm) por lado para dar más alto a los recuadros finales */
+        @page { size: letter; margin: 14.21mm 21.21mm; }
 
         * { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5px; color: #000; }
         body { margin: 0; padding: 0; line-height: 1.15; }
 
         .head-table { width: 100%; border-collapse: collapse; margin: 0 0 2px; }
         .head-table td { vertical-align: bottom; padding: 0 4px; }
-        .head-table td.head-label-cell { font-weight: bold; font-size: 10.5px; padding: 0 8px 1px 4px; white-space: nowrap; }
+        .head-table td.head-label-cell { font-weight: bold; font-size: 8.5px; padding: 0 8px 1px 4px; white-space: nowrap; }
         .head-table td.head-value-cell { border-bottom: 2px solid #000; font-size: 9px; padding: 0 4px 1px; min-height: 11px; text-align: right; }
 
-        .section-header { background-color: #d9d9d9; font-weight: bold; font-size: 9.5px; padding: 1px 5px; margin: 2px 0 1px; }
+        .section-header { background-color: #d9d9d9; font-weight: bold; font-size: 9.5px; padding: 1px 5px; margin: 1px 0 1px; }
 
         /* Rejillas de campos */
         table.grid { width: 100%; border-collapse: collapse; margin-bottom: 1px; }
@@ -56,35 +57,38 @@
         table.utm-table { width: 100%; border-collapse: collapse; border: 2px solid #000; text-align: center; margin: 2px 0 2px; }
         table.utm-table td { border: 2px solid #000; height: 7px; padding: 1px 3px; font-size: 8px; line-height: 1; }
         .utm-title { width: 25%; font-weight: bold; text-align: left; }
-        .utm-head { font-weight: bold; }
+        /* Encabezados UTM: texto a la izquierda y sin línea inferior. En dompdf el borde
+           compartido se resuelve por ancho, por eso también se anula el superior de la fila 1. */
+        table.utm-table td.utm-head { font-weight: bold; text-align: left; border-bottom: 0; }
+        table.utm-table td.utm-first { border-top: 0; }
 
         /* Textos legales */
-        .legal { font-size: 7px; text-align: justify; line-height: 1.15; margin-bottom: 2px; }
+        .legal { font-size: 6px; text-align: justify; line-height: 1.15; margin-bottom: 1px; }
         .legal p { margin: 0 0 1px; }
 
         /* Renglón del titular: la línea cubre el espacio libre a su izquierda */
         table.legal-row { width: 100%; border-collapse: collapse; margin: 0 0 1px; }
-        table.legal-row td { vertical-align: bottom; font-size: 7px; padding: 0; }
+        table.legal-row td { vertical-align: bottom; font-size: 6px; padding: 0; }
         table.legal-row td.legal-name-cell { width: 58%; border-bottom: 2px solid #000; padding: 0 3px; font-weight: bold; }
         table.legal-row td.legal-name-text { width: 42%; padding-left: 3px; text-align: right; }
 
         /* Firmas */
         table.sign-table { width: 100%; border-collapse: collapse; margin-top: 0; }
         table.sign-table td { vertical-align: top; padding: 0 10px 0 0; }
-        table.firma-box { width: 80%; height: 52px; border: 2px solid #000; border-collapse: collapse; margin-bottom: 3px; }
+        table.firma-box { width: 80%; height: 76px; border: 2px solid #000; border-collapse: collapse; margin-bottom: 3px; }
         table.firma-box td { text-align: center; vertical-align: top; font-size: 8px; padding: 1px 4px 0; }
         table.firma-box td.firma-foot { vertical-align: bottom; padding: 0 4px 2px; }
-        .sign-line { margin-bottom: 2px; font-size: 8px; padding-left: 24px; }
+        .sign-line { margin-bottom: 1px; font-size: 8px; padding-left: 24px; }
         .sign-line .lbl { display: inline-block; width: 40px; }
         .sign-line .val { display: inline-block; border-bottom: 2px solid #000; min-width: 150px; padding: 0 3px; font-size: 8px; }
         table.cfe-wrap { width: 100%; border-collapse: collapse; }
         table.cfe-wrap td.cfe-gap { padding: 0; }
         table.cfe-wrap td.cfe-cell { padding: 0; }
-        table.cfe-box { width: 100%; height: 84px; border: 2px solid #000; border-collapse: collapse; text-align: center; }
+        table.cfe-box { width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse; text-align: center; }
         table.cfe-box td { vertical-align: bottom; font-size: 8px; line-height: 1.2; padding: 0 4px 5px; }
 
         /* Línea horizontal de cierre, al final de la hoja */
-        .sheet-end-line { margin-top: 10px; border-bottom: 2px solid #000; }
+        .sheet-end-line { margin-top: 6px; border-bottom: 2px solid #000; }
     </style>
 </head>
 <body>
@@ -110,7 +114,8 @@
     <table class="head-table">
         <tr>
             <td class="head-label-cell" style="width: 12%;">Fecha</td>
-            <td class="head-value-cell" style="width: 22.4%;">{{ $fields['fecha'] ?: ' ' }}</td>
+            <td class="head-value-cell" style="width: 19%;">{{ $fields['fecha'] ?: ' ' }}</td>
+            <td style="width: 3.4%;">&nbsp;</td>
             <td class="head-label-cell" style="width: 22%;">Número de Solicitud</td>
             <td class="head-value-cell" style="width: 30.4%;">{{ $fields['num_solicitud'] ?: ' ' }}</td>
             <td style="width: 13.2%;">&nbsp;</td>
@@ -280,15 +285,15 @@
     <table class="utm-table">
         <tr>
             {{-- <td class="utm-title" rowspan="7">Coordenadas UTM</td> --}}
-            <td class="utm-head !border-b-transparent !text-left" style="width: 37.5%;">Coordenadas UTM</td>
-            <td class="utm-head !border-b-transparent !text-left" style="width: 37.5%;">X</td>
-            <td class="utm-head !border-b-transparent !text-left" style="width: 37.5%;">Y</td>
+            <td class="utm-head" style="width: 37.5%;">Coordenadas UTM</td>
+            <td class="utm-head" style="width: 37.5%;">X</td>
+            <td class="utm-head" style="width: 37.5%;">Y</td>
         </tr>
         @for ($i = 1; $i <= 6; $i++)
             <tr>
-                <td>{{ $i }}</td>
-                <td>{{ $fields["utm_x{$i}"] ?: ' ' }}</td>
-                <td>{{ $fields["utm_y{$i}"] ?: ' ' }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $i }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_x{$i}"] ?: ' ' }}</td>
+                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_y{$i}"] ?: ' ' }}</td>
             </tr>
         @endfor
     </table>
@@ -319,35 +324,49 @@
     <table class="sign-table">
         <tr>
             <td style="width: 58%;">
-                <table class="firma-box">
+                <table class="firma-box" style="width: 100%;">
                     <tr>
-                        <td class="firma-title">Firma de Conformidad</td>
+                        <td class="firma-title" style="height: 50px;">Firma de Conformidad</td>
                     </tr>
                     <tr>
                         <td class="firma-foot">Solicitante</td>
                     </tr>
                 </table>
 
-                <div class="sign-line"><span class="lbl">Nombre</span> <span class="val">{{ $fields['firma_nombre'] ?: ' ' }}</span></div>
-                <div class="sign-line"><span class="lbl">Cargo</span> <span class="val">{{ $fields['firma_cargo'] ?: ' ' }}</span></div>
-                <div class="sign-line"><span class="lbl">Fecha</span> <span class="val">{{ $fields['firma_fecha'] ?: ' ' }}</span></div>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Nombre</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_nombre'] ?: ' ' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Cargo</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_cargo'] ?: ' ' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="width: 40px; font-size: 8px;">Fecha</td>
+                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_fecha'] ?: ' ' }}</td>
+                    </tr>
+                </table>
             </td>
             <td style="width: 42%; padding-right: 0;">
                 <table class="cfe-wrap">
                     <tr>
-                        <td class="cfe-gap" style="width: 20%;">&nbsp;</td>
-                        <td class="cfe-cell" style="width: 80%;">
-                            <table class="cfe-box">
+                        <td class="cfe-gap" style="width: 15%;">&nbsp;</td>
+                        <td class="cfe-cell" style="width: 85%;">
+                            <table class="cfe-box" style="width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse;">
                                 <tr>
-                                    <td>sello y firma<br>Centro de Atención</td>
+                                    <td style="height: 90px;">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: center; vertical-align: bottom; font-size: 8px; line-height: 1.2; padding-bottom: 3px;">
+                                        sello y firma<br>Centro de Atención
+                                    </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
                 </table>
             </td>
-        </tr>
-    </table>
 
     {{-- LÍNEA DE CIERRE AL FINAL DE LA HOJA --}}
     <div class="sheet-end-line"></div>
