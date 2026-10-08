@@ -180,9 +180,12 @@ class ServiceOrderController extends Controller
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
         return Inertia::render('ServiceOrders/Create', [
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
-            'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
+            // Solo técnicos y admins pueden ser asignados como técnico de la orden
+            'technicians' => User::role(['Técnico', 'Admin'])->where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']), 
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
             'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
+            // Día de pago y mes de la primera cuota sugeridos para el plan MSI
+            'payment_plan' => (new ServiceOrder())->paymentPlanOptions(),
         ]);
     }
 
@@ -231,13 +234,19 @@ class ServiceOrderController extends Controller
             'conditionings.*.task' => 'required|string|max:255',
             'conditionings.*.user_id' => 'nullable|exists:users,id',
             'conditionings.*.notes' => 'nullable|string',
+            // Plan MSI: día de pago (1-31), mes de la primera cuota (YYYY-MM) y comprobante del anticipo
+            'payment_day' => 'nullable|integer|min:1|max:31',
+            'first_payment_month' => 'nullable|date_format:Y-m',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         $validated['branch_id'] = $branchId;
         
-        DB::transaction(function () use ($validated, $branchId, $userId) {
+        DB::transaction(function () use ($validated, $branchId, $userId, $request) {
             $conditionings = $validated['conditionings'] ?? [];
-            $serviceOrder = ServiceOrder::create(collect($validated)->except(['conditionings'])->toArray());
+            $serviceOrder = ServiceOrder::create(
+                collect($validated)->except(['conditionings', 'payment_day', 'first_payment_month', 'proof'])->toArray()
+            );
 
             // Guardar tareas de acondicionamiento previo
             foreach ($conditionings as $cond) {
@@ -250,10 +259,16 @@ class ServiceOrderController extends Controller
                 ]);
             }
 
+            // Preferencias de la proyección (día de pago y mes de la primera cuota)
+            $serviceOrder->setPaymentPlanOptions(
+                $validated['payment_day'] ?? null,
+                $validated['first_payment_month'] ?? null
+            );
+
             // Crear pago de anticipo si aplica
             $downPayment = $validated['down_payment'] ?? null;
             if ($downPayment && $downPayment > 0) {
-                Payment::create([
+                $anticipoPayment = Payment::create([
                     'branch_id' => $branchId,
                     'client_id' => $validated['client_id'],
                     'service_order_id' => $serviceOrder->id,
@@ -262,6 +277,10 @@ class ServiceOrderController extends Controller
                     'method' => 'Transferencia',
                     'notes' => 'Anticipo',
                 ]);
+
+                if ($request->hasFile('proof')) {
+                    $anticipoPayment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+                }
             }
 
             // Generar cuotas proyectadas (payment_installments) según el plan de pago
@@ -519,12 +538,28 @@ class ServiceOrderController extends Controller
 
         $serviceOrder->load(['conditionings.media']);
 
+        // Solo técnicos y admins pueden ser asignados como técnico de la orden
+        $technicians = User::role(['Técnico', 'Admin'])
+            ->where('branch_id', $branchId)
+            ->where('id', '!=', 1)
+            ->get(['id', 'name']);
+
+        // Se conserva al técnico actualmente asignado para no perder la asignación si no tiene el rol
+        if ($serviceOrder->technician_id && ! $technicians->contains('id', $serviceOrder->technician_id)) {
+            $assignedTechnician = User::whereKey($serviceOrder->technician_id)->first(['id', 'name']);
+            if ($assignedTechnician) {
+                $technicians->push($assignedTechnician);
+            }
+        }
+
         return Inertia::render('ServiceOrders/Edit', [
             'order' => $serviceOrder,
             'clients' => Client::where('branch_id', $branchId)->select('id', 'name')->orderBy('name')->get(),
             'sales_reps' => User::where('branch_id', $branchId)->where('id', '!=', 1)->where('is_active', true)->get(['id', 'name']),
-            'technicians' => User::where('branch_id', $branchId)->where('id', '!=', 1)->get(['id', 'name']),
+            'technicians' => $technicians,
             'system_types' => SystemType::where('branch_id', $branchId)->orderBy('name')->get(),
+            // Día de pago y mes de la primera cuota del plan MSI
+            'payment_plan' => $serviceOrder->paymentPlanOptions(),
         ]);
     }
 
@@ -573,13 +608,25 @@ class ServiceOrderController extends Controller
             'conditionings.*.task' => 'required|string|max:255',
             'conditionings.*.user_id' => 'nullable|exists:users,id',
             'conditionings.*.notes' => 'nullable|string',
+            // Plan MSI: día de pago (1-31), mes de la primera cuota (YYYY-MM) y comprobante del anticipo
+            'payment_day' => 'nullable|integer|min:1|max:31',
+            'first_payment_month' => 'nullable|date_format:Y-m',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
         $oldSystemType = $serviceOrder->system_type;
 
-        DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId) {
+        DB::transaction(function () use ($serviceOrder, $validated, $oldSystemType, $branchId, $request) {
             $conditionings = $validated['conditionings'] ?? [];
-            $serviceOrder->update(collect($validated)->except(['conditionings'])->toArray());
+            $serviceOrder->update(
+                collect($validated)->except(['conditionings', 'payment_day', 'first_payment_month', 'proof'])->toArray()
+            );
+
+            // Preferencias de la proyección (día de pago y mes de la primera cuota)
+            $serviceOrder->setPaymentPlanOptions(
+                $validated['payment_day'] ?? null,
+                $validated['first_payment_month'] ?? null
+            );
 
             // Sincronizar tareas de acondicionamiento previo: borrar existentes y recrear
             $serviceOrder->conditionings()->delete();
@@ -593,19 +640,41 @@ class ServiceOrderController extends Controller
                 ]);
             }
 
-            // Sincronizar pago de anticipo: eliminar anterior y crear nuevo si aplica
-            $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
-            $downPayment = $validated['down_payment'] ?? null;
-            if ($downPayment && $downPayment > 0) {
-                Payment::create([
-                    'branch_id' => $branchId,
-                    'client_id' => $validated['client_id'],
-                    'service_order_id' => $serviceOrder->id,
-                    'amount' => $downPayment,
-                    'payment_date' => now(),
-                    'method' => 'Transferencia',
-                    'notes' => 'Anticipo',
-                ]);
+            // Sincronizar pago de anticipo. Si el monto y el cliente no cambian se conserva
+            // el registro existente (no se pierde su fecha real ni su comprobante).
+            $downPayment = (float) ($validated['down_payment'] ?? 0);
+            $existingAnticipo = $serviceOrder->payments()->where('notes', 'Anticipo')->latest('id')->first();
+
+            if ($downPayment > 0) {
+                $keepExisting = $existingAnticipo
+                    && (float) $existingAnticipo->amount === $downPayment
+                    && (int) $existingAnticipo->client_id === (int) $validated['client_id'];
+
+                if ($keepExisting) {
+                    // Reemplazar el comprobante solo si se subió uno nuevo
+                    if ($request->hasFile('proof')) {
+                        $existingAnticipo->clearMediaCollection('receipts');
+                        $existingAnticipo->addMediaFromRequest('proof')->toMediaCollection('receipts');
+                    }
+                } else {
+                    $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
+                    $anticipoPayment = Payment::create([
+                        'branch_id' => $branchId,
+                        'client_id' => $validated['client_id'],
+                        'service_order_id' => $serviceOrder->id,
+                        'amount' => $downPayment,
+                        'payment_date' => now(),
+                        'method' => 'Transferencia',
+                        'notes' => 'Anticipo',
+                    ]);
+
+                    if ($request->hasFile('proof')) {
+                        $anticipoPayment->addMediaFromRequest('proof')->toMediaCollection('receipts');
+                    }
+                }
+            } else {
+                // Sin anticipo: eliminar el registro previo si existía
+                $serviceOrder->payments()->where('notes', 'Anticipo')->delete();
             }
 
             // Regenerar cuotas proyectadas si cambió el método de pago, total o anticipo
@@ -1455,7 +1524,7 @@ class ServiceOrderController extends Controller
     }
 
     /**
-     * API: Actualiza el método de pago de una orden de servicio.
+     * API: Actualiza el método de pago de una orden de servicio (plan MSI, anticipo y comprobante).
      * PATCH /api/service-orders/{serviceOrder}/payment-method
      */
     public function updatePaymentMethod(Request $request, ServiceOrder $serviceOrder)
@@ -1482,10 +1551,21 @@ class ServiceOrderController extends Controller
         $validated = $request->validate([
             'payment_method' => 'required|in:Contado,3 MSI,6 MSI,9 MSI,12 MSI,Personalizado',
             'down_payment' => 'nullable|numeric|min:0',
+            // Plan MSI: día de pago (1-31) y mes de la primera cuota (YYYY-MM)
+            'payment_day' => 'nullable|integer|min:1|max:31',
+            'first_payment_month' => 'nullable|date_format:Y-m',
             'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
-        $serviceOrder->update($validated);
+        $serviceOrder->update(
+            collect($validated)->except(['payment_day', 'first_payment_month', 'proof'])->toArray()
+        );
+
+        // Preferencias de la proyección (día de pago y mes de la primera cuota)
+        $serviceOrder->setPaymentPlanOptions(
+            $validated['payment_day'] ?? null,
+            $validated['first_payment_month'] ?? null
+        );
 
         // Sincronizar el pago de anticipo REAL (fuente de verdad para saldos y cuotas).
         // El campo down_payment de la orden es solo metadata; el registro en payments
@@ -2792,7 +2872,7 @@ class ServiceOrderController extends Controller
     }
 
     /**
-     * API: Actualiza una cuota individual (fecha, monto).
+     * API: Actualiza una cuota individual (fecha, monto, descripción y/o interés).
      * PATCH /api/installments/{installment}
      */
     public function updateInstallment(Request $request, PaymentInstallment $installment)

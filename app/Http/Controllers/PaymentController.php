@@ -110,18 +110,19 @@ class PaymentController extends Controller
     }
 
     /**
-     * Actualiza la fecha de un abono registrado.
+     * Actualiza un abono registrado: fecha, monto, notas y comprobante.
      *
-     * Solo usuarios con rol Admin pueden editar la fecha de pagos existentes.
-     * Si el pago está vinculado a cuota(s) proyectada(s), se actualiza también su
-     * paid_date y se recalcula su estatus (a tiempo / extemporáneo / incumplido).
+     * Solo usuarios con rol Admin pueden editar abonos existentes.
+     *  - Si el pago está vinculado a cuota(s) proyectada(s), se sincronizan su
+     *    paid_date/paid_amount y se recalcula su estatus (a tiempo / extemporáneo / incumplido).
+     *  - Si se sube un comprobante nuevo, reemplaza al anterior.
      */
     public function update(Request $request, Payment $payment)
     {
         $user = $request->user();
 
         // Solo rol Admin
-        abort_unless($user && $user->hasRole('Admin'), 403, 'Solo el rol Admin puede editar la fecha de los abonos.');
+        abort_unless($user && $user->hasRole('Admin'), 403, 'Solo el rol Admin puede editar los abonos.');
 
         $branchId = session('current_branch_id') ?? Auth::user()->branch_id;
 
@@ -131,23 +132,48 @@ class PaymentController extends Controller
 
         $validated = $request->validate([
             'payment_date' => 'required|date',
+            'amount' => 'required|numeric|min:1',
+            'notes' => 'nullable|string|max:500',
+            'proof' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ]);
 
-        DB::transaction(function () use ($payment, $validated) {
-            $payment->update(['payment_date' => $validated['payment_date']]);
+        DB::transaction(function () use ($payment, $validated, $request) {
+            $amount = round((float) $validated['amount'], 2);
 
-            // Sincronizar la fecha en las cuotas vinculadas y recalcular su estatus
+            // El interés moratorio no puede superar el monto del abono (el capital no puede ser negativo)
+            $interest = min((float) $payment->interest_amount, $amount);
+
+            $payment->update([
+                'payment_date' => $validated['payment_date'],
+                'amount' => $amount,
+                'interest_amount' => $interest,
+                'notes' => filled($validated['notes'] ?? null) ? $validated['notes'] : null,
+            ]);
+
+            // Sincronizar fecha y monto en las cuotas vinculadas y recalcular su estatus
             $installments = PaymentInstallment::where('payment_id', $payment->id)->get();
             foreach ($installments as $installment) {
-                $installment->update(['paid_date' => $validated['payment_date']]);
+                $installment->update([
+                    'paid_date' => $validated['payment_date'],
+                    'paid_amount' => $amount,
+                ]);
                 $installment->recalculateStatus();
+            }
+
+            // Un comprobante nuevo reemplaza al anterior
+            if ($request->hasFile('proof')) {
+                $payment->clearMediaCollection('receipts');
+                $payment->addMediaFromRequest('proof')->toMediaCollection('receipts');
             }
         });
 
+        $payment = $payment->fresh();
+
         return response()->json([
             'success' => true,
-            'payment_date' => $payment->fresh()->payment_date->format('Y-m-d'),
-            'message' => 'Fecha del abono actualizada correctamente.',
+            'amount' => (float) $payment->amount,
+            'payment_date' => $payment->payment_date->format('Y-m-d'),
+            'message' => 'Abono actualizado correctamente.',
         ]);
     }
 

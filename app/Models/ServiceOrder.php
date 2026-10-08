@@ -116,6 +116,41 @@ class ServiceOrder extends Model implements HasMedia
     }
 
     /**
+     * Opciones del plan MSI: día de pago (1-31) y mes de la primera cuota (YYYY-MM).
+     *
+     * Se guardan en extra_data; si no existen se usa el comportamiento histórico:
+     * mismo día del mes de creación y a partir del mes siguiente.
+     */
+    public function paymentPlanOptions(): array
+    {
+        $extra = is_array($this->extra_data) ? $this->extra_data : [];
+        $startDate = $this->created_at ?? now();
+
+        return [
+            'payment_day' => isset($extra['payment_day']) && (int) $extra['payment_day'] > 0
+                ? (int) $extra['payment_day']
+                : (int) $startDate->day,
+            'first_payment_month' => ! empty($extra['first_payment_month'])
+                ? $extra['first_payment_month']
+                : $startDate->copy()->startOfMonth()->addMonth()->format('Y-m'),
+        ];
+    }
+
+    /**
+     * Guarda las opciones del plan MSI en extra_data sin afectar otros datos extra.
+     */
+    public function setPaymentPlanOptions(?int $paymentDay, ?string $firstPaymentMonth): void
+    {
+        $extra = is_array($this->extra_data) ? $this->extra_data : [];
+
+        $extra['payment_day'] = $paymentDay ?: null;
+        $extra['first_payment_month'] = $firstPaymentMonth ?: null;
+
+        $this->extra_data = $extra;
+        $this->save();
+    }
+
+    /**
      * Genera los registros de cuotas (payment_installments) basados en el plan de pago.
      * Se llama al crear o actualizar el método de pago.
      */
@@ -124,6 +159,9 @@ class ServiceOrder extends Model implements HasMedia
         $method = $this->payment_method;
         $totalAmount = (float) $this->total_amount;
         $startDate = $this->created_at ?? now();
+
+        // Debe resolverse antes de borrar las cuotas existentes
+        $plan = $this->paymentPlanOptions();
 
         // Limpiar cuotas existentes que aún no estén pagadas
         $this->paymentInstallments()->whereNull('payment_id')->delete();
@@ -153,11 +191,19 @@ class ServiceOrder extends Model implements HasMedia
             $months = (int) explode(' ', $method)[0];
             $monthlyAmount = $remainingAmount / $months;
 
+            // Primera cuota en el mes elegido; las siguientes, mes con mes
+            $baseDate = \Carbon\Carbon::parse($plan['first_payment_month'].'-01');
+
             for ($i = 1; $i <= $months; $i++) {
+                $dueDate = $baseDate->copy()->addMonthsNoOverflow($i - 1);
+
+                // Día de pago elegido, ajustado al último día del mes cuando no existe (ej. 31 en febrero)
+                $dueDate->setDay(min($plan['payment_day'], $dueDate->daysInMonth));
+
                 $installments[] = [
                     'installment_number' => $i,
                     'label' => "Mensualidad {$i} de {$months}",
-                    'projected_date' => $startDate->copy()->addMonths($i)->format('Y-m-d'),
+                    'projected_date' => $dueDate->format('Y-m-d'),
                     'amount' => round($monthlyAmount, 2),
                 ];
             }
