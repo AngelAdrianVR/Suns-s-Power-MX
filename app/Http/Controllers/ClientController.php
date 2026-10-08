@@ -197,7 +197,7 @@ class ClientController extends Controller
             'serviceOrders' => function ($q) {
                 $q->select('id', 'client_id', 'status', 'total_amount', 'created_at', 'start_date', 
                            'payment_method', 'down_payment', 'price_per_module', 'system_type',
-                           'service_number')
+                           'service_number', 'extra_data')
                   ->withSum('payments as total_paid', 'amount')
                   ->withSum('payments as total_interest', 'interest_amount')
                   ->orderBy('created_at', 'desc');
@@ -237,6 +237,9 @@ class ClientController extends Controller
 
             // Calcular estatus global de pagos de la orden
             $order->payment_status_summary = $this->calculateOrderPaymentSummary($order);
+
+            // Día de pago y mes de la primera cuota del plan MSI (para precargar el modal)
+            $order->payment_plan = $order->paymentPlanOptions();
             
             return $order;
         });

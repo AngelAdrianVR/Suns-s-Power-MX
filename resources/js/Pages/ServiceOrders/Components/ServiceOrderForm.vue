@@ -1,18 +1,19 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { useForm, Link, router } from '@inertiajs/vue3';
+import { useForm, Link, router, usePage } from '@inertiajs/vue3';
 import { usePermissions } from '@/Composables/usePermissions';
 import { 
     NForm, NFormItem, NInput, NButton, NCard, NIcon, NGrid, NGridItem, 
     createDiscreteApi, NSelect, NDatePicker, NInputNumber, NSpin, NTooltip,
-    NModal, NPopconfirm, NEmpty, NSwitch, NDivider, NUpload
+    NModal, NPopconfirm, NEmpty, NSwitch, NDivider, NUpload, NAlert
 } from 'naive-ui';
 import { 
     SaveOutline, PersonOutline, ConstructOutline, 
     LocationOutline, CashOutline, DocumentTextOutline, BriefcaseOutline,
     PersonAddOutline, RefreshOutline, FlashOutline, SpeedometerOutline,
     HardwareChipOutline, AddOutline, CreateOutline, TrashOutline, 
-    CheckmarkCircleOutline, CloseOutline, HomeOutline, BuildOutline
+    CheckmarkCircleOutline, CloseOutline, HomeOutline, BuildOutline,
+    CloudUploadOutline
 } from '@vicons/ionicons5';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import axios from 'axios';
@@ -43,6 +44,7 @@ const props = defineProps({
 
 const { hasPermission } = usePermissions();
 const { notification } = createDiscreteApi(['notification']);
+const page = usePage();
 const formRef = ref(null);
 const loadingClientData = ref(false);
 const loadingClientsList = ref(false);
@@ -242,6 +244,10 @@ const form = useForm({
     // Propuesta comercial
     payment_method: props.order?.payment_method || null,
     down_payment: props.order?.down_payment ? Number(props.order.down_payment) : null,
+    // Plan MSI: día de pago (1-31), mes de la primera cuota (YYYY-MM) y comprobante del anticipo
+    payment_day: page.props.payment_plan?.payment_day || null,
+    first_payment_month: page.props.payment_plan?.first_payment_month || null,
+    proof: null,
     requires_pre_installation: props.order?.requires_pre_installation || false,
     pre_installation_details: props.order?.pre_installation_details || '',
     pre_installation_assigned_to: props.order?.pre_installation_assigned_to || null,
@@ -262,6 +268,15 @@ const rules = {
     total_amount: { required: true, type: 'number', min: 0, message: 'Requerido', trigger: 'blur' },
     installation_street: { required: true, message: 'La calle es obligatoria', trigger: 'blur' },
     installation_neighborhood: { required: true, message: 'La colonia es obligatoria', trigger: 'blur' }
+};
+
+// --- PLAN MSI: día de pago y mes de la primera mensualidad ---
+const msiPlans = ['3 MSI', '6 MSI', '9 MSI', '12 MSI'];
+const isMsiPlan = computed(() => msiPlans.includes(form.payment_method));
+const paymentDayOptions = Array.from({ length: 31 }, (_, i) => ({ label: `Día ${i + 1}`, value: i + 1 }));
+
+const handlePaymentProofChange = (options) => {
+    form.proof = options.fileList.length > 0 ? options.fileList[0].file : null;
 };
 
 // --- WATCHERS ---
@@ -339,10 +354,17 @@ const submit = () => {
     formRef.value?.validate((errors) => {
         if (!errors) {
             if (isEdit.value) {
-                form.put(route('service-orders.update', props.order.id), {
+                const options = {
                     onSuccess: () => notification.success({ title: 'Orden Actualizada', content: 'Los cambios se han guardado correctamente.', duration: 3000 }),
                     onError: () => notification.error({ title: 'Error de Validación', content: 'Revisa los campos obligatorios.', duration: 4000 })
-                });
+                };
+                if (form.proof) {
+                    // Inertia no envía archivos en PUT: se manda por POST con el método espoffeado
+                    form.transform((data) => ({ ...data, _method: 'PUT' }))
+                        .post(route('service-orders.update', props.order.id), options);
+                } else {
+                    form.put(route('service-orders.update', props.order.id), options);
+                }
             } else {
                 form.post(route('service-orders.store'), {
                     onSuccess: () => notification.success({ title: 'Orden Creada', content: 'La orden de servicio se ha generado correctamente.', duration: 3000 }),
@@ -701,6 +723,56 @@ const removeConditioningTask = (index) => {
                             <template #prefix>$</template>
                             <template #suffix>MXN</template>
                         </n-input-number>
+                    </n-form-item>
+
+                    <!-- Plan MSI: día de pago y mes de la primera mensualidad -->
+                    <template v-if="isMsiPlan">
+                        <n-alert type="info" :bordered="false" class="!mb-3">
+                            <span class="text-xs">
+                                La proyección se genera con el día de pago elegido, empezando en el mes indicado.
+                                Si un mes no tiene ese día (ej. 31 en febrero), la mensualidad vence el último día del mes.
+                            </span>
+                        </n-alert>
+                        <n-form-item label="Día de pago" path="payment_day">
+                            <n-select 
+                                v-model:value="form.payment_day" 
+                                :options="paymentDayOptions" 
+                                placeholder="Día del mes"
+                                clearable
+                            />
+                        </n-form-item>
+                        <n-form-item label="A partir de qué mes" path="first_payment_month">
+                            <n-date-picker
+                                v-model:formatted-value="form.first_payment_month"
+                                type="month"
+                                value-format="yyyy-MM"
+                                placeholder="Mes de la primera mensualidad"
+                                class="w-full"
+                                clearable
+                            />
+                        </n-form-item>
+                    </template>
+
+                    <n-form-item v-if="form.down_payment > 0" label="Comprobante de pago (opcional)">
+                        <n-upload
+                            :max="1"
+                            :default-upload="false"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            class="w-full cursor-pointer"
+                            @change="handlePaymentProofChange"
+                        >
+                            <n-upload-dragger class="bg-gray-50/50 hover:bg-indigo-50/30 transition-colors border border-dashed border-gray-300">
+                                <div class="flex items-center justify-center gap-3 py-1">
+                                    <n-icon size="24" :depth="3" class="text-indigo-400">
+                                        <CloudUploadOutline />
+                                    </n-icon>
+                                    <div class="text-left">
+                                        <p class="text-xs font-bold text-gray-700">Clic o arrastra el comprobante del anticipo</p>
+                                        <p class="text-[9px] text-gray-400 uppercase">PDF, JPG o PNG</p>
+                                    </div>
+                                </div>
+                            </n-upload-dragger>
+                        </n-upload>
                     </n-form-item>
                 </n-card>
 
