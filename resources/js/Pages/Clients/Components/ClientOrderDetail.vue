@@ -264,6 +264,9 @@ const showPaymentMethodModal = ref(false);
 const paymentMethodForm = ref({
     payment_method: null,
     down_payment: 0,
+    // Plan MSI: día de pago (1-31) y mes de la primera cuota (YYYY-MM)
+    payment_day: null,
+    first_payment_month: null,
     proof: null,
 });
 const savingPaymentMethod = ref(false);
@@ -280,11 +283,23 @@ const paymentMethodOptions = [
     { label: 'Personalizado', value: 'Personalizado' },
 ];
 
+const msiPlans = ['3 MSI', '6 MSI', '9 MSI', '12 MSI'];
+
+// ¿El plan elegido es MSI? (solo entonces se piden día de pago y primer mes)
+const isMsiPlan = computed(() => msiPlans.includes(paymentMethodForm.value.payment_method));
+
+const paymentDayOptions = Array.from({ length: 31 }, (_, i) => ({ label: `Día ${i + 1}`, value: i + 1 }));
+
 const openPaymentMethodModal = () => {
+    // Día/mes vigentes del plan (los calcula el backend a partir de la orden)
+    const plan = selectedOrder.value?.payment_plan || {};
+
     paymentMethodForm.value = {
         payment_method: selectedOrder.value?.payment_method || null,
         // Precargar el anticipo existente para no perderlo al re-guardar el plan
         down_payment: selectedOrder.value?.down_payment ? Number(selectedOrder.value.down_payment) : 0,
+        payment_day: plan.payment_day ?? null,
+        first_payment_month: plan.first_payment_month ?? null,
         proof: null,
     };
     showPaymentMethodModal.value = true;
@@ -295,6 +310,10 @@ const savePaymentMethod = async () => {
         notification.warning({ title: 'Atención', content: 'Selecciona un plan de pago.', duration: 3000 });
         return;
     }
+    if (isMsiPlan.value && (!paymentMethodForm.value.payment_day || !paymentMethodForm.value.first_payment_month)) {
+        notification.warning({ title: 'Atención', content: 'Indica el día de pago y a partir de qué mes se proyectan las mensualidades.', duration: 4000 });
+        return;
+    }
     savingPaymentMethod.value = true;
     try {
         // FormData para poder adjuntar el comprobante (multipart)
@@ -302,6 +321,12 @@ const savePaymentMethod = async () => {
         formData.append('_method', 'PATCH');
         formData.append('payment_method', paymentMethodForm.value.payment_method);
         formData.append('down_payment', paymentMethodForm.value.down_payment || 0);
+        if (paymentMethodForm.value.payment_day) {
+            formData.append('payment_day', paymentMethodForm.value.payment_day);
+        }
+        if (paymentMethodForm.value.first_payment_month) {
+            formData.append('first_payment_month', paymentMethodForm.value.first_payment_month);
+        }
         if (paymentMethodForm.value.proof) {
             formData.append('proof', paymentMethodForm.value.proof);
         }
@@ -313,7 +338,11 @@ const savePaymentMethod = async () => {
         emit('refresh');
         await refreshProjection();
     } catch (error) {
-        const msg = error.response?.data?.error || 'No se pudo actualizar el plan de pago.';
+        const errors = error.response?.data?.errors;
+        const msg = error.response?.data?.error
+            || errors?.payment_day?.[0]
+            || errors?.first_payment_month?.[0]
+            || 'No se pudo actualizar el plan de pago.';
         notification.error({ title: 'Error', content: msg, duration: 4000 });
     } finally {
         savingPaymentMethod.value = false;
@@ -350,42 +379,90 @@ const sendReminder = async (channel) => {
     }
 };
 
-// --- Editar fecha de un abono registrado (solo rol Admin) ---
-const showEditDateModal = ref(false);
-const editingPaymentDate = ref(null);
+// --- Editar un abono registrado: fecha, monto y comprobante (solo rol Admin) ---
+const showEditPaymentModal = ref(false);
+const editingPayment = ref(null);
 const editPaymentDateValue = ref(null);
-const savingPaymentDate = ref(false);
+const editPaymentAmount = ref(null);
+const editPaymentNotes = ref(null);
+const editPaymentProof = ref(null);
+const savingPayment = ref(false);
 
-const openEditPaymentDate = (row) => {
+// Comprobante actual del abono en edición (si ya tiene uno)
+const editingPaymentReceiptUrl = computed(() => {
+    const row = editingPayment.value;
+    if (!row) return null;
+    return row.receipt_url || row.media?.[0]?.original_url || null;
+});
+
+const openEditPayment = (row) => {
     const dateStr = String(row.payment_date || '').trim().split(' ')[0].split('T')[0];
     const ts = new Date(dateStr + 'T12:00:00').getTime();
     editPaymentDateValue.value = isNaN(ts) ? Date.now() : ts;
-    editingPaymentDate.value = row;
-    showEditDateModal.value = true;
+    editPaymentAmount.value = parseFloat(row.amount || 0);
+    editPaymentNotes.value = row.notes || '';
+    editPaymentProof.value = null;
+    editingPayment.value = row;
+    showEditPaymentModal.value = true;
 };
 
-const closeEditPaymentDate = () => {
-    showEditDateModal.value = false;
-    editingPaymentDate.value = null;
+const closeEditPayment = () => {
+    if (savingPayment.value) return;
+    showEditPaymentModal.value = false;
+    resetEditPaymentForm();
+};
+
+const resetEditPaymentForm = () => {
+    editingPayment.value = null;
     editPaymentDateValue.value = null;
+    editPaymentAmount.value = null;
+    editPaymentNotes.value = null;
+    editPaymentProof.value = null;
 };
 
-const savePaymentDate = async () => {
-    if (!editingPaymentDate.value?.id) return;
-    savingPaymentDate.value = true;
+const handleEditPaymentProofChange = (options) => {
+    editPaymentProof.value = options.fileList.length > 0 ? options.fileList[0].file : null;
+};
+
+const savePayment = async () => {
+    if (!editingPayment.value?.id) return;
+    if (!editPaymentAmount.value || editPaymentAmount.value <= 0) {
+        notification.warning({ title: 'Atención', content: 'Ingresa un monto válido.', duration: 3000 });
+        return;
+    }
+    savingPayment.value = true;
     try {
         const val = editPaymentDateValue.value;
         const payment_date = typeof val === 'number' ? new Date(val).toISOString().split('T')[0] : val;
-        await axios.patch(route('payments.update', editingPaymentDate.value.id), { payment_date });
-        notification.success({ title: 'Actualizado', content: 'Fecha del abono actualizada correctamente.', duration: 3000 });
-        closeEditPaymentDate();
+
+        // FormData para poder adjuntar el comprobante (multipart) y enviarlo como PATCH
+        const formData = new FormData();
+        formData.append('_method', 'PATCH');
+        formData.append('payment_date', payment_date);
+        formData.append('amount', editPaymentAmount.value);
+        formData.append('notes', editPaymentNotes.value ?? '');
+        if (editPaymentProof.value) {
+            formData.append('proof', editPaymentProof.value);
+        }
+
+        await axios.post(route('payments.update', editingPayment.value.id), formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        notification.success({ title: 'Actualizado', content: 'Abono actualizado correctamente.', duration: 3000 });
+        showEditPaymentModal.value = false;
+        resetEditPaymentForm();
         await refreshProjection();
         emit('refresh');
     } catch (error) {
-        const msg = error.response?.data?.error || 'No se pudo actualizar la fecha del abono.';
+        const errors = error.response?.data?.errors;
+        const msg = error.response?.data?.message
+            || errors?.proof?.[0]
+            || errors?.notes?.[0]
+            || errors?.amount?.[0]
+            || 'No se pudo actualizar el abono.';
         notification.error({ title: 'Error', content: msg, duration: 4000 });
     } finally {
-        savingPaymentDate.value = false;
+        savingPayment.value = false;
     }
 };
 
@@ -399,9 +476,9 @@ const paymentColumns = [
                 ? h(NTooltip, null, {
                     trigger: () => h(NButton, {
                         text: true, size: 'tiny', type: 'primary',
-                        onClick: () => openEditPaymentDate(row)
+                        onClick: () => openEditPayment(row)
                     }, { icon: () => h(NIcon, null, { default: () => h(CreateOutline) }) }),
-                    default: () => 'Editar fecha (solo Admin)'
+                    default: () => 'Editar abono: fecha, monto y comprobante (solo Admin)'
                 })
                 : null,
         ])
@@ -536,7 +613,7 @@ const savePrice = async () => {
     }
 };
 
-// --- INLINE EDIT: CUOTAS (fecha, monto) ---
+// --- INLINE EDIT: CUOTAS (fecha, monto, descripción) ---
 const startEditInstallment = (inst) => {
     if (inst.payment || inst.status === 'paid' || inst.status === 'on_time') {
         notification.warning({ title: 'Atención', content: 'No se puede editar una cuota ya pagada.', duration: 3000 });
@@ -1022,6 +1099,16 @@ const saveProjection = async () => {
                                                 <template #prefix>$</template>
                                             </n-input-number>
                                         </div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-gray-500 w-24">Descripción:</span>
+                                            <n-input
+                                                v-model:value="editingInstallmentData.label"
+                                                size="tiny"
+                                                class="flex-1"
+                                                placeholder="Ej: Segunda quincena de julio"
+                                                :maxlength="255"
+                                            />
+                                        </div>
                                         <div class="flex items-center gap-1 mt-2">
                                             <n-button size="tiny" type="primary" @click="saveInstallment" :loading="isSavingInstallment">
                                                 <template #icon><n-icon><SaveOutline /></n-icon></template> Guardar
@@ -1280,6 +1367,32 @@ const saveProjection = async () => {
                             <template #prefix>$</template>
                         </n-input-number>
                     </n-form-item>
+
+                    <!-- Plan MSI: día de pago y mes de la primera mensualidad -->
+                    <template v-if="isMsiPlan">
+                        <n-alert type="info" :bordered="false" class="mb-3">
+                            <span class="text-xs">
+                                La proyección se generará con el día de pago elegido, empezando en el mes indicado.
+                                Si un mes no tiene ese día (ej. 31 en febrero), la mensualidad vence el último día del mes.
+                            </span>
+                        </n-alert>
+                        <n-form-item label="Día de pago">
+                            <n-select
+                                v-model:value="paymentMethodForm.payment_day"
+                                :options="paymentDayOptions"
+                                placeholder="Día del mes"
+                            />
+                        </n-form-item>
+                        <n-form-item label="A partir de qué mes">
+                            <n-date-picker
+                                v-model:formatted-value="paymentMethodForm.first_payment_month"
+                                type="month"
+                                value-format="yyyy-MM"
+                                placeholder="Mes de la primera mensualidad"
+                                class="w-full"
+                            />
+                        </n-form-item>
+                    </template>
                     <n-form-item label="Comprobante de anticipo (opcional)">
                         <n-upload
                             :max="1"
@@ -1384,45 +1497,107 @@ const saveProjection = async () => {
             </n-card>
         </n-modal>
 
-        <!-- MODAL: EDITAR FECHA DEL ABONO (solo Admin) -->
+        <!-- MODAL: EDITAR ABONO (fecha, monto y comprobante · solo Admin) -->
         <n-modal
-            :show="showEditDateModal"
+            :show="showEditPaymentModal"
             :mask-closable="false"
             :close-on-esc="false"
-            @update:show="(val) => { if (!val && !savingPaymentDate) closeEditPaymentDate(); }"
+            @update:show="(val) => { if (!val) closeEditPayment(); }"
         >
             <n-card
-                style="width: 380px; border-radius: 0.75rem;"
-                title="Editar Fecha del Abono"
+                style="width: 420px; border-radius: 0.75rem;"
+                title="Editar Abono"
                 :bordered="false"
                 size="small"
             >
                 <template #header-extra>
-                    <n-button circle size="small" quaternary :disabled="savingPaymentDate" @click="closeEditPaymentDate">
+                    <n-button circle size="small" quaternary :disabled="savingPayment" @click="closeEditPayment">
                         <template #icon><n-icon><CloseOutline /></n-icon></template>
                     </n-button>
                 </template>
 
-                <div v-if="editingPaymentDate" class="space-y-3">
+                <div v-if="editingPayment" class="space-y-3">
                     <div class="bg-gray-50 rounded-lg p-2.5 text-xs text-gray-600 border border-gray-100 flex justify-between">
-                        <span>Abono:</span>
-                        <span class="font-bold text-gray-800">{{ deletePaymentLabel(editingPaymentDate).amount }}</span>
+                        <span>Abono actual:</span>
+                        <span class="font-bold text-gray-800">
+                            {{ deletePaymentLabel(editingPayment).amount }} · {{ deletePaymentLabel(editingPayment).date }}
+                        </span>
                     </div>
-                    <n-form-item label="Nueva fecha de pago" required>
+
+                    <n-form-item label="Fecha de pago" required>
                         <n-date-picker v-model:value="editPaymentDateValue" type="date" class="w-full" />
                     </n-form-item>
+
+                    <n-form-item label="Monto" required>
+                        <n-input-number
+                            v-model:value="editPaymentAmount"
+                            :min="1"
+                            :precision="2"
+                            class="w-full"
+                            placeholder="0.00"
+                        >
+                            <template #prefix>$</template>
+                        </n-input-number>
+                    </n-form-item>
+
+                    <n-form-item label="Notas">
+                        <n-input
+                            v-model:value="editPaymentNotes"
+                            type="textarea"
+                            placeholder="Detalles adicionales del abono..."
+                            :maxlength="500"
+                            :autosize="{ minRows: 2, maxRows: 4 }"
+                        />
+                    </n-form-item>
+
+                    <n-form-item label="Comprobante">
+                        <div class="w-full">
+                            <n-upload
+                                :max="1"
+                                :default-upload="false"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                class="w-full"
+                                @change="handleEditPaymentProofChange"
+                            >
+                                <n-upload-dragger class="bg-gray-50/50 hover:bg-indigo-50/30 transition-colors border border-dashed border-gray-300">
+                                    <div class="flex items-center justify-center gap-3 py-1">
+                                        <n-icon size="24" :depth="3" class="text-indigo-400">
+                                            <CloudUploadOutline />
+                                        </n-icon>
+                                        <div class="text-left">
+                                            <p class="text-xs font-bold text-gray-700">
+                                                {{ editingPaymentReceiptUrl ? 'Reemplazar comprobante' : 'Clic o arrastra el comprobante' }}
+                                            </p>
+                                            <p class="text-[9px] text-gray-400 uppercase">PDF, JPG o PNG</p>
+                                        </div>
+                                    </div>
+                                </n-upload-dragger>
+                            </n-upload>
+
+                            <div v-if="editingPaymentReceiptUrl" class="mt-2 flex items-center justify-between gap-2">
+                                <span class="text-[10px] text-gray-400 leading-snug">
+                                    Este abono ya tiene comprobante: si subes otro, se reemplaza.
+                                </span>
+                                <n-button text size="tiny" type="primary" @click="openFileWithRetry(editingPaymentReceiptUrl)">
+                                    <template #icon><n-icon><EyeOutline /></n-icon></template>
+                                    Ver actual
+                                </n-button>
+                            </div>
+                        </div>
+                    </n-form-item>
+
                     <p class="text-[10px] text-gray-400 leading-snug">
                         Solo usuarios con rol <strong>Admin</strong>. Si el abono está vinculado a una cuota,
-                        su estatus (a tiempo / extemporáneo / incumplido) se recalculará con la nueva fecha.
+                        su estatus (a tiempo / extemporáneo / incumplido) se recalculará con la nueva fecha y monto.
                     </p>
                 </div>
 
                 <template #footer>
                     <div class="flex justify-end gap-3">
-                        <n-button @click="closeEditPaymentDate" :disabled="savingPaymentDate">Cancelar</n-button>
-                        <n-button type="primary" :loading="savingPaymentDate" @click="savePaymentDate">
+                        <n-button @click="closeEditPayment" :disabled="savingPayment">Cancelar</n-button>
+                        <n-button type="primary" :loading="savingPayment" @click="savePayment">
                             <template #icon><n-icon><SaveOutline /></n-icon></template>
-                            Guardar fecha
+                            Guardar cambios
                         </n-button>
                     </div>
                 </template>
