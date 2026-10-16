@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import { NSelect, createDiscreteApi } from 'naive-ui';
@@ -81,11 +81,38 @@ const inePages = computed(() =>
 );
 
 // --- Auto-ajuste de ancho de los campos editables ---
+// El ancho sale del propio contenido del campo, así el texto fluye como texto
+// normal: sin huecos en blanco alrededor de cada campo y sin recortar lo escrito.
+// Con valor, el ancho lo reporta el propio campo; vacío, se mide el texto guía
+// (placeholder) para que la hoja siga leyéndose como el formato original.
+let measureContext = null;
+
+const measurePlaceholder = (el) => {
+    if (!el.placeholder) return 0;
+
+    if (!measureContext) {
+        measureContext = document.createElement('canvas').getContext('2d');
+    }
+
+    const styles = getComputedStyle(el);
+    measureContext.font = `${styles.fontStyle} 400 ${styles.fontSize} ${styles.fontFamily}`;
+
+    return Math.ceil(measureContext.measureText(el.placeholder).width) + 1;
+};
+
 const autoResize = (el) => {
     if (!el) return;
-    el.style.width = '';
-    const min = parseFloat(getComputedStyle(el).minWidth) || 40;
-    el.style.width = `${Math.max(el.scrollWidth + 4, min)}px`;
+
+    // Poner el ancho a cero y dejar que el propio campo reporte cuánto necesita
+    // evita diferencias entre la medición y el texto realmente renderizado.
+    el.style.width = '0px';
+
+    const width = el.value ? el.scrollWidth : Math.max(el.scrollWidth, measurePlaceholder(el));
+    el.style.width = `${width}px`;
+};
+
+const resizeFields = () => {
+    document.querySelectorAll('.field-input').forEach(autoResize);
 };
 
 const onFieldInput = (event) => {
@@ -94,8 +121,16 @@ const onFieldInput = (event) => {
     }
 };
 
+// Al elegir personas en el panel de herramientas los campos cambian de valor
+watch(fields, () => nextTick(resizeFields), { deep: true });
+
 onMounted(() => {
-    document.querySelectorAll('.field-input').forEach(autoResize);
+    resizeFields();
+
+    // La tipografía definitiva puede cargar después del primer render: se vuelve a medir
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(resizeFields);
+    }
 });
 
 // Convierte una imagen a JPEG (data URL) usando canvas, para que el servidor
@@ -254,19 +289,15 @@ const print = () => window.print();
             <h1 class="doc-title">CARTA PODER</h1>
 
             <p class="paragraph">
-                Yo <input v-model="fields.otorgante_nombre" class="field-input" style="min-width: 220px;" placeholder="nombre del otorgante" />
-                con domicilio en
-                <input v-model="fields.otorgante_domicilio" class="field-input" style="min-width: 420px;" placeholder="domicilio" />
-                y con identificación oficial
-                <input v-model="fields.otorgante_ine" class="field-input" style="min-width: 180px;" placeholder="INE No." />,
-                por medio de la presente otorgo poder amplio, cumplido y bastante a favor de
-                <input v-model="fields.apoderado_nombre" class="field-input" style="min-width: 240px;" placeholder="nombre del apoderado" />
-                quien se identifica con
-                <input v-model="fields.apoderado_ine" class="field-input" style="min-width: 180px;" placeholder="INE No." />,
-                para que en mi nombre y representación realice las gestiones necesarias, firme y suscriba los contratos
-                de interconexión y contraprestación ante la Comisión Federal de Electricidad (CFE), así como cualquier
-                documento relacionado con dichos contratos, dando por válidas y legales todas y cada una de las
-                gestiones que realice.
+                Yo, <input v-model="fields.otorgante_nombre" class="field-input" placeholder="NOMBRE DEL TITULAR DEL SERVICIO" /> con domicilio en
+                <input v-model="fields.otorgante_domicilio" class="field-input" placeholder="DOMICILIO DEL RECIBO DE LUZ" />, y con identificación oficial INE No.
+                <input v-model="fields.otorgante_ine" class="field-input field-ine" />, por medio de la presente otorgo
+                poder amplio, cumplido y bastante a favor de
+                <input v-model="fields.apoderado_nombre" class="field-input" placeholder="NOMBRE DEL GESTOR A CARGO" /> quien se identifica con INE No.
+                <input v-model="fields.apoderado_ine" class="field-input field-ine" />, para que en mi
+                nombre y representación realice las gestiones necesarias, firme y suscriba los contratos de interconexión y
+                contraprestación ante la Comisión Federal de Electricidad (CFE), así como cualquier documento relacionado con
+                dichos contratos, dando por válidas y legales todas y cada una de las gestiones que realice.
             </p>
 
             <p class="paragraph">
@@ -278,19 +309,16 @@ const print = () => window.print();
             <p class="paragraph">
                 El presente poder se otorga con carácter de especial, limitándose exclusivamente a la facultad descrita
                 en el párrafo anterior, el cual tendrá una
-                <input v-model="fields.vigencia" class="field-input" style="min-width: 90px;" placeholder="vigencia" />
+                <input v-model="fields.vigencia" class="field-input" placeholder="vigencia de 6 meses" />
                 contados a partir de la firma del presente.
             </p>
 
             <p class="fecha-paragraph">
                 En la ciudad de
-                <input v-model="fields.ciudad" class="field-input" style="min-width: 170px;" placeholder="ciudad" />,
-                a los
-                <input v-model="fields.dia" class="field-input" style="min-width: 40px;" placeholder="día" />
-                días del mes de
-                <input v-model="fields.mes" class="field-input" style="min-width: 90px;" placeholder="mes" />
-                de
-                <input v-model="fields.anio" class="field-input" style="min-width: 70px;" placeholder="año" />.
+                <input v-model="fields.ciudad" class="field-input" style="min-width: 45px;" />, a los
+                <input v-model="fields.dia" class="field-input" style="min-width: 20px;" /> días del mes de
+                <input v-model="fields.mes" class="field-input" style="min-width: 45px;" /> de
+                <input v-model="fields.anio" class="field-input" style="min-width: 28px;" />.
             </p>
 
             <!-- FIRMAS OTORGANTE / APODERADO -->
@@ -299,14 +327,14 @@ const print = () => window.print();
                     <div class="sig-header">OTORGANTE</div>
                     <div class="sig-body">
                         <div class="sig-line"></div>
-                        <input v-model="fields.otorgante_nombre" class="field-input sig-name" style="min-width: 180px;" placeholder="nombre" />
+                        <input v-model="fields.otorgante_nombre" class="field-input sig-name" placeholder="nombre" />
                     </div>
                 </div>
                 <div class="sig-cell">
                     <div class="sig-header">APODERADO</div>
                     <div class="sig-body">
                         <div class="sig-line"></div>
-                        <input v-model="fields.apoderado_nombre" class="field-input sig-name" style="min-width: 180px;" placeholder="nombre" />
+                        <input v-model="fields.apoderado_nombre" class="field-input sig-name" placeholder="nombre" />
                     </div>
                 </div>
             </div>
@@ -319,14 +347,14 @@ const print = () => window.print();
                     <div class="sig-header">Testigo 1</div>
                     <div class="sig-body">
                         <div class="sig-line"></div>
-                        <input v-model="fields.testigo1_nombre" class="field-input sig-name" style="min-width: 180px;" placeholder="nombre" />
+                        <input v-model="fields.testigo1_nombre" class="field-input sig-name" placeholder="nombre" />
                     </div>
                 </div>
                 <div class="sig-cell">
                     <div class="sig-header">Testigo 2</div>
                     <div class="sig-body">
                         <div class="sig-line"></div>
-                        <input v-model="fields.testigo2_nombre" class="field-input sig-name" style="min-width: 180px;" placeholder="nombre" />
+                        <input v-model="fields.testigo2_nombre" class="field-input sig-name" placeholder="nombre" />
                     </div>
                 </div>
             </div>
@@ -427,21 +455,31 @@ const print = () => window.print();
     margin-bottom: 20px;
 }
 
-/* Campos editables: negritas subrayadas, se adaptan al contenido */
+/* Campos editables: negritas subrayadas. El ancho lo fija autoResize() con el
+   ancho real del contenido, sin relleno, para que no queden huecos en blanco
+   entre el texto del campo y las palabras o signos que van a su lado. */
 .field-input {
     border: none;
     outline: none;
     background: transparent;
     font-family: inherit;
     font-size: inherit;
+    line-height: inherit;
     color: #000;
     font-weight: 700;
     text-decoration: underline;
-    padding: 0 2px;
+    box-sizing: content-box;
+    padding: 0;
     margin: 0;
-    min-width: 40px;
+    min-width: 16px;
     border-radius: 0;
     box-shadow: none;
+}
+
+/* Renglón del número de INE: se conserva un pequeño espacio en blanco detrás de
+   "INE No." cuando el campo todavía está vacío. */
+.field-ine {
+    min-width: 36px;
 }
 
 .field-input:hover,
@@ -500,6 +538,7 @@ const print = () => window.print();
 .sig-name {
     text-align: center;
     font-size: 15px;
+    min-width: 140px;
 }
 
 .testigos-title {

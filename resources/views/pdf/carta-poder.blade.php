@@ -46,11 +46,11 @@
         <h1 class="doc-title">CARTA PODER</h1>
 
         <p class="paragraph">
-            Yo <strong>{{ $fields['otorgante_nombre'] ?: '______' }}</strong> con domicilio en
-            <strong>{{ $fields['otorgante_domicilio'] ?: '______' }}</strong> y con identificación oficial
-            <strong>{{ $fields['otorgante_ine'] ?: 'INE No. ______' }}</strong>, por medio de la presente otorgo
+            Yo, <strong>{{ $fields['otorgante_nombre'] ?: '______' }}</strong> con domicilio en
+            <strong>{{ $fields['otorgante_domicilio'] ?: '______' }}</strong>, y con identificación oficial
+            INE No. <strong>{{ $fields['otorgante_ine'] ?: '______' }}</strong>, por medio de la presente otorgo
             poder amplio, cumplido y bastante a favor de <strong>{{ $fields['apoderado_nombre'] ?: '______' }}</strong>
-            quien se identifica con <strong>{{ $fields['apoderado_ine'] ?: 'INE No. ______' }}</strong>, para que en mi
+            quien se identifica con INE No. <strong>{{ $fields['apoderado_ine'] ?: '______' }}</strong>, para que en mi
             nombre y representación realice las gestiones necesarias, firme y suscriba los contratos de interconexión y
             contraprestación ante la Comisión Federal de Electricidad (CFE), así como cualquier documento relacionado con
             dichos contratos, dando por válidas y legales todas y cada una de las gestiones que realice.

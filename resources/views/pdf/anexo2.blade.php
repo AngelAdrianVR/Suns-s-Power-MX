@@ -275,7 +275,7 @@
 
     <table class="grid fields" style="margin-top: 4px;">
         <tr>
-            <td style="width: 33%;">{!! $f('num_unidades', 'No de unidades de generación') !!}</td>
+            <td style="width: 33%;">{!! $f('num_unidades', 'Cantidad de paneles y capacidad de ellos') !!}</td>
             <td style="width: 33%;">{!! $f('combustible_principal', 'Combustible principal') !!}</td>
             <td style="width: 33%;">{!! $f('combustible_secundario', 'Combustible secundario') !!}</td>
         </tr>
