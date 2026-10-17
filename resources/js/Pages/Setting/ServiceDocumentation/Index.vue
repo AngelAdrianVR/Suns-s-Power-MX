@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { usePermissions } from '@/Composables/usePermissions';
 import PermissionTooltip from '@/Components/MyComponents/PermissionTooltip.vue';
 import {
-    NButton, NIcon, NInput, NSwitch, NPopconfirm, NEmpty, NTag, createDiscreteApi
+    NButton, NIcon, NInput, NSwitch, NPopconfirm, NEmpty, NTag, NRadioGroup, NRadioButton, createDiscreteApi
 } from 'naive-ui';
 import {
     AddOutline, TrashOutline, MenuOutline, DocumentTextOutline, SparklesOutline,
@@ -27,7 +27,7 @@ watch(() => props.steps, (value) => {
 });
 
 // --- CREAR ---
-const stepForm = useForm({ title: '', description: '' });
+const stepForm = useForm({ title: '', description: '', single_sheet: false, sheet_layout: 'auto' });
 
 const createStep = () => {
     if (!stepForm.title.trim()) {
@@ -47,11 +47,21 @@ const createStep = () => {
 const editingId = ref(null);
 const editingTitle = ref('');
 const editingDescription = ref('');
+const editingSingleSheet = ref(false);
+const editingSheetLayout = ref('auto');
+
+const SHEET_LAYOUT_LABELS = {
+    auto: 'Automático',
+    stacked: 'Apilado',
+    side_by_side: 'Lado a lado',
+};
 
 const startEdit = (step) => {
     editingId.value = step.id;
     editingTitle.value = step.title;
     editingDescription.value = step.description || '';
+    editingSingleSheet.value = !!step.single_sheet;
+    editingSheetLayout.value = step.sheet_layout || 'auto';
 };
 
 const cancelEdit = () => {
@@ -67,6 +77,8 @@ const saveEdit = (step) => {
         title: editingTitle.value,
         description: editingDescription.value,
         is_active: step.is_active,
+        single_sheet: editingSingleSheet.value,
+        sheet_layout: editingSheetLayout.value,
     }, {
         preserveScroll: true,
         onSuccess: () => {
@@ -82,6 +94,8 @@ const toggleActive = (step) => {
         title: step.title,
         description: step.description,
         is_active: !step.is_active,
+        single_sheet: !!step.single_sheet,
+        sheet_layout: step.sheet_layout || 'auto',
     }, {
         preserveScroll: true,
         onSuccess: () => {
@@ -199,6 +213,17 @@ const loadDefaults = () => {
                             class="md:col-span-2"
                         />
                     </div>
+                    <div class="flex items-center gap-3 flex-wrap mt-3">
+                        <div class="flex items-center gap-2">
+                            <n-switch v-model:value="stepForm.single_sheet" size="small" />
+                            <span class="text-xs text-gray-600">Imprimir en una sola hoja</span>
+                        </div>
+                        <n-radio-group v-if="stepForm.single_sheet" v-model:value="stepForm.sheet_layout" size="small">
+                            <n-radio-button value="auto">Automático</n-radio-button>
+                            <n-radio-button value="stacked">Apilado</n-radio-button>
+                            <n-radio-button value="side_by_side">Lado a lado</n-radio-button>
+                        </n-radio-group>
+                    </div>
                     <div class="flex justify-end mt-3">
                         <n-button type="primary" @click="createStep" :loading="stepForm.processing">
                             <template #icon><n-icon><AddOutline /></n-icon></template>
@@ -247,6 +272,9 @@ const loadDefaults = () => {
                                             <n-tag size="small" :bordered="false" type="info">Paso {{ index + 1 }}</n-tag>
                                             <h4 class="font-bold text-gray-800">{{ step.title }}</h4>
                                             <n-tag v-if="!step.is_active" size="small" type="warning" round :bordered="false">Inactivo</n-tag>
+                                            <n-tag v-if="step.single_sheet" size="small" type="success" round :bordered="false">
+                                                Una sola hoja · {{ SHEET_LAYOUT_LABELS[step.sheet_layout] || 'Automático' }}
+                                            </n-tag>
                                         </div>
                                         <p v-if="step.description" class="text-sm text-gray-500 mt-1">{{ step.description }}</p>
                                         <p v-else class="text-sm text-gray-400 italic mt-1">Sin descripción</p>
@@ -263,6 +291,27 @@ const loadDefaults = () => {
                                                 :autosize="{ minRows: 1, maxRows: 3 }"
                                                 placeholder="Descripción (opcional)"
                                             />
+
+                                            <div class="border border-gray-200 rounded-lg p-2.5 bg-white space-y-2">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <p class="text-xs font-bold text-gray-700">Imprimir en una sola hoja</p>
+                                                        <p class="text-[11px] text-gray-400">
+                                                            Junta los archivos de este documento (por ejemplo el frente y el reverso del INE) en la misma hoja del expediente.
+                                                        </p>
+                                                    </div>
+                                                    <n-switch v-model:value="editingSingleSheet" size="small" />
+                                                </div>
+
+                                                <div v-if="editingSingleSheet" class="flex items-center gap-2 flex-wrap">
+                                                    <span class="text-[11px] text-gray-500">Acomodo:</span>
+                                                    <n-radio-group v-model:value="editingSheetLayout" size="small">
+                                                        <n-radio-button value="auto">Automático</n-radio-button>
+                                                        <n-radio-button value="stacked">Apilado</n-radio-button>
+                                                        <n-radio-button value="side_by_side">Lado a lado</n-radio-button>
+                                                    </n-radio-group>
+                                                </div>
+                                            </div>
                                         </div>
                                     </template>
                                 </div>

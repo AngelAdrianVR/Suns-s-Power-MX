@@ -18,11 +18,14 @@ class ServiceDocumentationStep extends Model
         'description',
         'order',
         'is_active',
+        'single_sheet',
+        'sheet_layout',
     ];
 
     protected $casts = [
         'order' => 'integer',
         'is_active' => 'boolean',
+        'single_sheet' => 'boolean',
     ];
 
     public function attachments(): HasMany
