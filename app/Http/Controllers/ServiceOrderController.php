@@ -2209,7 +2209,7 @@ class ServiceOrderController extends Controller
             'dia' => $today->format('d'),
             'mes' => $this->mesEnLetra((int) $today->format('n')),
             'anio' => (string) $today->year,
-            'vigencia' => '6 meses',
+            'vigencia' => 'vigencia de 6 meses',
             'otorgante_nombre' => (string) ($serviceOrder->client?->name ?? ''),
             'otorgante_domicilio' => (string) ($serviceOrder->client?->fullAddress ?? ''),
             'otorgante_ine' => '',
@@ -2281,7 +2281,7 @@ class ServiceOrderController extends Controller
             'dia' => now()->format('d'),
             'mes' => '',
             'anio' => (string) now()->year,
-            'vigencia' => '6 meses',
+            'vigencia' => 'vigencia de 6 meses',
             'otorgante_nombre' => '',
             'otorgante_domicilio' => '',
             'otorgante_ine' => '',
@@ -2574,15 +2574,30 @@ class ServiceOrderController extends Controller
 
     /**
      * Convierte a mayúsculas todos los valores de texto del formulario,
-     * respetando las claves de opciones que controlan las casillas.
+     * respetando las claves de opciones que controlan las casillas y los
+     * correos, que siempre se imprimen en minúsculas.
      */
     private function upperCaseFields(array $fields): array
     {
-        $optionKeys = ['modalidad', 'utilizacion', 'tecnologia', 'manifiesto'];
+        $optionKeys = ['modalidad', 'utilizacion', 'tecnologia', 'manifiesto', 'sol_correo', 'con_correo'];
 
         foreach ($fields as $key => $value) {
             if (is_string($value) && ! in_array($key, $optionKeys, true)) {
                 $fields[$key] = mb_strtoupper($value, 'UTF-8');
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Normaliza los correos del Anexo 2 (solicitante y contacto) a minúsculas.
+     */
+    private function lowerCaseEmails(array $fields): array
+    {
+        foreach (['sol_correo', 'con_correo'] as $key) {
+            if (isset($fields[$key]) && is_string($fields[$key])) {
+                $fields[$key] = mb_strtolower($fields[$key], 'UTF-8');
             }
         }
 
@@ -2661,7 +2676,7 @@ class ServiceOrderController extends Controller
             'sol_correo' => (string) ($contact?->email ?? ''),
             'sol_fax' => '',
 
-            // II. Datos de Contacto (usuario del ERP)
+            // II. Datos de Contacto (usuario del ERP + datos de contacto fijos de la empresa)
             'con_nombre' => '',
             'con_puesto' => '',
             'con_calle' => '',
@@ -2671,8 +2686,8 @@ class ServiceOrderController extends Controller
             'con_colonia' => '',
             'con_municipio' => '',
             'con_estado' => '',
-            'con_telefono' => '',
-            'con_correo' => '',
+            'con_telefono' => '55 2867 8538',
+            'con_correo' => 'sunspower.mx@gmail.com',
             'con_fax' => '',
 
             // III. Datos de la Solicitud
@@ -2722,8 +2737,8 @@ class ServiceOrderController extends Controller
             $fields['utm_y1'] = (string) $serviceOrder->installation_lng;
         }
 
-        // Todo el texto del documento en mayúsculas
-        $fields = $this->upperCaseFields($fields);
+        // Todo el texto del documento en mayúsculas (los correos van en minúsculas)
+        $fields = $this->lowerCaseEmails($this->upperCaseFields($fields));
 
         $users = User::where('branch_id', $branchId)
             ->where('is_active', true)
@@ -2789,7 +2804,7 @@ class ServiceOrderController extends Controller
             'sol_telefono' => '', 'sol_correo' => '', 'sol_fax' => '',
             'con_nombre' => '', 'con_puesto' => '', 'con_calle' => '', 'con_num_ext' => '',
             'con_num_int' => '', 'con_cp' => '', 'con_colonia' => '', 'con_municipio' => '',
-            'con_estado' => '', 'con_telefono' => '', 'con_correo' => '', 'con_fax' => '',
+            'con_estado' => '', 'con_telefono' => '55 2867 8538', 'con_correo' => 'sunspower.mx@gmail.com', 'con_fax' => '',
             'modalidad' => 'baja',
             'utilizacion' => 'centros',
             'rpu' => '',
@@ -2815,8 +2830,8 @@ class ServiceOrderController extends Controller
             $fields["utm_y{$i}"] = (string) ($fields["utm_y{$i}"] ?? '');
         }
 
-        // Todo el texto del documento en mayúsculas
-        $fields = $this->upperCaseFields($fields);
+        // Todo el texto del documento en mayúsculas (los correos van en minúsculas)
+        $fields = $this->lowerCaseEmails($this->upperCaseFields($fields));
 
         $pdf = Pdf::loadView('pdf.anexo2', [
             'fields' => $fields,

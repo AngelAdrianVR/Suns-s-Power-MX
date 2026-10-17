@@ -64,6 +64,8 @@ class ServiceDocumentationController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:2000',
+            'single_sheet' => 'sometimes|boolean',
+            'sheet_layout' => 'sometimes|in:auto,stacked,side_by_side',
         ]);
 
         $maxOrder = ServiceDocumentationStep::where('branch_id', $this->branchId())->max('order');
@@ -74,6 +76,8 @@ class ServiceDocumentationController extends Controller
             'description' => $request->description,
             'order' => ($maxOrder ?? 0) + 1,
             'is_active' => true,
+            'single_sheet' => $request->boolean('single_sheet'),
+            'sheet_layout' => $request->input('sheet_layout', 'auto'),
         ]);
 
         return back()->with('success', 'Documento agregado a la documentación de servicio.');
@@ -89,12 +93,16 @@ class ServiceDocumentationController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:2000',
             'is_active' => 'sometimes|boolean',
+            'single_sheet' => 'sometimes|boolean',
+            'sheet_layout' => 'sometimes|in:auto,stacked,side_by_side',
         ]);
 
         $step->update([
             'title' => $request->title,
             'description' => $request->description,
             'is_active' => $request->boolean('is_active', $step->is_active),
+            'single_sheet' => $request->boolean('single_sheet', $step->single_sheet),
+            'sheet_layout' => $request->input('sheet_layout', $step->sheet_layout),
         ]);
 
         return back()->with('success', 'Documento actualizado.');
@@ -146,6 +154,8 @@ class ServiceDocumentationController extends Controller
             [
                 'title' => 'Identificación oficial (INE)',
                 'description' => 'Adjunta o vincula la identificación oficial vigente del cliente desde su expediente.',
+                // Frente y reverso en una sola hoja
+                'single_sheet' => true,
             ],
             [
                 'title' => 'Situación fiscal (RFC / Constancia)',
@@ -172,6 +182,8 @@ class ServiceDocumentationController extends Controller
                 'description' => $default['description'],
                 'order' => $index + 1,
                 'is_active' => true,
+                'single_sheet' => $default['single_sheet'] ?? false,
+                'sheet_layout' => 'auto',
             ]);
         }
 
@@ -452,6 +464,8 @@ class ServiceDocumentationController extends Controller
                     'id' => $step->id,
                     'title' => $step->title,
                     'description' => $step->description,
+                    'single_sheet' => (bool) $step->single_sheet,
+                    'sheet_layout' => $step->sheet_layout ?: 'auto',
                     'attachments' => $stepAttachments->map(fn ($attachment) => $this->attachmentPayloadForOrder($serviceOrder, $attachment))->values(),
                 ];
             })->values(),

@@ -17,9 +17,18 @@ const { notification } = createDiscreteApi(['notification']);
 const isLinking = ref(false);
 const linked = ref(props.linked);
 
+// Datos de contacto fijos de la empresa (sección II): siempre son estos valores
+const CONTACT_EMAIL = 'sunspower.mx@gmail.com';
+const CONTACT_PHONE = '55 2867 8538';
+
 // Estado local editable (todo el documento se puede modificar)
-const fields = ref({ ...(props.fields || {}) });
-const snapshotRef = ref(JSON.stringify(props.fields || {}));
+const initialFields = props.fields || {};
+const fields = ref({
+    ...initialFields,
+    con_correo: initialFields.con_correo || CONTACT_EMAIL,
+    con_telefono: initialFields.con_telefono || CONTACT_PHONE,
+});
+const snapshotRef = ref(JSON.stringify(fields.value));
 
 const hasDirty = computed(() => JSON.stringify(fields.value) !== snapshotRef.value);
 
@@ -30,7 +39,7 @@ const updateSnapshot = () => {
 // Convierte cualquier valor de texto a mayúsculas (todo el documento va así)
 const upper = (value) => (value ? String(value).toUpperCase() : '');
 
-// --- Selección de usuario (llenan los datos de contacto) ---
+// --- Selección de usuario (llena nombre y puesto del contacto) ---
 const selectedUserId = ref(null);
 
 const userOptions = computed(() =>
@@ -48,8 +57,6 @@ const selectUser = (userId) => {
 
     if (user.name) fields.value.con_nombre = upper(user.name);
     if (user.role) fields.value.con_puesto = upper(user.role);
-    if (user.phone) fields.value.con_telefono = upper(user.phone);
-    if (user.email) fields.value.con_correo = upper(user.email);
 };
 
 // --- Domicilio del contacto (oficinas Veracruz / CDMX) ---
@@ -158,7 +165,7 @@ const print = () => window.print();
                         @update:value="selectUser"
                     />
                     <p class="text-[11px] text-gray-400 mt-2">
-                        Llena el nombre, el puesto (rol) y los datos de contacto del usuario elegido.
+                        Llena el nombre y el puesto (rol) del usuario elegido. El correo y el teléfono son los datos de contacto de la empresa.
                     </p>
                 </div>
                 <div>
@@ -251,7 +258,7 @@ const print = () => window.print();
                 </div>
                 <div class="field w33">
                     <div class="field-label">Correo Electrónico</div>
-                    <input v-model="fields.sol_correo" class="bracket-input" />
+                    <input v-model="fields.sol_correo" class="bracket-input lowercase-input" />
                 </div>
                 <div class="field w33">
                     <div class="field-label">Fax</div>
@@ -315,7 +322,7 @@ const print = () => window.print();
                 </div>
                 <div class="field w33">
                     <div class="field-label">Correo Electrónico</div>
-                    <input v-model="fields.con_correo" class="bracket-input" />
+                    <input v-model="fields.con_correo" class="bracket-input lowercase-input" />
                 </div>
                 <div class="field w33">
                     <div class="field-label">Fax</div>
@@ -431,7 +438,7 @@ const print = () => window.print();
 
             <div class="row">
                 <div class="field w33">
-                    <div class="field-label">No de unidades de generación</div>
+                    <div class="field-label">Cantidad de paneles y capacidad de ellos</div>
                     <input v-model="fields.num_unidades" class="bracket-input" />
                 </div>
                 <div class="field w33">
@@ -655,6 +662,11 @@ const print = () => window.print();
 .bracket-input:hover,
 .bracket-input:focus {
     background: #fefce8;
+}
+
+/* Los correos se muestran tal cual (minúsculas); el resto del documento va en mayúsculas */
+.bracket-input.lowercase-input {
+    text-transform: none;
 }
 
 /* Las líneas verticales separadoras sólo recorren la zona de captura
