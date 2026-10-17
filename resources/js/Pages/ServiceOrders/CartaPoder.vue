@@ -316,7 +316,7 @@ const print = () => window.print();
             <p class="fecha-paragraph">
                 En la ciudad de
                 <input v-model="fields.ciudad" class="field-input" style="min-width: 45px;" />, a los
-                <input v-model="fields.dia" class="field-input" style="min-width: 20px;" /> días del mes de
+                <input v-model="fields.dia" class="field-input" style="min-width: 16px;" /> días del mes de
                 <input v-model="fields.mes" class="field-input" style="min-width: 45px;" /> de
                 <input v-model="fields.anio" class="field-input" style="min-width: 28px;" />.
             </p>
@@ -430,7 +430,10 @@ const print = () => window.print();
     color: #000;
     font-size: 14px;
     line-height: 1.6;
-    text-align: justify;
+    /* Alineado a la izquierda: los campos son bloques que no se parten, así que
+       al justificar el navegador estiraba los espacios y dejaba huecos enormes
+       entre palabras. Sin justificar, el espaciado es siempre el mismo. */
+    text-align: left;
     page-break-after: always;
 }
 

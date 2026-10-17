@@ -309,6 +309,11 @@ const generateExpediente = () => {
                         <p v-if="current.description" class="text-sm text-gray-500 mt-1">
                             {{ current.description }}
                         </p>
+                        <div v-if="current.single_sheet" class="mt-2">
+                            <n-tag size="small" type="success" round :bordered="false">
+                                Al imprimir el expediente, los archivos de este paso se juntan en una sola hoja
+                            </n-tag>
+                        </div>
                     </div>
 
                     <!-- Selección de fuente de archivos -->

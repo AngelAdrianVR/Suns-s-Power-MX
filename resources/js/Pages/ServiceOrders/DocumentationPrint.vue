@@ -42,6 +42,9 @@ const toRelative = (url) => {
 // Estado de renderizado de cada PDF: attachmentId -> { status: 'loading'|'ready'|'error', pages: [] }
 const pdfState = ref({});
 
+// Tamaño natural de las imágenes (para decidir el acomodo en la hoja única)
+const imageSizes = ref({});
+
 const pdfAttachments = computed(() =>
     printableSteps.value
         .flatMap((step) => step.attachments)
@@ -86,6 +89,123 @@ const renderPdf = async (attachment) => {
     }
 };
 
+const onImageLoad = (attachment, event) => {
+    const width = event.target.naturalWidth || 0;
+    const height = event.target.naturalHeight || 0;
+    const current = imageSizes.value[attachment.id];
+
+    // Sin cambio no se toca el estado: evita re-renderizar la hoja al recargar
+    if (current && current.width === width && current.height === height) return;
+
+    imageSizes.value[attachment.id] = { width, height };
+};
+
+// Bloques imprimibles de un archivo: una página de PDF, la imagen o el aviso
+// de que no se puede previsualizar.
+const blocksForAttachment = (attachment) => {
+    const fileKind = kind(attachment);
+
+    if (fileKind === 'pdf') {
+        const state = pdfState.value[attachment.id];
+        if (state?.status === 'ready' && state.pages.length) {
+            return state.pages.map((page, index) => ({
+                key: `${attachment.id}-p${index}`,
+                type: 'image',
+                src: page.dataUrl,
+                width: page.width,
+                height: page.height,
+                alt: `${attachment.file_name} — página ${index + 1}`,
+                pageNumber: index + 1,
+                pageCount: state.pages.length,
+            }));
+        }
+
+        return [{
+            key: `${attachment.id}-placeholder`,
+            type: 'placeholder',
+            status: state?.status ?? 'loading',
+            fileKind: 'PDF',
+            message: state?.status === 'error'
+                ? 'No se pudo previsualizar este PDF.'
+                : 'Cargando páginas del PDF…',
+            attachment,
+        }];
+    }
+
+    if (fileKind === 'image') {
+        const size = imageSizes.value[attachment.id] || {};
+
+        return [{
+            key: `${attachment.id}-img`,
+            type: 'image',
+            src: toRelative(attachment.url),
+            width: size.width || 1,
+            height: size.height || 1,
+            alt: attachment.file_name,
+            attachment,
+        }];
+    }
+
+    return [{
+        key: `${attachment.id}-other`,
+        type: 'placeholder',
+        status: 'other',
+        fileKind: 'Archivo adjunto',
+        message: 'Este tipo de archivo no puede previsualizarse aquí.',
+        attachment,
+    }];
+};
+
+// ¿Los bloques son horizontales? Se usa para el acomodo automático: una imagen
+// apaisada no debe ir en dos columnas porque quedaría diminuta.
+const isLandscape = (block) => block.type === 'image' && block.width > block.height;
+
+const blocksLayout = (blocks) => {
+    if (blocks.length < 2) return 'single';
+
+    return isLandscape(blocks[0]) ? 'stacked' : 'side_by_side';
+};
+
+// Hojas del expediente: por defecto una hoja por bloque; con la opción
+// "Imprimir en una sola hoja" se juntan de dos en dos (frente y reverso).
+const sheets = computed(() => {
+    const result = [];
+
+    printableSteps.value.forEach((step, stepIndex) => {
+        const blocks = step.attachments.flatMap((attachment) => blocksForAttachment(attachment));
+
+        if (!step.single_sheet) {
+            blocks.forEach((block) => result.push({
+                key: `${step.id}-${block.key}`,
+                step,
+                stepIndex,
+                blocks: [block],
+                layout: 'single',
+            }));
+
+            return;
+        }
+
+        for (let i = 0; i < blocks.length; i += 2) {
+            const group = blocks.slice(i, i + 2);
+
+            result.push({
+                key: `${step.id}-${group[0].key}`,
+                step,
+                stepIndex,
+                blocks: group,
+                layout: step.sheet_layout === 'auto' ? blocksLayout(group) : step.sheet_layout,
+            });
+        }
+    });
+
+    return result;
+});
+
+const sheetFileNames = (sheet) => [
+    ...new Set(sheet.blocks.map((block) => block.attachment?.file_name).filter(Boolean)),
+];
+
 onMounted(() => {
     pdfAttachments.value.forEach(renderPdf);
 });
@@ -103,78 +223,43 @@ const print = () => window.print();
     <Head :title="`Documentación Orden #${order.id}`" />
     <div class="print-wrapper bg-gray-100 min-h-screen p-6 flex flex-col items-center gap-6 print:p-0 print:block">
 
-        <template v-for="(step, stepIndex) in printableSteps" :key="step.id">
-            <template v-for="attachment in step.attachments" :key="attachment.id">
-
-                <!-- IMAGEN: una hoja completa por imagen -->
-                <div v-if="kind(attachment) === 'image'" class="sheet-page">
-                    <!-- ENCABEZADO DE HOJA (paso + archivo): solo visible en pantalla; al imprimir se oculta -->
-                    <div class="sheet-caption">
-                        <span class="step-label">{{ stepIndex + 1 }}. {{ step.title }}</span>
-                        <span class="file-label">{{ attachment.file_name }}</span>
-                    </div>
-                    <div class="sheet-image-wrap">
-                        <img class="sheet-image" :src="toRelative(attachment.url)" :alt="attachment.file_name" />
-                    </div>
+        <template v-for="sheet in sheets" :key="sheet.key">
+            <div class="sheet-page">
+                <!-- ENCABEZADO DE HOJA (paso + archivo): solo visible en pantalla; al imprimir se oculta -->
+                <div class="sheet-caption">
+                    <span class="step-label">{{ sheet.stepIndex + 1 }}. {{ sheet.step.title }}</span>
+                    <span v-for="name in sheetFileNames(sheet)" :key="name" class="file-label">{{ name }}</span>
+                    <span v-if="sheet.blocks.length === 1 && sheet.blocks[0].pageCount" class="page-label">
+                        Página {{ sheet.blocks[0].pageNumber }} de {{ sheet.blocks[0].pageCount }}
+                    </span>
                 </div>
 
-                <!-- PDF: una hoja completa por cada página del PDF -->
-                <template v-else-if="kind(attachment) === 'pdf'">
-                    <template v-if="pdfState[attachment.id]?.status === 'ready'">
-                        <div
-                            v-for="(page, pageIndex) in pdfState[attachment.id].pages"
-                            :key="pageIndex"
-                            class="sheet-page"
-                        >
-                            <div class="sheet-caption">
-                                <span class="step-label">{{ stepIndex + 1 }}. {{ step.title }}</span>
-                                <span class="file-label">{{ attachment.file_name }}</span>
-                                <span class="page-label">Página {{ pageIndex + 1 }} de {{ pdfState[attachment.id].pages.length }}</span>
-                            </div>
-                            <div class="sheet-image-wrap">
-                                <img
-                                    class="sheet-image"
-                                    :src="page.dataUrl"
-                                    :alt="`${attachment.file_name} — página ${pageIndex + 1}`"
-                                />
-                            </div>
-                        </div>
-                    </template>
-                    <div v-else class="sheet-page">
-                        <div class="sheet-caption">
-                            <span class="step-label">{{ stepIndex + 1 }}. {{ step.title }}</span>
-                            <span class="file-label">{{ attachment.file_name }}</span>
-                        </div>
-                        <div class="sheet-placeholder">
+                <div class="sheet-blocks" :class="`layout-${sheet.layout}`">
+                    <div v-for="block in sheet.blocks" :key="block.key" class="sheet-image-wrap">
+                        <!-- PÁGINA DE PDF O IMAGEN -->
+                        <img
+                            v-if="block.type === 'image'"
+                            class="sheet-image"
+                            :src="block.src"
+                            :alt="block.alt"
+                            @load="block.attachment && onImageLoad(block.attachment, $event)"
+                        />
+
+                        <!-- ARCHIVO QUE NO SE PUEDE PREVISUALIZAR -->
+                        <div v-else class="sheet-placeholder">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                             </svg>
-                            <span class="file-type-label">PDF</span>
-                            <span v-if="pdfState[attachment.id]?.status === 'error'" class="placeholder-note">
-                                No se pudo previsualizar este PDF.
-                                <a :href="toRelative(attachment.url)" target="_blank" class="placeholder-link">Ábrelo en una pestaña nueva</a>
+                            <span class="file-type-label">{{ block.fileKind }}</span>
+                            <span v-if="block.status === 'error'" class="placeholder-note">
+                                {{ block.message }}
+                                <a :href="toRelative(block.attachment.url)" target="_blank" class="placeholder-link">Ábrelo en una pestaña nueva</a>
                             </span>
-                            <span v-else class="placeholder-note">Cargando páginas del PDF…</span>
+                            <span v-else class="placeholder-note">{{ block.message }}</span>
                         </div>
                     </div>
-                </template>
-
-                <!-- OTRO (HEIC, etc.): caja con el nombre del archivo -->
-                <div v-else class="sheet-page">
-                    <div class="sheet-caption">
-                        <span class="step-label">{{ stepIndex + 1 }}. {{ step.title }}</span>
-                        <span class="file-label">{{ attachment.file_name }}</span>
-                    </div>
-                    <div class="sheet-placeholder">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg>
-                        <span class="file-type-label">Archivo adjunto</span>
-                        <span class="placeholder-note">Este tipo de archivo no puede previsualizarse aquí.</span>
-                    </div>
                 </div>
-
-            </template>
+            </div>
         </template>
 
         <p v-if="!printableSteps.length" class="empty-note">
@@ -249,10 +334,44 @@ const print = () => window.print();
     margin-left: auto;
 }
 
-.sheet-image-wrap {
+/* BLOQUES DE LA HOJA: 1 por hoja (comportamiento normal) o 2 cuando el
+   documento tiene activado "Imprimir en una sola hoja" (frente y reverso). */
+.sheet-blocks {
     flex: 1 1 auto;
     min-height: 0;
+    display: grid;
+    gap: 5mm;
+}
+
+.layout-single {
+    grid-template: 1fr / 1fr;
+}
+
+.layout-stacked {
+    grid-template: 1fr 1fr / 1fr;
+}
+
+.layout-side_by_side {
+    grid-template: 1fr / 1fr 1fr;
+}
+
+.sheet-image-wrap {
+    min-height: 0;
     position: relative;
+}
+
+/* Al juntar dos bloques conviene ver el límite de cada archivo en pantalla */
+.layout-stacked > .sheet-image-wrap + .sheet-image-wrap,
+.layout-side_by_side > .sheet-image-wrap + .sheet-image-wrap {
+    border-top: 1px dashed #d1d5db;
+    padding-top: 5mm;
+}
+
+.layout-side_by_side > .sheet-image-wrap + .sheet-image-wrap {
+    border-top: none;
+    border-left: 1px dashed #d1d5db;
+    padding-top: 0;
+    padding-left: 5mm;
 }
 
 .sheet-image {
@@ -266,8 +385,8 @@ const print = () => window.print();
 }
 
 .sheet-placeholder {
-    flex: 1 1 auto;
-    min-height: 60mm;
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -337,6 +456,17 @@ const print = () => window.print();
        guía en pantalla: al imprimir se oculta para que la hoja salga limpia. */
     .sheet-caption {
         display: none !important;
+    }
+
+    /* La línea divisoria entre los dos archivos de una hoja también es solo
+       una guía en pantalla. */
+    .layout-stacked > .sheet-image-wrap + .sheet-image-wrap,
+    .layout-side_by_side > .sheet-image-wrap + .sheet-image-wrap {
+        border: none !important;
+    }
+
+    .sheet-image {
+        background: #fff;
     }
 
     .print\:hidden {
