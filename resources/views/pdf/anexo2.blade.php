@@ -4,372 +4,507 @@
     <meta charset="utf-8">
     <title>Anexo 2 · Orden {{ $order->id }}</title>
     <style>
-        /* Márgenes: 15mm 22mm menos 3px (≈0.79mm) por lado para dar más alto a los recuadros finales */
-        @page { size: letter; margin: 14.21mm 21.21mm; }
-
-        * { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5px; color: #000; }
-        body { margin: 0; padding: 0; line-height: 1.15; }
-
-        .head-table { width: 100%; border-collapse: collapse; margin: 0 0 2px; }
-        .head-table td { vertical-align: bottom; padding: 0 4px; }
-        .head-table td.head-label-cell { font-weight: bold; font-size: 8.5px; padding: 0 8px 1px 4px; white-space: nowrap; }
-        .head-table td.head-value-cell { border-bottom: 2px solid #000; font-size: 9px; padding: 0 4px 1px; min-height: 11px; text-align: right; }
-
-        .section-header { background-color: #d9d9d9; font-weight: bold; font-size: 9.5px; padding: 1px 5px; margin: 1px 0 1px; }
-
-        /* Rejillas de campos */
-        table.grid { width: 100%; border-collapse: collapse; margin-bottom: 1px; }
-        table.grid td { padding: 0 3px; vertical-align: top; }
-
-        /* Secciones III a VI: un poco más de aire arriba y abajo */
-        table.grid.section-body { margin-top: 7px; margin-bottom: 7px; }
-
-        /* Campos: línea inferior corrida; las verticales sólo recorren la zona de
-           captura, es decir quedan por debajo de los títulos de cada campo */
-        table.grid.fields td {
-            border-bottom: 2px solid #000;
-            padding: 0;
-            vertical-align: bottom;
+        /* Calibri no está disponible en todos los servidores: Carlito es su clon métrico libre */
+        @font-face {
+            font-family: 'Carlito';
+            font-style: normal;
+            font-weight: normal;
+            src: url("{{ str_replace('\\', '/', resource_path('fonts/Carlito-Regular.ttf')) }}") format('truetype');
+        }
+        @font-face {
+            font-family: 'Carlito';
+            font-style: normal;
+            font-weight: bold;
+            src: url("{{ str_replace('\\', '/', resource_path('fonts/Carlito-Bold.ttf')) }}") format('truetype');
+        }
+        @font-face {
+            font-family: 'Carlito';
+            font-style: italic;
+            font-weight: normal;
+            src: url("{{ str_replace('\\', '/', resource_path('fonts/Carlito-Italic.ttf')) }}") format('truetype');
         }
 
-        .field-value { font-size: 9px; line-height: 1; min-height: 7px; padding: 0 4px; }
-        table.grid.fields .field-value { border-right: 2px solid #000; }
-        table.grid.fields td:first-child .field-value { border-left: 2px solid #000; }
-        .field-label { font-size: 6.5px; line-height: 1; padding: 0 4px 1px; }
-        .field-label.center { text-align: center; }
+        @page {
+            size: A4;
+            margin: 0;
+        }
 
-        .sub-label { font-size: 9px; font-weight: bold; margin: 0; }
+        * {
+            font-family: 'Carlito', 'DejaVu Sans', sans-serif;
+            color: #000;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: #fff;
+        }
+
+        .content {
+            position: absolute;
+            left: 50.4pt;
+            top: 0;
+            width: 487.92pt;
+            height: 720.36pt;
+        }
+
+        /* Encabezado */
+        .hd-label,
+        .hd-line {
+            position: absolute;
+        }
+
+        .hd-label {
+            font-weight: bold;
+            font-size: 6pt;
+            line-height: 7pt;
+            white-space: nowrap;
+        }
+
+        .hd-line {
+            height: 1.08pt;
+            background: #000;
+        }
+
+        /* Bandas grises de sección */
+        .band {
+            position: absolute;
+            left: 0.96pt;
+            width: 486.48pt;
+            height: 9.96pt;
+            background: #d9d9d9;
+            font-size: 7.6pt;
+            font-weight: bold;
+            line-height: 9.96pt;
+            white-space: nowrap;
+        }
+
+        .band-num,
+        .band-title {
+            position: absolute;
+            top: -2.96pt;
+            line-height: 9.96pt;
+            white-space: nowrap;
+        }
+
+        .band-num {
+            left: 11.04pt;
+        }
+
+        .band-title {
+            left: 28.3pt;
+        }
+
+        /* Filas de campos */
+        .fr {
+            position: absolute;
+            left: 0;
+            width: 487.92pt;
+        }
+
+        .lbl {
+            position: absolute;
+            top: -0.7pt;
+            margin-top: -1.1pt;
+            font-size: 6pt;
+            line-height: 7pt;
+            white-space: nowrap;
+        }
+
+        .txt {
+            position: absolute;
+            margin-top: -1.1pt;
+            font-size: 6pt;
+            line-height: 7pt;
+            white-space: nowrap;
+        }
+
+        .ln,
+        .hln {
+            position: absolute;
+            background: #000;
+        }
+
+        .tk {
+            position: absolute;
+            width: 1.08pt;
+            background: #000;
+        }
+
+        .fi {
+            position: absolute;
+            margin-top: -1.5pt;
+            font-size: 6.5pt;
+            white-space: nowrap;
+        }
 
         /* Casillas */
-        .check-box { display: inline-block; border: 1.2px solid #000; width: 36px; height: 11px; text-align: center; font-weight: bold; font-size: 8px; line-height: 11px; }
-        .check-box.w24 { width: 24px; }
-        .check-box.w60 { width: 60px; }
-        .opt { font-size: 9px; }
-        .si-box { border: 1.2px solid #000; padding: 0 5px; font-weight: bold; font-size: 9px; }
+        .cb {
+            position: absolute;
+            background: #fff;
+            border: 0.84pt solid #000;
+            text-align: center;
+            white-space: nowrap;
+        }
 
-        table.plain { width: 100%; border-collapse: collapse; }
-        table.plain td { padding: 0; font-size: 9px; }
-        table.plain td.box-cell { text-align: right; width: 44px; }
+        .stack {
+            position: absolute;
+            background: #fff;
+            border-style: solid;
+            border-color: #000;
+        }
 
-        .manifest-text { font-size: 8.5px; text-align: justify; }
+        .xtext {
+            position: absolute;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Manifestación */
+        .mtext1,
+        .mtext2 {
+            position: absolute;
+            margin-top: -1.1pt;
+            white-space: nowrap;
+            line-height: 7pt;
+        }
+
+        .mtext1 {
+            font-size: 5.4pt;
+        }
+
+        .mtext2 {
+            font-size: 6pt;
+        }
 
         /* Tabla UTM */
-        table.utm-table { width: 100%; border-collapse: collapse; border: 2px solid #000; text-align: center; margin: 2px 0 2px; }
-        table.utm-table td { border: 2px solid #000; height: 7px; padding: 1px 3px; font-size: 8px; line-height: 1; }
-        .utm-title { width: 25%; font-weight: bold; text-align: left; }
-        /* Encabezados UTM: texto a la izquierda y sin línea inferior. En dompdf el borde
-           compartido se resuelve por ancho, por eso también se anula el superior de la fila 1. */
-        table.utm-table td.utm-head { font-weight: bold; text-align: left; border-bottom: 0; }
-        table.utm-table td.utm-first { border-top: 0; }
+        .utm-num {
+            left: 0.9pt;
+            width: 124.8pt;
+            text-align: center;
+        }
 
         /* Textos legales */
-        .legal { font-size: 6px; text-align: justify; line-height: 1.15; margin-bottom: 1px; }
-        .legal p { margin: 0 0 1px; }
-
-        /* Renglón del titular: la línea cubre el espacio libre a su izquierda */
-        table.legal-row { width: 100%; border-collapse: collapse; margin: 0 0 1px; }
-        table.legal-row td { vertical-align: bottom; font-size: 6px; padding: 0; }
-        table.legal-row td.legal-name-cell { width: 58%; border-bottom: 2px solid #000; padding: 0 3px; font-weight: bold; }
-        table.legal-row td.legal-name-text { width: 42%; padding-left: 3px; text-align: right; }
+        .legal-top,
+        .legal-line {
+            position: absolute;
+            margin-top: -1.1pt;
+            font-size: 6pt;
+            line-height: 7pt;
+            white-space: nowrap;
+        }
 
         /* Firmas */
-        table.sign-table { width: 100%; border-collapse: collapse; margin-top: 0; }
-        table.sign-table td { vertical-align: top; padding: 0 10px 0 0; }
-        table.firma-box { width: 80%; height: 76px; border: 2px solid #000; border-collapse: collapse; margin-bottom: 3px; }
-        table.firma-box td { text-align: center; vertical-align: top; font-size: 8px; padding: 1px 4px 0; }
-        table.firma-box td.firma-foot { vertical-align: bottom; padding: 0 4px 2px; }
-        .sign-line { margin-bottom: 1px; font-size: 8px; padding-left: 24px; }
-        .sign-line .lbl { display: inline-block; width: 40px; }
-        .sign-line .val { display: inline-block; border-bottom: 2px solid #000; min-width: 150px; padding: 0 3px; font-size: 8px; }
-        table.cfe-wrap { width: 100%; border-collapse: collapse; }
-        table.cfe-wrap td.cfe-gap { padding: 0; }
-        table.cfe-wrap td.cfe-cell { padding: 0; }
-        table.cfe-box { width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse; text-align: center; }
-        table.cfe-box td { vertical-align: bottom; font-size: 8px; line-height: 1.2; padding: 0 4px 5px; }
+        .sign-box {
+            position: absolute;
+            border: 1.08pt solid #000;
+        }
 
-        /* Línea horizontal de cierre, al final de la hoja */
-        .sheet-end-line { margin-top: 6px; border-bottom: 2px solid #000; }
+        .sign-title,
+        .sign-foot,
+        .cfe-text,
+        .si-text {
+            position: absolute;
+            margin-top: -1.1pt;
+            text-align: center;
+            font-size: 6pt;
+            line-height: 7pt;
+            white-space: nowrap;
+        }
+
     </style>
 </head>
 <body>
 
-    @php
-        $f = function ($key, $label, $center = false) use ($fields) {
-            $v = e((string) ($fields[$key] ?? ''));
-            $cls = $center ? ' center' : '';
-            return '<div class="field-label'.$cls.'">'.e($label).'</div>'
-                .'<div class="field-value">'.($v !== '' ? $v : '&nbsp;').'</div>';
-        };
+    <div class="content">
 
-        $chk = function ($key, $value) use ($fields) {
-            return '<span class="check-box">'.(($fields[$key] ?? '') === $value ? 'X' : '&nbsp;').'</span>';
-        };
+        {{-- ENCABEZADO --}}
+        <div class="hd-label" style="left: 108.2pt; top: 60.2pt; font-size: 6.5pt; line-height: 7.9pt;">Fecha</div>
+        <div class="hd-line" style="left: 125.28pt; top: 70.56pt; width: 115.56pt;"></div>
+        <div class="fi" style="left: 125.28pt; top: 62pt; width: 115.56pt; height: 8.5pt; line-height: 8.5pt;">{{ $fields['fecha'] ?? '' }}</div>
+        <div class="hd-label" style="left: 346.1pt; top: 61.1pt;">Número de Solicitud</div>
+        <div class="hd-line" style="left: 410.16pt; top: 70.56pt; width: 77.28pt;"></div>
+        <div class="fi" style="left: 410.16pt; top: 62pt; width: 77.28pt; height: 8.5pt; line-height: 8.5pt;">{{ $fields['num_solicitud'] ?? '' }}</div>
 
-        $box = function ($checked) {
-            return '<span class="check-box">'.($checked ? 'X' : '&nbsp;').'</span>';
-        };
-    @endphp
+        {{-- I. DATOS DEL SOLICITANTE --}}
+        <div class="band" style="top: 78.84pt;"><span class="band-num">I.</span><span class="band-title">Datos del Solicitante</span></div>
 
-    {{-- ENCABEZADO --}}
-    <table class="head-table">
-        <tr>
-            <td class="head-label-cell" style="width: 12%;">Fecha</td>
-            <td class="head-value-cell" style="width: 19%;">{{ $fields['fecha'] ?: ' ' }}</td>
-            <td style="width: 3.4%;">&nbsp;</td>
-            <td class="head-label-cell" style="width: 22%;">Número de Solicitud</td>
-            <td class="head-value-cell" style="width: 30.4%;">{{ $fields['num_solicitud'] ?: ' ' }}</td>
-            <td style="width: 13.2%;">&nbsp;</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 89.2pt; height: 16.4pt;">
+            <span class="lbl" style="left: 1.8pt;">Nombre, Denominación o Razon Social</span>
+            <div class="fi" style="left: 3.6pt; top: 7.52pt; width: 480.72pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_nombre'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 15.92pt; width: 485.76pt; height: 0.48pt;"></span>
+            <span class="tk" style="left: 0; top: 6.8pt; height: 9.6pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 6.8pt; height: 9.6pt;"></span>
+        </div>
 
-    {{-- I. DATOS DEL SOLICITANTE --}}
-    <div class="section-header">I. &nbsp;&nbsp;&nbsp; Datos del Solicitante</div>
+        <span class="txt" style="left: 1.8pt; top: 105.7pt;">Domicilio</span>
 
-    <table class="grid fields">
-        <tr>
-            <td style="width: 100%;">{!! $f('sol_nombre', 'Nombre, Denominación o Razón Social') !!}</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 113.7pt; height: 17.46pt;">
+            <span class="lbl" style="left: 1.8pt;">Calle</span>
+            <span class="lbl" style="left: 129.2pt;">Número exterior</span>
+            <span class="lbl" style="left: 244.7pt;">Número Interior</span>
+            <span class="lbl" style="left: 360.4pt;">Código Postal</span>
+            <div class="fi" style="left: 3.6pt; top: 8pt; width: 117.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_calle'] ?? '' }}</div>
+            <div class="fi" style="left: 128.4pt; top: 8pt; width: 108pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_num_ext'] ?? '' }}</div>
+            <div class="fi" style="left: 243.84pt; top: 8pt; width: 108.24pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_num_int'] ?? '' }}</div>
+            <div class="fi" style="left: 359.52pt; top: 8pt; width: 123.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_cp'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 16.38pt; width: 486.36pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.5pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 124.8pt; top: 7.5pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 240.24pt; top: 7.5pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 355.92pt; top: 7.5pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.5pt; height: 9.96pt;"></span>
+        </div>
 
-    <div class="sub-label">Domicilio</div>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 40%;">{!! $f('sol_calle', 'Calle') !!}</td>
-            <td style="width: 20%;">{!! $f('sol_num_ext', 'Número exterior') !!}</td>
-            <td style="width: 20%;">{!! $f('sol_num_int', 'Número Interior') !!}</td>
-            <td style="width: 20%;">{!! $f('sol_cp', 'Código Postal') !!}</td>
-        </tr>
-    </table>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 35%;">{!! $f('sol_colonia', 'Colonia/Población') !!}</td>
-            <td style="width: 35%;">{!! $f('sol_municipio', 'Delegación/Municipio') !!}</td>
-            <td style="width: 30%;">{!! $f('sol_estado', 'Estado') !!}</td>
-        </tr>
-    </table>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 33%;">{!! $f('sol_telefono', 'Teléfono') !!}</td>
-            <td style="width: 33%;">{!! $f('sol_correo', 'Correo Electrónico') !!}</td>
-            <td style="width: 33%;">{!! $f('sol_fax', 'Fax') !!}</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 130.8pt; height: 17.52pt;">
+            <span class="lbl" style="left: 1.8pt;">Colonia/Poblacion</span>
+            <span class="lbl" style="left: 126.6pt;">Delegación/Municipio</span>
+            <span class="lbl" style="left: 323.9pt;">Estado</span>
+            <div class="fi" style="left: 3.6pt; top: 8.04pt; width: 150.68pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_colonia'] ?? '' }}</div>
+            <div class="fi" style="left: 161.88pt; top: 8.04pt; width: 166.08pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_municipio'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 8.04pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_estado'] ?? '' }}</div>
+            <span class="ln" style="left: 0.24pt; top: 16.44pt; width: 487.68pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.56pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 158.28pt; top: 7.56pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 7.56pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.56pt; height: 9.96pt;"></span>
+        </div>
 
-    {{-- II. DATOS DE CONTACTO --}}
-    <div class="section-header">II. &nbsp;&nbsp; Datos de Contacto</div>
+        <div class="fr" style="top: 148pt; height: 17.48pt;">
+            <span class="lbl" style="left: 1.8pt;">Teléfono</span>
+            <span class="lbl" style="left: 162.2pt;">Correo Electrónico</span>
+            <span class="lbl" style="left: 337.3pt;">Fax</span>
+            <div class="fi" style="left: 3.6pt; top: 8pt; width: 150.68pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_telefono'] ?? '' }}</div>
+            <div class="fi" style="left: 161.88pt; top: 8pt; width: 166.08pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_correo'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 8pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['sol_fax'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 16.4pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.52pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 158.28pt; top: 7.52pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 7.52pt; height: 9.96pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.52pt; height: 9.96pt;"></span>
+        </div>
 
-    <table class="grid fields">
-        <tr>
-            <td style="width: 50%;">{!! $f('con_nombre', 'Nombre') !!}</td>
-            <td style="width: 50%;">{!! $f('con_puesto', 'Puesto') !!}</td>
-        </tr>
-    </table>
+        {{-- II. DATOS DE CONTACTO --}}
+        <div class="band" style="top: 172.68pt;"><span class="band-num">II.</span><span class="band-title">Datos de Contacto</span></div>
 
-    <div class="sub-label">Domicilio</div>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 40%;">{!! $f('con_calle', 'Calle') !!}</td>
-            <td style="width: 20%;">{!! $f('con_num_ext', 'Número exterior') !!}</td>
-            <td style="width: 20%;">{!! $f('con_num_int', 'Número Interior') !!}</td>
-            <td style="width: 20%;">{!! $f('con_cp', 'Código Postal') !!}</td>
-        </tr>
-    </table>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 35%;">{!! $f('con_colonia', 'Colonia/Población') !!}</td>
-            <td style="width: 35%;">{!! $f('con_municipio', 'Delegación/Municipio') !!}</td>
-            <td style="width: 30%;">{!! $f('con_estado', 'Estado') !!}</td>
-        </tr>
-    </table>
-    <table class="grid fields">
-        <tr>
-            <td style="width: 33%;">{!! $f('con_telefono', 'Teléfono') !!}</td>
-            <td style="width: 33%;">{!! $f('con_correo', 'Correo Electrónico') !!}</td>
-            <td style="width: 33%;">{!! $f('con_fax', 'Fax') !!}</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 183pt; height: 18pt;">
+            <span class="lbl" style="left: 1.8pt;">Nombre</span>
+            <span class="lbl" style="left: 242pt;">Puesto</span>
+            <div class="fi" style="left: 3.6pt; top: 8.28pt; width: 232.44pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_nombre'] ?? '' }}</div>
+            <div class="fi" style="left: 243.84pt; top: 8.28pt; width: 240.48pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_puesto'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 16.92pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.32pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 240.24pt; top: 7.32pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.32pt; height: 10.68pt;"></span>
+        </div>
 
-    {{-- III. DATOS DE LA SOLICITUD --}}
-    <div class="section-header">III. &nbsp; Datos de la Solicitud</div>
+        <span class="txt" style="left: 1.8pt; top: 200pt;">Domicilio</span>
 
-    <table class="grid section-body">
-        <tr>
-            <td style="width: 32%; font-size: 9.5px;">Modalidad de la Solicitud</td>
-            <td style="width: 34%;"><span class="opt">Baja Tensión</span> {!! $box($fields['modalidad'] === 'baja') !!}</td>
-            <td style="width: 34%;"><span class="opt">Media Tensión</span> {!! $box($fields['modalidad'] === 'media') !!}</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 208.5pt; height: 18.18pt;">
+            <span class="lbl" style="left: 1.8pt;">Calle</span>
+            <span class="lbl" style="left: 129.2pt;">Número exterior</span>
+            <span class="lbl" style="left: 244.7pt;">Número Interior</span>
+            <span class="lbl" style="left: 367.7pt;">Código Postal</span>
+            <div class="fi" style="left: 3.6pt; top: 8.1pt; width: 117.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_calle'] ?? '' }}</div>
+            <div class="fi" style="left: 128.4pt; top: 8.1pt; width: 108pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_num_ext'] ?? '' }}</div>
+            <div class="fi" style="left: 243.84pt; top: 8.1pt; width: 108.24pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_num_int'] ?? '' }}</div>
+            <div class="fi" style="left: 359.52pt; top: 8.1pt; width: 123.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_cp'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 17.1pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.5pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 124.8pt; top: 7.5pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 240.24pt; top: 7.5pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 355.92pt; top: 7.5pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.5pt; height: 10.68pt;"></span>
+        </div>
 
-    {{-- IV. UTILIZACIÓN DE LA ENERGÍA --}}
-    <div class="section-header">IV. &nbsp; Utilización de la Energía Eléctrica Producida</div>
+        <div class="fr" style="top: 226.4pt; height: 18.88pt;">
+            <span class="lbl" style="left: 1.8pt;">Colonia/Poblacion</span>
+            <span class="lbl" style="left: 163.6pt;">Delegación/Municipio</span>
+            <span class="lbl" style="left: 323.9pt;">Estado</span>
+            <div class="fi" style="left: 3.6pt; top: 8pt; width: 150.68pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_colonia'] ?? '' }}</div>
+            <div class="fi" style="left: 161.88pt; top: 8pt; width: 166.08pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_municipio'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 8pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_estado'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 17.8pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.48pt; height: 11.4pt;"></span>
+            <span class="tk" style="left: 158.28pt; top: 7.48pt; height: 11.4pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 11.4pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 11.4pt;"></span>
+        </div>
 
-    <table class="grid section-body">
-        <tr>
-            <td style="width: 33%;"><span class="opt">Consumo de Centros de Carga</span> {!! $box($fields['utilizacion'] === 'centros') !!}</td>
-            <td style="width: 40%;"><span class="opt">Consumo de Centros de Carga y Venta de Excedentes</span> {!! $box($fields['utilizacion'] === 'excedentes') !!}</td>
-            <td style="width: 27%;"><span class="opt">Venta Total</span> {!! $box($fields['utilizacion'] === 'venta') !!}</td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 245pt; height: 18.16pt;">
+            <span class="lbl" style="left: 1.8pt;">Teléfono</span>
+            <span class="lbl" style="left: 163.5pt;">Correo Electrónico</span>
+            <span class="lbl" style="left: 337.3pt;">Fax</span>
+            <div class="fi" style="left: 3.6pt; top: 8pt; width: 150.68pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_telefono'] ?? '' }}</div>
+            <div class="fi" style="left: 161.88pt; top: 8pt; width: 166.08pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_correo'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 8pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['con_fax'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 17.08pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 158.28pt; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 10.68pt;"></span>
+        </div>
 
-    {{-- V. DATOS DEL SERVICIO --}}
-    <div class="section-header">V. &nbsp;&nbsp; Datos del Servicio Suministro Actual</div>
+        {{-- III. DATOS DE LA SOLICITUD --}}
+        <div class="band" style="top: 270.36pt;"><span class="band-num">III.</span><span class="band-title">Datos de la Solicitud</span></div>
 
-    <table class="grid fields section-body">
-        <tr>
-            <td style="width: 50%;">{!! $f('rpu', 'Registro Público de Usuario (RPU)') !!}</td>
-            <td style="width: 50%;">{!! $f('nivel_tension', 'Nivel de Tensión de Suministro') !!}</td>
-        </tr>
-    </table>
+        <span class="txt" style="left: 1.8pt; top: 283pt;">Modalidad de la Solicitud</span>
+        <span class="txt" style="left: 166.7pt; top: 283pt;">Baja Tensión</span>
+        <span class="cb" style="left: 251.28pt; top: 279.72pt; width: 23.76pt; height: 9.84pt; font-size: 10.8pt; line-height: 7.84pt;">{{ ($fields['modalidad'] ?? '') === 'baja' ? 'X' : '' }}</span>
+        <span class="txt" style="left: 292.2pt; top: 283pt;">Media Tensión</span>
+        <span class="cb" style="left: 354.84pt; top: 280.2pt; width: 53.16pt; height: 8.52pt; font-size: 10.8pt; line-height: 6.82pt;">{{ ($fields['modalidad'] ?? '') === 'media' ? 'X' : '' }}</span>
 
-    {{-- VI. CENTRAL ELÉCTRICA --}}
-    <div class="section-header">VI. &nbsp; Central Eléctrica</div>
+        {{-- IV. UTILIZACIÓN DE LA ENERGÍA --}}
+        <div class="band" style="top: 299.4pt;"><span class="band-num">IV.</span><span class="band-title">Utilización de la Energia Eléctrica Producida</span></div>
 
-    <table class="grid fields section-body">
-        <tr>
-            <td style="width: 25%;">{!! $f('fecha_operacion', 'Fecha estimada de Operación Normal (DD/MM/AAAA)', true) !!}</td>
-            <td style="width: 25%;">{!! $f('capacidad_bruta', 'Capacidad Bruta Instalada (Kw)', true) !!}</td>
-            <td style="width: 25%;">{!! $f('capacidad_incrementar', 'Capacidad a Incrementar (kw) (Opcional)', true) !!}</td>
-            <td style="width: 25%;">{!! $f('generacion_promedio', 'Generación Promedio Mensual Estimada (kwh/Mes)', true) !!}</td>
-        </tr>
-    </table>
+        <span class="txt" style="left: 1.8pt; top: 309.2pt;">Consumo de Centros de</span>
+        <span class="txt" style="left: 1.8pt; top: 317.3pt;">Carga</span>
+        <span class="cb" style="left: 74.28pt; top: 312.48pt; width: 24.72pt; height: 10.92pt; font-size: 10.8pt; line-height: 8.22pt;">{{ ($fields['utilizacion'] ?? '') === 'centros' ? 'X' : '' }}</span>
+        <span class="txt" style="left: 126.6pt; top: 309.2pt;">Consumo de Centros de Carga y</span>
+        <span class="txt" style="left: 145.1pt; top: 317.3pt;">Venta de Excedentes</span>
+        <span class="cb" style="left: 251.76pt; top: 311.64pt; width: 23.64pt; height: 11.4pt; font-size: 10.8pt; line-height: 8.7pt;">{{ ($fields['utilizacion'] ?? '') === 'excedentes' ? 'X' : '' }}</span>
+        <span class="txt" style="left: 298.2pt; top: 312.5pt;">Venta Total</span>
+        <span class="cb" style="left: 355.68pt; top: 311.64pt; width: 53.28pt; height: 11.04pt; font-size: 10.8pt; line-height: 8.34pt;">{{ ($fields['utilizacion'] ?? '') === 'venta' ? 'X' : '' }}</span>
 
-    {{-- VII. MANIFESTACIÓN --}}
-    <div class="section-header">VII. Manifestación de Cumplimiento de las Especificaciones Técnicas Generales</div>
+        {{-- V. DATOS DEL SERVICIO --}}
+        <div class="band" style="top: 333.72pt;"><span class="band-num">V.</span><span class="band-title">Datos del Servicio Suministro Actual</span></div>
 
-    <table class="grid">
-        <tr>
-            <td style="width: 88%;">
-                <div class="manifest-text">
-                    Manifiesto bajo protesta de decir la verdad que la Central Eléctrica cumple con las
-                    Especificaciones técnicas requeridas de acuerdo las disposiciones aplicables.
-                </div>
-            </td>
-            <td style="width: 12%; text-align: right;"><span class="si-box">{{ $fields['manifiesto'] ?: 'Si' }}</span></td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 344.2pt; height: 18.2pt;">
+            <span class="lbl" style="left: 1.8pt;">Registro Público de Usuario (RPU)</span>
+            <span class="lbl" style="left: 248.7pt;">Nivel de Tensión de Suministro</span>
+            <div class="fi" style="left: 3.6pt; top: 8.28pt; width: 232.44pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['rpu'] ?? '' }}</div>
+            <div class="fi" style="left: 243.84pt; top: 8.28pt; width: 240.48pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['nivel_tension'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 17.12pt; width: 486.36pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.52pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 240.24pt; top: 7.52pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.52pt; height: 10.68pt;"></span>
+        </div>
 
-    <div style="font-size: 9.5px; margin: 3px 0 2px;">Tecnología para generación de energía eléctrica</div>
+        {{-- VI. CENTRAL ELÉCTRICA --}}
+        <div class="band" style="top: 369.96pt;"><span class="band-num">VI.</span><span class="band-title">Central Eléctrica</span></div>
 
-    <table class="grid">
-        <tr>
-            <td style="width: 22%;">
-                <table class="plain">
-                    <tr><td>Solar</td><td class="box-cell">{!! $box($fields['tecnologia'] === 'solar') !!}</td></tr>
-                    <tr><td>Eólico</td><td class="box-cell">{!! $box($fields['tecnologia'] === 'eolico') !!}</td></tr>
-                </table>
-            </td>
-            <td style="width: 26%;">
-                <table class="plain">
-                    <tr><td>Biomasa</td><td class="box-cell">{!! $box($fields['tecnologia'] === 'biomasa') !!}</td></tr>
-                    <tr><td>Cogeneración</td><td class="box-cell">{!! $box($fields['tecnologia'] === 'cogeneracion') !!}</td></tr>
-                </table>
-            </td>
-            <td style="width: 52%;">
-                <table class="plain">
-                    <tr><td style="width: 70px;">Otro</td><td>{!! $box($fields['tecnologia'] === 'otro') !!}</td></tr>
-                    <tr><td>Especificar</td><td style="border-bottom: 2px solid #000;">{{ $fields['tecnologia_otro'] ?: ' ' }}</td></tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+        <div class="fr" style="top: 379.1pt; height: 24.46pt;">
+            <span class="lbl" style="left: 1.8pt;">Fecha estimada de Operación Normal</span>
+            <span class="lbl" style="left: 1.8pt; top: 5.9pt;">(DD/MM/AAAA)</span>
+            <span class="lbl" style="left: 178.8pt; top: 0.1pt;">Capacidad Bruta</span>
+            <span class="lbl" style="left: 164.9pt; top: 5.9pt;">Instalada (Kw)</span>
+            <span class="lbl" style="left: 243.4pt; top: 0.1pt;">Capacidad a Incrementar (kw)</span>
+            <span class="lbl" style="left: 274.3pt; top: 5.6pt;">(Opcional)</span>
+            <span class="lbl" style="left: 360.7pt; top: 0.1pt;">Generación Promedio Mensual Estimada</span>
+            <span class="lbl" style="left: 396.8pt; top: 5.6pt;">(kwh/Mes)</span>
+            <div class="fi" style="left: 3.6pt; top: 14.86pt; width: 150.68pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['fecha_operacion'] ?? '' }}</div>
+            <div class="fi" style="left: 161.88pt; top: 14.86pt; width: 74.76pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['capacidad_bruta'] ?? '' }}</div>
+            <div class="fi" style="left: 243.84pt; top: 14.86pt; width: 84.12pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['capacidad_incrementar'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 14.86pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['generacion_promedio'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 23.38pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 13.78pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 158.28pt; top: 13.78pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 240.24pt; top: 13.78pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 13.78pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 13.78pt; height: 10.68pt;"></span>
+        </div>
 
-    <table class="grid fields" style="margin-top: 4px;">
-        <tr>
-            <td style="width: 33%;">{!! $f('num_unidades', 'Cantidad de paneles y capacidad de ellos') !!}</td>
-            <td style="width: 33%;">{!! $f('combustible_principal', 'Combustible principal') !!}</td>
-            <td style="width: 33%;">{!! $f('combustible_secundario', 'Combustible secundario') !!}</td>
-        </tr>
-    </table>
+        {{-- VII. MANIFESTACIÓN --}}
+        <div class="band" style="top: 411.12pt;"><span class="band-num">VII.</span><span class="band-title">Manifestación de Cumplimiento de las Especificicaciones Técnicas Generales</span></div>
 
-    {{-- TABLA COORDENADAS UTM --}}
-    <table class="utm-table">
-        <tr>
-            {{-- <td class="utm-title" rowspan="7">Coordenadas UTM</td> --}}
-            <td class="utm-head" style="width: 37.5%;">Coordenadas UTM</td>
-            <td class="utm-head" style="width: 37.5%;">X</td>
-            <td class="utm-head" style="width: 37.5%;">Y</td>
-        </tr>
+        <span class="mtext1" style="left: 1.7pt; top: 420.9pt;">Manifiesto bajo protesta de decir la verdad que la Central Eléctrica cumple con las Especificaciones técnicas requeridas de acuerdo las disposiciones</span>
+        <span class="mtext2" style="left: 1.8pt; top: 429.1pt;">aplicables.</span>
+        <span class="cb" style="left: 462.12pt; top: 420.48pt; width: 23.16pt; height: 8.16pt;"></span>
+        <span class="si-text" style="left: 462.12pt; top: 420.9pt; width: 24.84pt;">{{ ($fields['manifiesto'] ?? '') === 'Si' ? 'SI' : '' }}</span>
+
+        <span class="txt" style="left: 1.8pt; top: 444.7pt;">Tecnología para generación de energía eléctrica</span>
+
+        <span class="txt" style="left: 10.6pt; top: 455.1pt;">Solar</span>
+        <span class="stack" style="left: 31.68pt; top: 452.64pt; width: 22.8pt; height: 25.68pt; border-width: 0.48pt;"></span>
+        <span class="hln" style="left: 31.68pt; top: 465.72pt; width: 23.76pt; height: 0.48pt;"></span>
+        <span class="xtext" style="left: 31.68pt; top: 449.2pt; width: 23.76pt; height: 12.12pt; font-size: 8.6pt; line-height: 12.12pt;">{{ ($fields['tecnologia'] ?? '') === 'solar' ? 'X' : '' }}</span>
+        <span class="txt" style="left: 9.5pt; top: 468.2pt;">Eólico</span>
+
+        <span class="txt" style="left: 143.8pt; top: 454.6pt;">Biomasa</span>
+        <span class="stack" style="left: 193.08pt; top: 452.4pt; width: 46.44pt; height: 24.48pt; border-width: 0.84pt;"></span>
+        <span class="hln" style="left: 193.08pt; top: 465.48pt; width: 48.12pt; height: 0.84pt;"></span>
+        <span class="txt" style="left: 137.2pt; top: 468.2pt;">Cogeneración</span>
+
+        <span class="txt" style="left: 308pt; top: 457.7pt;">Otro</span>
+        <span class="cb" style="left: 354.84pt; top: 452.4pt; width: 53.16pt; height: 11.4pt; font-size: 8.6pt; line-height: 11.4pt;">{{ ($fields['tecnologia'] ?? '') === 'otro' ? 'X' : '' }}</span>
+        <span class="txt" style="left: 302.8pt; top: 470.8pt;">Especificar</span>
+        <div class="fi" style="left: 334.04pt; top: 471.74pt; width: 151.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['tecnologia_otro'] ?? '' }}</div>
+        <span class="hln" style="left: 332.04pt; top: 480.24pt; width: 155.4pt; height: 1.08pt;"></span>
+
+        <div class="fr" style="top: 485pt; height: 18.16pt;">
+            <span class="lbl" style="left: 1.8pt;">Cantidad de paneles y capacidad de ellos</span>
+            <span class="lbl" style="left: 130.6pt;">Combustible príncipal</span>
+            <span class="lbl" style="left: 337.3pt;">Combustible secundarío</span>
+            <div class="fi" style="left: 3.6pt; top: 8pt; width: 117.6pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['num_unidades'] ?? '' }}</div>
+            <div class="fi" style="left: 128.4pt; top: 8pt; width: 199.56pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['combustible_principal'] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: 8pt; width: 149.16pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['combustible_secundario'] ?? '' }}</div>
+            <span class="ln" style="left: 1.08pt; top: 17.08pt; width: 486.84pt; height: 1.08pt;"></span>
+            <span class="tk" style="left: 0; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 124.8pt; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 10.68pt;"></span>
+            <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 10.68pt;"></span>
+        </div>
+
+        {{-- TABLA COORDENADAS UTM --}}
+        <span class="txt" style="left: 1.8pt; top: 502pt;">Coordenadas UTM</span>
+        <span class="txt" style="left: 126.6pt; top: 502.4pt;">X</span>
+        <span class="txt" style="left: 333.4pt; top: 502.4pt;">Y</span>
+
+        <span class="ln" style="left: 1.08pt; top: 516.24pt; width: 486.84pt; height: 1.08pt;"></span>
+        <span class="ln" style="left: 1.08pt; top: 524.4pt; width: 486.84pt; height: 1.08pt;"></span>
+        <span class="ln" style="left: 1.08pt; top: 532.56pt; width: 486.84pt; height: 1.08pt;"></span>
+        <span class="ln" style="left: 1.08pt; top: 540.72pt; width: 486.84pt; height: 1.08pt;"></span>
+        <span class="ln" style="left: 1.08pt; top: 548.88pt; width: 486.84pt; height: 1.08pt;"></span>
+        <span class="ln" style="left: 1.08pt; top: 557.04pt; width: 486.84pt; height: 1.08pt;"></span>
+
+        <span class="tk" style="left: 0; top: 510.24pt; height: 47.88pt;"></span>
+        <span class="tk" style="left: 124.8pt; top: 492.48pt; height: 65.64pt;"></span>
+        <span class="tk" style="left: 331.56pt; top: 492.48pt; height: 65.64pt;"></span>
+        <span class="tk" style="left: 486.84pt; top: 492.48pt; height: 65.64pt;"></span>
+
         @for ($i = 1; $i <= 6; $i++)
-            <tr>
-                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $i }}</td>
-                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_x{$i}"] ?: ' ' }}</td>
-                <td class="{{ $i === 1 ? 'utm-first' : '' }}">{{ $fields["utm_y{$i}"] ?: ' ' }}</td>
-            </tr>
+            <span class="txt utm-num" style="top: {{ $i === 1 ? '507.9' : (516.1 + ($i - 2) * 8.16) }}pt;">{{ $i }}</span>
+            <div class="fi" style="left: 128.4pt; top: {{ $i === 1 ? '503.7' : (517.7 + ($i - 2) * 8.16) }}pt; width: 200.64pt; height: {{ $i === 1 ? '11.5' : '7.1' }}pt; line-height: {{ $i === 1 ? '11.5' : '7.1' }}pt;">{{ $fields["utm_x{$i}"] ?? '' }}</div>
+            <div class="fi" style="left: 335.16pt; top: {{ $i === 1 ? '503.7' : (517.7 + ($i - 2) * 8.16) }}pt; width: 149.16pt; height: {{ $i === 1 ? '11.5' : '7.1' }}pt; line-height: {{ $i === 1 ? '11.5' : '7.1' }}pt;">{{ $fields["utm_y{$i}"] ?? '' }}</div>
         @endfor
-    </table>
 
-    {{-- TEXTOS LEGALES --}}
-    <div class="legal">
-        <table class="legal-row">
-            <tr>
-                <td class="legal-name-cell">{{ $fields['titular_nombre'] ?: ' ' }}</td>
-                <td class="legal-name-text">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</td>
-            </tr>
-        </table>
-        <p>
-            información proporcionada en la presente solicitud es apropiada, precisa y verídica. El solicitante acepta
-            que los datos proporcionados sean utilizados para llevar a cabo los Estudios de Interconexión para
-            garantizar la confiabilidad del Sistema Eléctrico Nacional con la Interconexion de la Central Eléctrica del
-            solicitante al amparo de la <em>Ley de la Industria Eléctrica y su Reglamento</em>, en caso de ser
-            requeridos. El solicitante entiende que los datos proporcionados, se añadirán a las bases de datos del
-            suministrador cuando se firme un contrato de interconexión respectivo.
-        </p>
-        <p>
-            El solicitante deberá anexa a la presente solicitud, la información técnica requerida en el documento
-            "Informacion Técnica Requerida para Centrales Eléctricas"
-        </p>
+        {{-- TEXTOS LEGALES --}}
+        <span class="hln" style="left: 2.8pt; top: 578.8pt; width: 292.5pt; height: 0.84pt;"></span>
+        <div class="fi" style="left: 4.6pt; top: 570.8pt; width: 288pt; height: 8pt; line-height: 8pt;">{{ $fields['titular_nombre'] ?? '' }}</div>
+        <span class="legal-top" style="left: 285.6pt; top: 572.1pt;">(Representante Legal o El Solicitante) ( El Solicitante) certifica que la</span>
+
+        <span class="legal-line" style="left: 1.8pt; top: 579.9pt;">Información proporcionada en la presente solicitud es apropiada,&nbsp; precisa y verídica.&nbsp; El solicitante acepta que los datos proporcionados sean utilizados para llevr a cabo los Estudios de Interconexión</span>
+        <span class="legal-line" style="left: 1.8pt; top: 587.7pt;">para garantizar la confiabilidad del Sistema Eléctrico Nacional con la Interconexion de la Central Eléctrica del solicitante al amparo de la <i>Ley de la Industria Eléctrica y su Reglamento</i>,&nbsp; en caso de ser</span>
+        <span class="legal-line" style="left: 1.8pt; top: 595.5pt;">requeridos.</span>
+        <span class="legal-line" style="left: 412.4pt; top: 595.5pt;">El solicitante entiende que los</span>
+        <span class="legal-line" style="left: 1.8pt; top: 603.3pt;">datos proporcionados, se añadiran a las bases de datos del suministrador cuando se firme un contrato de interconexión respectivo.</span>
+        <span class="legal-line" style="left: 1.8pt; top: 611.1pt;">El solicitante deberá anexa a la presente solicitud, la información técnica requerida en el documento “Informacion Técnica Requerida para Centrales Eléctricas”</span>
+
+        {{-- FIRMAS --}}
+        <span class="sign-box" style="left: 0; top: 634.56pt; width: 239.16pt; height: 38.64pt;"></span>
+        <span class="sign-title" style="left: 0; top: 634.5pt; width: 241.32pt;">Firma de Conformidad</span>
+        <span class="sign-foot" style="left: 0; top: 666.5pt; width: 241.32pt;">Solicitante</span>
+
+        <span class="sign-box" style="left: 331.56pt; top: 642.72pt; width: 154.2pt; height: 66.12pt;"></span>
+        <span class="cfe-text" style="left: 331.56pt; top: 693.7pt; width: 156.36pt;">sello y firma</span>
+        <span class="cfe-text" style="left: 331.56pt; top: 701.6pt; width: 156.36pt;">Centro de Atención</span>
+
+        <span class="txt" style="left: 33.2pt; top: 683.8pt;">Nombre</span>
+        <span class="txt" style="left: 33.2pt; top: 693.7pt;">Cargo</span>
+        <span class="txt" style="left: 33.2pt; top: 701.6pt;">Fecha</span>
+
+        <span class="hln" style="left: 68.3pt; top: 691.9pt; width: 172.4pt; height: 0.84pt;"></span>
+        <span class="hln" style="left: 68.3pt; top: 702.2pt; width: 172.4pt; height: 0.84pt;"></span>
+        <span class="hln" style="left: 68.3pt; top: 710.8pt; width: 172.4pt; height: 0.84pt;"></span>
+
+        <div class="fi" style="left: 70.1pt; top: 683.4pt; width: 168.8pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['firma_nombre'] ?? '' }}</div>
+        <div class="fi" style="left: 70.1pt; top: 693.7pt; width: 168.8pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['firma_cargo'] ?? '' }}</div>
+        <div class="fi" style="left: 70.1pt; top: 702.3pt; width: 168.8pt; height: 8.4pt; line-height: 8.4pt;">{{ $fields['firma_fecha'] ?? '' }}</div>
+
+        <span class="txt" style="left: 411.5pt; top: 710.9pt;">-</span>
+        <span class="hln" style="left: 0.48pt; top: 719.28pt; width: 486.96pt; height: 1.08pt;"></span>
     </div>
-
-    {{-- FIRMAS --}}
-    <table class="sign-table">
-        <tr>
-            <td style="width: 58%;">
-                <table class="firma-box" style="width: 100%;">
-                    <tr>
-                        <td class="firma-title" style="height: 50px;">Firma de Conformidad</td>
-                    </tr>
-                    <tr>
-                        <td class="firma-foot">Solicitante</td>
-                    </tr>
-                </table>
-
-                <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
-                    <tr>
-                        <td style="width: 40px; font-size: 8px;">Nombre</td>
-                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_nombre'] ?: ' ' }}</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 40px; font-size: 8px;">Cargo</td>
-                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_cargo'] ?: ' ' }}</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 40px; font-size: 8px;">Fecha</td>
-                        <td style="border-bottom: 2px solid #000; font-size: 8px; text-align: center; padding: 0 3px;">{{ $fields['firma_fecha'] ?: ' ' }}</td>
-                    </tr>
-                </table>
-            </td>
-            <td style="width: 42%; padding-right: 0;">
-                <table class="cfe-wrap">
-                    <tr>
-                        <td class="cfe-gap" style="width: 15%;">&nbsp;</td>
-                        <td class="cfe-cell" style="width: 85%;">
-                            <table class="cfe-box" style="width: 100%; height: 115px; border: 2px solid #000; border-collapse: collapse;">
-                                <tr>
-                                    <td style="height: 90px;">&nbsp;</td>
-                                </tr>
-                                <tr>
-                                    <td style="text-align: center; vertical-align: bottom; font-size: 8px; line-height: 1.2; padding-bottom: 3px;">
-                                        sello y firma<br>Centro de Atención
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-
-    {{-- LÍNEA DE CIERRE AL FINAL DE LA HOJA --}}
-    <div class="sheet-end-line"></div>
 
 </body>
 </html>
