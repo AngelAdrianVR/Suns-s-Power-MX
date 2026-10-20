@@ -191,333 +191,298 @@ const print = () => window.print();
             </div>
         </div>
 
-        <!-- HOJA: ANEXO 2 -->
+        <!-- HOJA: ANEXO 2 (réplica exacta del machote A4) -->
         <div class="doc-sheet">
+            <div class="paper">
 
-            <!-- ENCABEZADO -->
-            <div class="head-row !flex !justify-end">
-                <div class="head-item">
-                    <span class="head-label">Fecha</span>
-                    <input v-model="fields.fecha" class="line-input" style="width: 121px;" />
-                </div>
-                <div class="head-item">
-                    <span class="head-label">Número de Solicitud</span>
-                    <input v-model="fields.num_solicitud" class="line-input" style="width: 121px;" />
-                </div>
-            </div>
+                <!-- ENCABEZADO -->
+                <span class="hd-label" style="left: 108.2pt; top: 62.3pt; font-size: 6.5pt;">Fecha</span>
+                <span class="hd-line" style="left: 125.28pt; top: 70.56pt; width: 115.56pt;"></span>
+                <input v-model="fields.fecha" class="hd-input" style="left: 125.28pt; top: 62pt; width: 115.56pt;" />
+                <span class="hd-label" style="left: 346.1pt; top: 62.2pt; font-size: 6pt;">Número de Solicitud</span>
+                <span class="hd-line" style="left: 410.16pt; top: 70.56pt; width: 77.28pt;"></span>
+                <input v-model="fields.num_solicitud" class="hd-input" style="left: 410.16pt; top: 62pt; width: 77.28pt;" />
 
-            <!-- I. DATOS DEL SOLICITANTE (CLIENTE) -->
-            <div class="section-header">I. &nbsp;&nbsp;&nbsp; Datos del Solicitante</div>
+                <!-- I. DATOS DEL SOLICITANTE -->
+                <div class="band" style="top: 78.84pt;"><span class="band-num">I.</span><span class="band-title">Datos del Solicitante</span></div>
 
-            <div class="row">
-                <div class="field w100">
-                    <div class="field-label">Nombre, Denominación o Razón Social</div>
-                    <input v-model="fields.sol_nombre" class="bracket-input" />
+                <div class="fr" style="top: 89.2pt; height: 16.4pt;">
+                    <span class="lbl" style="left: 1.8pt;">Nombre, Denominación o Razon Social</span>
+                    <input v-model="fields.sol_nombre" class="fi" style="left: 3.6pt; top: 7.52pt; width: 480.72pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 15.92pt; width: 485.76pt; height: 0.48pt;"></span>
+                    <span class="tk" style="left: 0; top: 6.8pt; height: 9.6pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 6.8pt; height: 9.6pt;"></span>
                 </div>
-            </div>
 
-            <div class="sub-label">Domicilio</div>
-            <div class="row">
-                <div class="field w40">
-                    <div class="field-label">Calle</div>
-                    <input v-model="fields.sol_calle" class="bracket-input" />
-                </div>
-                <div class="field w20">
-                    <div class="field-label">Número exterior</div>
-                    <input v-model="fields.sol_num_ext" class="bracket-input" />
-                </div>
-                <div class="field w20">
-                    <div class="field-label">Número Interior</div>
-                    <input v-model="fields.sol_num_int" class="bracket-input" />
-                </div>
-                <div class="field w20">
-                    <div class="field-label">Código Postal</div>
-                    <input v-model="fields.sol_cp" class="bracket-input" />
-                </div>
-            </div>
+                <span class="txt" style="left: 1.8pt; top: 105.7pt;">Domicilio</span>
 
-            <div class="row">
-                <div class="field w35">
-                    <div class="field-label">Colonia/Población</div>
-                    <input v-model="fields.sol_colonia" class="bracket-input" />
+                <div class="fr" style="top: 113.7pt; height: 17.46pt;">
+                    <span class="lbl" style="left: 1.8pt;">Calle</span>
+                    <span class="lbl" style="left: 129.2pt;">Número exterior</span>
+                    <span class="lbl" style="left: 244.7pt;">Número Interior</span>
+                    <span class="lbl" style="left: 360.4pt;">Código Postal</span>
+                    <input v-model="fields.sol_calle" class="fi" style="left: 3.6pt; top: 8.0pt; width: 117.6pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_num_ext" class="fi" style="left: 128.4pt; top: 8.0pt; width: 108pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_num_int" class="fi" style="left: 243.84pt; top: 8.0pt; width: 108.24pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_cp" class="fi" style="left: 359.52pt; top: 8.0pt; width: 123.6pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 16.38pt; width: 486.36pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.5pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 124.8pt; top: 7.5pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 240.24pt; top: 7.5pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 355.92pt; top: 7.5pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.5pt; height: 9.96pt;"></span>
                 </div>
-                <div class="field w35">
-                    <div class="field-label">Delegación/Municipio</div>
-                    <input v-model="fields.sol_municipio" class="bracket-input" />
-                </div>
-                <div class="field w30">
-                    <div class="field-label">Estado</div>
-                    <input v-model="fields.sol_estado" class="bracket-input" />
-                </div>
-            </div>
 
-            <div class="row">
-                <div class="field w33">
-                    <div class="field-label">Teléfono</div>
-                    <input v-model="fields.sol_telefono" class="bracket-input" />
+                <div class="fr" style="top: 130.8pt; height: 17.52pt;">
+                    <span class="lbl" style="left: 1.8pt;">Colonia/Poblacion</span>
+                    <span class="lbl" style="left: 126.6pt;">Delegación/Municipio</span>
+                    <span class="lbl" style="left: 323.9pt;">Estado</span>
+                    <input v-model="fields.sol_colonia" class="fi" style="left: 3.6pt; top: 8.04pt; width: 150.68pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_municipio" class="fi" style="left: 161.88pt; top: 8.04pt; width: 166.08pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_estado" class="fi" style="left: 335.16pt; top: 8.04pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 0.24pt; top: 16.44pt; width: 487.68pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.56pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 158.28pt; top: 7.56pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 7.56pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.56pt; height: 9.96pt;"></span>
                 </div>
-                <div class="field w33">
-                    <div class="field-label">Correo Electrónico</div>
-                    <input v-model="fields.sol_correo" class="bracket-input lowercase-input" />
-                </div>
-                <div class="field w33">
-                    <div class="field-label">Fax</div>
-                    <input v-model="fields.sol_fax" class="bracket-input" />
-                </div>
-            </div>
 
-            <!-- II. DATOS DE CONTACTO (USUARIO) -->
-            <div class="section-header">II. &nbsp;&nbsp; Datos de Contacto</div>
+                <div class="fr" style="top: 148pt; height: 17.48pt;">
+                    <span class="lbl" style="left: 1.8pt;">Teléfono</span>
+                    <span class="lbl" style="left: 162.2pt;">Correo Electrónico</span>
+                    <span class="lbl" style="left: 337.3pt;">Fax</span>
+                    <input v-model="fields.sol_telefono" class="fi" style="left: 3.6pt; top: 8.0pt; width: 150.68pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_correo" class="fi lowercase-input" style="left: 161.88pt; top: 8.0pt; width: 166.08pt; height: 8.4pt;" />
+                    <input v-model="fields.sol_fax" class="fi" style="left: 335.16pt; top: 8.0pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 16.4pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.52pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 158.28pt; top: 7.52pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 7.52pt; height: 9.96pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.52pt; height: 9.96pt;"></span>
+                </div>
 
-            <div class="row">
-                <div class="field w50">
-                    <div class="field-label">Nombre</div>
-                    <input v-model="fields.con_nombre" class="bracket-input" />
-                </div>
-                <div class="field w50">
-                    <div class="field-label">Puesto</div>
-                    <input v-model="fields.con_puesto" class="bracket-input" />
-                </div>
-            </div>
+                <!-- II. DATOS DE CONTACTO -->
+                <div class="band" style="top: 172.68pt;"><span class="band-num">II.</span><span class="band-title">Datos de Contacto</span></div>
 
-            <div class="sub-label">Domicilio</div>
-            <div class="row">
-                <div class="field w40">
-                    <div class="field-label">Calle</div>
-                    <input v-model="fields.con_calle" class="bracket-input" />
+                <div class="fr" style="top: 183pt; height: 18pt;">
+                    <span class="lbl" style="left: 1.8pt;">Nombre</span>
+                    <span class="lbl" style="left: 242pt;">Puesto</span>
+                    <input v-model="fields.con_nombre" class="fi" style="left: 3.6pt; top: 8.28pt; width: 232.44pt; height: 8.4pt;" />
+                    <input v-model="fields.con_puesto" class="fi" style="left: 243.84pt; top: 8.28pt; width: 240.48pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 16.92pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.32pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 240.24pt; top: 7.32pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.32pt; height: 10.68pt;"></span>
                 </div>
-                <div class="field w20">
-                    <div class="field-label">Número exterior</div>
-                    <input v-model="fields.con_num_ext" class="bracket-input" />
-                </div>
-                <div class="field w20">
-                    <div class="field-label">Número Interior</div>
-                    <input v-model="fields.con_num_int" class="bracket-input" />
-                </div>
-                <div class="field w20">
-                    <div class="field-label">Código Postal</div>
-                    <input v-model="fields.con_cp" class="bracket-input" />
-                </div>
-            </div>
 
-            <div class="row">
-                <div class="field w35">
-                    <div class="field-label">Colonia/Población</div>
-                    <input v-model="fields.con_colonia" class="bracket-input" />
-                </div>
-                <div class="field w35">
-                    <div class="field-label">Delegación/Municipio</div>
-                    <input v-model="fields.con_municipio" class="bracket-input" />
-                </div>
-                <div class="field w30">
-                    <div class="field-label">Estado</div>
-                    <input v-model="fields.con_estado" class="bracket-input" />
-                </div>
-            </div>
+                <span class="txt" style="left: 1.8pt; top: 200pt;">Domicilio</span>
 
-            <div class="row">
-                <div class="field w33">
-                    <div class="field-label">Teléfono</div>
-                    <input v-model="fields.con_telefono" class="bracket-input" />
+                <div class="fr" style="top: 208.5pt; height: 18.18pt;">
+                    <span class="lbl" style="left: 1.8pt;">Calle</span>
+                    <span class="lbl" style="left: 129.2pt;">Número exterior</span>
+                    <span class="lbl" style="left: 244.7pt;">Número Interior</span>
+                    <span class="lbl" style="left: 367.7pt;">Código Postal</span>
+                    <input v-model="fields.con_calle" class="fi" style="left: 3.6pt; top: 8.1pt; width: 117.6pt; height: 8.4pt;" />
+                    <input v-model="fields.con_num_ext" class="fi" style="left: 128.4pt; top: 8.1pt; width: 108pt; height: 8.4pt;" />
+                    <input v-model="fields.con_num_int" class="fi" style="left: 243.84pt; top: 8.1pt; width: 108.24pt; height: 8.4pt;" />
+                    <input v-model="fields.con_cp" class="fi" style="left: 359.52pt; top: 8.1pt; width: 123.6pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 17.1pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.5pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 124.8pt; top: 7.5pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 240.24pt; top: 7.5pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 355.92pt; top: 7.5pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.5pt; height: 10.68pt;"></span>
                 </div>
-                <div class="field w33">
-                    <div class="field-label">Correo Electrónico</div>
-                    <input v-model="fields.con_correo" class="bracket-input lowercase-input" />
+
+                <div class="fr" style="top: 226.4pt; height: 18.88pt;">
+                    <span class="lbl" style="left: 1.8pt;">Colonia/Poblacion</span>
+                    <span class="lbl" style="left: 163.6pt;">Delegación/Municipio</span>
+                    <span class="lbl" style="left: 323.9pt;">Estado</span>
+                    <input v-model="fields.con_colonia" class="fi" style="left: 3.6pt; top: 8.0pt; width: 150.68pt; height: 8.4pt;" />
+                    <input v-model="fields.con_municipio" class="fi" style="left: 161.88pt; top: 8.0pt; width: 166.08pt; height: 8.4pt;" />
+                    <input v-model="fields.con_estado" class="fi" style="left: 335.16pt; top: 8.0pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 17.8pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.48pt; height: 11.4pt;"></span>
+                    <span class="tk" style="left: 158.28pt; top: 7.48pt; height: 11.4pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 11.4pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 11.4pt;"></span>
                 </div>
-                <div class="field w33">
-                    <div class="field-label">Fax</div>
-                    <input v-model="fields.con_fax" class="bracket-input" />
+
+                <div class="fr" style="top: 245pt; height: 18.16pt;">
+                    <span class="lbl" style="left: 1.8pt;">Teléfono</span>
+                    <span class="lbl" style="left: 163.5pt;">Correo Electrónico</span>
+                    <span class="lbl" style="left: 337.3pt;">Fax</span>
+                    <input v-model="fields.con_telefono" class="fi" style="left: 3.6pt; top: 8.0pt; width: 150.68pt; height: 8.4pt;" />
+                    <input v-model="fields.con_correo" class="fi lowercase-input" style="left: 161.88pt; top: 8.0pt; width: 166.08pt; height: 8.4pt;" />
+                    <input v-model="fields.con_fax" class="fi" style="left: 335.16pt; top: 8.0pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 17.08pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 158.28pt; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 10.68pt;"></span>
                 </div>
-            </div>
 
-            <!-- III. DATOS DE LA SOLICITUD -->
-            <div class="section-header">III. &nbsp; Datos de la Solicitud</div>
+                <!-- III. DATOS DE LA SOLICITUD -->
+                <div class="band" style="top: 270.36pt;"><span class="band-num">III.</span><span class="band-title">Datos de la Solicitud</span></div>
 
-            <div class="check-row section-body">
-                <div class="check-label" style="width: 32%;">Modalidad de la Solicitud</div>
-                <div class="check-opts" style="width: 68%;">
-                    <span class="opt" @click="setOption('modalidad', 'baja')">Baja Tensión
-                        <span class="check-box">{{ fields.modalidad === 'baja' ? 'X' : '' }}</span>
-                    </span>
-                    <span class="opt" @click="setOption('modalidad', 'media')">Media Tensión
-                        <span class="check-box">{{ fields.modalidad === 'media' ? 'X' : '' }}</span>
-                    </span>
+                <span class="txt clickable" style="left: 1.8pt; top: 283pt;" @click="setOption('modalidad', 'baja')">Modalidad de la Solicitud</span>
+                <span class="txt clickable" style="left: 166.7pt; top: 283pt;" @click="setOption('modalidad', 'baja')">Baja Tensión</span>
+                <span class="cb" style="left: 251.28pt; top: 279.72pt; width: 25.44pt; height: 11.52pt; font-size: 10.8pt;" @click="setOption('modalidad', 'baja')">{{ fields.modalidad === 'baja' ? 'X' : '' }}</span>
+                <span class="txt clickable" style="left: 292.2pt; top: 283pt;" @click="setOption('modalidad', 'media')">Media Tensión</span>
+                <span class="cb" style="left: 354.84pt; top: 280.2pt; width: 54.84pt; height: 10.2pt; font-size: 10.8pt;" @click="setOption('modalidad', 'media')">{{ fields.modalidad === 'media' ? 'X' : '' }}</span>
+
+                <!-- IV. UTILIZACIÓN DE LA ENERGÍA -->
+                <div class="band" style="top: 299.4pt;"><span class="band-num">IV.</span><span class="band-title">Utilización de la Energia Eléctrica Producida</span></div>
+
+                <span class="txt clickable" style="left: 1.8pt; top: 309.2pt;" @click="setOption('utilizacion', 'centros')">Consumo de Centros de</span>
+                <span class="txt clickable" style="left: 1.8pt; top: 317.3pt;" @click="setOption('utilizacion', 'centros')">Carga</span>
+                <span class="cb" style="left: 74.28pt; top: 312.48pt; width: 26.4pt; height: 12.6pt; font-size: 10.8pt;" @click="setOption('utilizacion', 'centros')">{{ fields.utilizacion === 'centros' ? 'X' : '' }}</span>
+                <span class="txt clickable" style="left: 126.6pt; top: 309.2pt;" @click="setOption('utilizacion', 'excedentes')">Consumo de Centros de Carga y</span>
+                <span class="txt clickable" style="left: 126.6pt; top: 317.3pt;" @click="setOption('utilizacion', 'excedentes')">Venta de Excedentes</span>
+                <span class="cb" style="left: 251.76pt; top: 311.64pt; width: 25.32pt; height: 13.08pt; font-size: 10.8pt;" @click="setOption('utilizacion', 'excedentes')">{{ fields.utilizacion === 'excedentes' ? 'X' : '' }}</span>
+                <span class="txt clickable" style="left: 298.2pt; top: 312.5pt;" @click="setOption('utilizacion', 'venta')">Venta Total</span>
+                <span class="cb" style="left: 355.68pt; top: 311.64pt; width: 54.96pt; height: 12.72pt; font-size: 10.8pt;" @click="setOption('utilizacion', 'venta')">{{ fields.utilizacion === 'venta' ? 'X' : '' }}</span>
+
+                <!-- V. DATOS DEL SERVICIO -->
+                <div class="band" style="top: 333.72pt;"><span class="band-num">V.</span><span class="band-title">Datos del Servicio Suministro Actual</span></div>
+
+                <div class="fr" style="top: 344.2pt; height: 18.2pt;">
+                    <span class="lbl" style="left: 1.8pt;">Registro Público de Usuario (RPU)</span>
+                    <span class="lbl" style="left: 248.7pt;">Nivel de Tensión de Suministro</span>
+                    <input v-model="fields.rpu" class="fi" style="left: 3.6pt; top: 8.28pt; width: 232.44pt; height: 8.4pt;" />
+                    <input v-model="fields.nivel_tension" class="fi" style="left: 243.84pt; top: 8.28pt; width: 240.48pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 17.12pt; width: 486.36pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.52pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 240.24pt; top: 7.52pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.52pt; height: 10.68pt;"></span>
                 </div>
-            </div>
 
-            <!-- IV. UTILIZACIÓN DE LA ENERGÍA -->
-            <div class="section-header">IV. &nbsp; Utilización de la Energía Eléctrica Producida</div>
+                <!-- VI. CENTRAL ELÉCTRICA -->
+                <div class="band" style="top: 369.96pt;"><span class="band-num">VI.</span><span class="band-title">Central Eléctrica</span></div>
 
-            <div class="check-row spread section-body">
-                <span class="opt">Consumo de Centros de Carga
-                    <span class="check-box">{{ fields.utilizacion === 'centros' ? 'X' : '' }}</span>
+                <div class="fr" style="top: 379.1pt; height: 24.46pt;">
+                    <span class="lbl" style="left: 1.8pt;">Fecha estimada de Operación Normal</span>
+                    <span class="lbl" style="left: 1.8pt; top: 5.9pt;">(DD/MM/AAAA)</span>
+                    <span class="lbl" style="left: 178.8pt; top: 0.1pt;">Capacidad Bruta</span>
+                    <span class="lbl" style="left: 164.9pt; top: 5.9pt;">Instalada (Kw)</span>
+                    <span class="lbl" style="left: 243.4pt; top: 0.1pt;">Capacidad a Incrementar (kw)</span>
+                    <span class="lbl" style="left: 274.3pt; top: 5.6pt;">(Opcional)</span>
+                    <span class="lbl" style="left: 360.7pt; top: 0.1pt;">Generación Promedio Mensual Estimada</span>
+                    <span class="lbl" style="left: 396.8pt; top: 5.6pt;">(kwh/Mes)</span>
+                    <input v-model="fields.fecha_operacion" class="fi" style="left: 3.6pt; top: 14.86pt; width: 150.68pt; height: 8.4pt;" />
+                    <input v-model="fields.capacidad_bruta" class="fi" style="left: 161.88pt; top: 14.86pt; width: 74.76pt; height: 8.4pt;" />
+                    <input v-model="fields.capacidad_incrementar" class="fi" style="left: 243.84pt; top: 14.86pt; width: 84.12pt; height: 8.4pt;" />
+                    <input v-model="fields.generacion_promedio" class="fi" style="left: 335.16pt; top: 14.86pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 23.38pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 13.78pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 158.28pt; top: 13.78pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 240.24pt; top: 13.78pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 13.78pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 13.78pt; height: 10.68pt;"></span>
+                </div>
+
+                <!-- VII. MANIFESTACIÓN -->
+                <div class="band" style="top: 411.12pt;"><span class="band-num">VII.</span><span class="band-title">Manifestación de Cumplimiento de las Especificicaciones Técnicas Generales</span></div>
+
+                <span class="mtext1" style="left: 1.7pt; top: 421.5pt;">Manifiesto bajo protesta de decir la verdad que la Central Eléctrica cumple con las Especificaciones técnicas requeridas de acuerdo las disposiciones</span>
+                <span class="mtext2" style="left: 1.8pt; top: 429.1pt;">aplicables.</span>
+                <span class="cb" style="left: 462.12pt; top: 420.48pt; width: 24.84pt; height: 9.84pt; font-size: 6pt;" @click="toggleManifiesto">{{ fields.manifiesto === 'Si' ? 'SI' : '' }}</span>
+
+                <span class="txt" style="left: 1.8pt; top: 444.7pt;">Tecnología para generación de energía eléctrica</span>
+
+                <span class="txt clickable" style="left: 10.6pt; top: 455.1pt;" @click="setOption('tecnologia', 'solar')">Solar</span>
+                <span class="stack" style="left: 31.68pt; top: 452.64pt; width: 23.76pt; height: 26.64pt; border-width: 0.48pt;">
+                    <span class="sc top" @click="setOption('tecnologia', 'solar')"><span class="xmark" style="font-size: 8.6pt;">{{ fields.tecnologia === 'solar' ? 'X' : '' }}</span></span>
+                    <span class="sc bot" style="border-top-width: 0.48pt;" @click="setOption('tecnologia', 'eolico')"></span>
                 </span>
-                <span class="opt">Consumo de Centros de Carga y Venta de Excedentes
-                    <span class="check-box">{{ fields.utilizacion === 'excedentes' ? 'X' : '' }}</span>
+                <span class="txt clickable" style="left: 9.5pt; top: 468.2pt;" @click="setOption('tecnologia', 'eolico')">Eólico</span>
+
+                <span class="txt clickable" style="left: 143.8pt; top: 454.6pt;" @click="setOption('tecnologia', 'biomasa')">Biomasa</span>
+                <span class="stack" style="left: 193.08pt; top: 452.4pt; width: 48.12pt; height: 26.16pt; border-width: 0.84pt;">
+                    <span class="sc top" @click="setOption('tecnologia', 'biomasa')"></span>
+                    <span class="sc bot" style="border-top-width: 0.84pt;" @click="setOption('tecnologia', 'cogeneracion')"></span>
                 </span>
-                <span class="opt">Venta Total
-                    <span class="check-box">{{ fields.utilizacion === 'venta' ? 'X' : '' }}</span>
-                </span>
+                <span class="txt clickable" style="left: 137.2pt; top: 468.2pt;" @click="setOption('tecnologia', 'cogeneracion')">Cogeneración</span>
+
+                <span class="txt clickable" style="left: 308pt; top: 457.7pt;" @click="setOption('tecnologia', 'otro')">Otro</span>
+                <span class="cb" style="left: 354.84pt; top: 452.4pt; width: 54.84pt; height: 13.08pt; font-size: 8.6pt;" @click="setOption('tecnologia', 'otro')">{{ fields.tecnologia === 'otro' ? 'X' : '' }}</span>
+                <span class="txt" style="left: 302.8pt; top: 470.8pt;">Especificar</span>
+                <input v-model="fields.tecnologia_otro" class="fi" style="left: 334.04pt; top: 471.74pt; width: 151.6pt; height: 8.4pt;" />
+                <span class="hln" style="left: 332.04pt; top: 480.24pt; width: 155.4pt; height: 1.08pt;"></span>
+
+                <div class="fr" style="top: 485pt; height: 18.16pt;">
+                    <span class="lbl" style="left: 1.8pt;">Cantidad de paneles y capacidad de ellos</span>
+                    <span class="lbl" style="left: 130.6pt;">Combustible príncipal</span>
+                    <span class="lbl" style="left: 337.3pt;">Combustible secundarío</span>
+                    <input v-model="fields.num_unidades" class="fi" style="left: 3.6pt; top: 8.0pt; width: 117.6pt; height: 8.4pt;" />
+                    <input v-model="fields.combustible_principal" class="fi" style="left: 128.4pt; top: 8.0pt; width: 199.56pt; height: 8.4pt;" />
+                    <input v-model="fields.combustible_secundario" class="fi" style="left: 335.16pt; top: 8.0pt; width: 149.16pt; height: 8.4pt;" />
+                    <span class="ln" style="left: 1.08pt; top: 17.08pt; width: 486.84pt; height: 1.08pt;"></span>
+                    <span class="tk" style="left: 0; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 124.8pt; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 331.56pt; top: 7.48pt; height: 10.68pt;"></span>
+                    <span class="tk" style="left: 486.84pt; top: 7.48pt; height: 10.68pt;"></span>
+                </div>
+
+                <!-- TABLA COORDENADAS UTM -->
+                <span class="txt" style="left: 1.8pt; top: 502pt;">Coordenadas UTM</span>
+                <span class="txt" style="left: 126.6pt; top: 502.4pt;">X</span>
+                <span class="txt" style="left: 333.4pt; top: 502.4pt;">Y</span>
+
+                <span class="ln" style="left: 1.08pt; top: 516.24pt; width: 486.84pt; height: 1.08pt;"></span>
+                <span class="ln" style="left: 1.08pt; top: 524.4pt; width: 486.84pt; height: 1.08pt;"></span>
+                <span class="ln" style="left: 1.08pt; top: 532.56pt; width: 486.84pt; height: 1.08pt;"></span>
+                <span class="ln" style="left: 1.08pt; top: 540.72pt; width: 486.84pt; height: 1.08pt;"></span>
+                <span class="ln" style="left: 1.08pt; top: 548.88pt; width: 486.84pt; height: 1.08pt;"></span>
+                <span class="ln" style="left: 1.08pt; top: 557.04pt; width: 486.84pt; height: 1.08pt;"></span>
+
+                <span class="tk" style="left: 0; top: 510.24pt; height: 47.88pt;"></span>
+                <span class="tk" style="left: 124.8pt; top: 492.48pt; height: 65.64pt;"></span>
+                <span class="tk" style="left: 331.56pt; top: 492.48pt; height: 65.64pt;"></span>
+                <span class="tk" style="left: 486.84pt; top: 492.48pt; height: 65.64pt;"></span>
+
+                <template v-for="i in 6" :key="i">
+                    <span class="txt utm-num" :style="{ top: (i === 1 ? 507.9 : 516.1 + (i - 2) * 8.16) + 'pt' }">{{ i }}</span>
+                    <input v-model="fields['utm_x' + i]" class="fi" :style="{ left: '128.4pt', top: (i === 1 ? 503.7 : 517.7 + (i - 2) * 8.16) + 'pt', width: '200.64pt', height: (i === 1 ? 11.5 : 7.1) + 'pt' }" />
+                    <input v-model="fields['utm_y' + i]" class="fi" :style="{ left: '335.16pt', top: (i === 1 ? 503.7 : 517.7 + (i - 2) * 8.16) + 'pt', width: '149.16pt', height: (i === 1 ? 11.5 : 7.1) + 'pt' }" />
+                </template>
+
+                <!-- TEXTOS LEGALES -->
+                <span class="hln" style="left: 2.8pt; top: 578.8pt; width: 292.5pt; height: 0.84pt;"></span>
+                <input v-model="fields.titular_nombre" class="fi" style="left: 4.6pt; top: 570.8pt; width: 288pt; height: 8pt;" />
+                <span class="legal-top" style="left: 285.6pt; top: 572.1pt;">(Representante Legal o El Solicitante) ( El Solicitante) certifica que la</span>
+
+                <span class="legal-line" style="left: 1.8pt; top: 579.9pt;">Información proporcionada en la presente solicitud es apropiada,&nbsp; precisa y verídica.&nbsp; El solicitante acepta que los datos proporcionados sean utilizados para llevr a cabo los Estudios de Interconexión</span>
+                <span class="legal-line" style="left: 1.8pt; top: 587.7pt;">para garantizar la confiabilidad del Sistema Eléctrico Nacional con la Interconexion de la Central Eléctrica del solicitante al amparo de la <i>Ley de la Industria Eléctrica y su Reglamento</i>,&nbsp; en caso de ser</span>
+                <span class="legal-line" style="left: 1.8pt; top: 595.5pt;">requeridos.</span>
+                <span class="legal-line" style="left: 412.4pt; top: 595.5pt;">El solicitante entiende que los</span>
+                <span class="legal-line" style="left: 1.8pt; top: 603.3pt;">datos proporcionados, se añadiran a las bases de datos del suministrador cuando se firme un contrato de interconexión respectivo.</span>
+                <span class="legal-line" style="left: 1.8pt; top: 611.1pt;">El solicitante deberá anexa a la presente solicitud, la información técnica requerida en el documento “Informacion Técnica Requerida para Centrales Eléctricas”</span>
+
+                <!-- FIRMAS -->
+                <span class="sign-box" style="left: 0; top: 634.56pt; width: 241.32pt; height: 40.8pt;"></span>
+                <span class="sign-title" style="left: 0; top: 634.5pt; width: 241.32pt;">Firma de Conformidad</span>
+                <span class="sign-foot" style="left: 0; top: 666.5pt; width: 241.32pt;">Solicitante</span>
+
+                <span class="sign-box" style="left: 331.56pt; top: 642.72pt; width: 156.36pt; height: 68.28pt;"></span>
+                <span class="cfe-text" style="left: 331.56pt; top: 692.7pt; width: 156.36pt;">sello y firma</span>
+                <span class="cfe-text" style="left: 331.56pt; top: 701.6pt; width: 156.36pt;">Centro de Atención</span>
+
+                <span class="txt" style="left: 33.2pt; top: 683.8pt;">Nombre</span>
+                <span class="txt" style="left: 33.2pt; top: 693.7pt;">Cargo</span>
+                <span class="txt" style="left: 33.2pt; top: 701.6pt;">Fecha</span>
+
+                <span class="hln" style="left: 68.3pt; top: 691.9pt; width: 172.4pt; height: 0.84pt;"></span>
+                <span class="hln" style="left: 68.3pt; top: 702.2pt; width: 172.4pt; height: 0.84pt;"></span>
+                <span class="hln" style="left: 68.3pt; top: 710.8pt; width: 172.4pt; height: 0.84pt;"></span>
+
+                <input v-model="fields.firma_nombre" class="fi" style="left: 70.1pt; top: 683.4pt; width: 168.8pt; height: 8.4pt;" />
+                <input v-model="fields.firma_cargo" class="fi" style="left: 70.1pt; top: 693.7pt; width: 168.8pt; height: 8.4pt;" />
+                <input v-model="fields.firma_fecha" class="fi" style="left: 70.1pt; top: 702.3pt; width: 168.8pt; height: 8.4pt;" />
+
+                <span class="txt" style="left: 411.5pt; top: 710.9pt;">-</span>
+                <span class="hln" style="left: 0.48pt; top: 719.28pt; width: 486.96pt; height: 1.08pt;"></span>
             </div>
-
-            <!-- V. DATOS DEL SERVICIO -->
-            <div class="section-header">V. &nbsp;&nbsp; Datos del Servicio Suministro Actual</div>
-
-            <div class="row section-body">
-                <div class="field w50">
-                    <div class="field-label">Registro Público de Usuario (RPU)</div>
-                    <input v-model="fields.rpu" class="bracket-input" />
-                </div>
-                <div class="field w50">
-                    <div class="field-label">Nivel de Tensión de Suministro</div>
-                    <input v-model="fields.nivel_tension" class="bracket-input" />
-                </div>
-            </div>
-
-            <!-- VI. CENTRAL ELÉCTRICA -->
-            <div class="section-header">VI. &nbsp; Central Eléctrica</div>
-
-            <div class="row section-body">
-                <div class="field w25">
-                    <div class="field-label center">Fecha estimada de Operación Normal (DD/MM/AAAA)</div>
-                    <input v-model="fields.fecha_operacion" class="bracket-input" />
-                </div>
-                <div class="field w25">
-                    <div class="field-label center">Capacidad Bruta Instalada (Kw)</div>
-                    <input v-model="fields.capacidad_bruta" class="bracket-input" />
-                </div>
-                <div class="field w25">
-                    <div class="field-label center">Capacidad a Incrementar (kw) (Opcional)</div>
-                    <input v-model="fields.capacidad_incrementar" class="bracket-input" />
-                </div>
-                <div class="field w25">
-                    <div class="field-label center">Generación Promedio Mensual Estimada (kwh/Mes)</div>
-                    <input v-model="fields.generacion_promedio" class="bracket-input" />
-                </div>
-            </div>
-
-            <!-- VII. MANIFESTACIÓN -->
-            <div class="section-header">VII. Manifestación de Cumplimiento de las Especificaciones Técnicas Generales</div>
-
-            <div class="manifest-row">
-                <p class="manifest-text">
-                    Manifiesto bajo protesta de decir la verdad que la Central Eléctrica cumple con las
-                    Especificaciones técnicas requeridas de acuerdo las disposiciones aplicables.
-                </p>
-                <span class="si-box" @click="toggleManifiesto">{{ fields.manifiesto }}</span>
-            </div>
-
-            <div class="tech-label">Tecnología para generación de energía eléctrica</div>
-
-            <div class="tech-grid">
-                <div class="tech-col">
-                    <div class="tech-item" @click="setOption('tecnologia', 'solar')">Solar
-                        <span class="check-box w40">{{ fields.tecnologia === 'solar' ? 'X' : '' }}</span>
-                    </div>
-                    <div class="tech-item" @click="setOption('tecnologia', 'eolico')">Eólico
-                        <span class="check-box w40">{{ fields.tecnologia === 'eolico' ? 'X' : '' }}</span>
-                    </div>
-                </div>
-                <div class="tech-col">
-                    <div class="tech-item" @click="setOption('tecnologia', 'biomasa')">Biomasa
-                        <span class="check-box w40">{{ fields.tecnologia === 'biomasa' ? 'X' : '' }}</span>
-                    </div>
-                    <div class="tech-item" @click="setOption('tecnologia', 'cogeneracion')">Cogeneración
-                        <span class="check-box w40">{{ fields.tecnologia === 'cogeneracion' ? 'X' : '' }}</span>
-                    </div>
-                </div>
-                <div class="tech-col tech-col-wide">
-                    <div class="tech-item" @click="setOption('tecnologia', 'otro')">Otro
-                        <span class="check-box w60">{{ fields.tecnologia === 'otro' ? 'X' : '' }}</span>
-                    </div>
-                    <div class="tech-item">Especificar
-                        <input v-model="fields.tecnologia_otro" class="line-input flex-grow" style="min-width: 120px;" />
-                    </div>
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="field w33">
-                    <div class="field-label">Cantidad de paneles y capacidad de ellos</div>
-                    <input v-model="fields.num_unidades" class="bracket-input" />
-                </div>
-                <div class="field w33">
-                    <div class="field-label">Combustible principal</div>
-                    <input v-model="fields.combustible_principal" class="bracket-input" />
-                </div>
-                <div class="field w33">
-                    <div class="field-label">Combustible secundario</div>
-                    <input v-model="fields.combustible_secundario" class="bracket-input" />
-                </div>
-            </div>
-
-            <!-- TABLA COORDENADAS UTM -->
-            <table class="utm-table">
-                <tr>
-                    <!-- <td class="utm-title" rowspan="7">Coordenadas UTM</td> -->
-                    <td class="utm-head border !border-b-transparent text-left">Coordenadas UTM</td>
-                    <td class="utm-head border !border-b-transparent text-left">X</td>
-                    <td class="utm-head border !border-b-transparent text-left">Y</td>
-                </tr>
-                <tr v-for="i in 6" :key="i">
-                    <td class="utm-num">{{ i }}</td>
-                    <td><input v-model="fields['utm_x' + i]" class="cell-input" /></td>
-                    <td><input v-model="fields['utm_y' + i]" class="cell-input" /></td>
-                </tr>
-            </table>
-
-            <!-- TEXTOS LEGALES -->
-            <div class="legal">
-                <div class="legal-right">
-                    <input v-model="fields.titular_nombre" class="line-input legal-name" />
-                    <span class="legal-text">(Representante Legal o El Solicitante) / (El Solicitante) certifica que la</span>
-                </div>
-                <p>
-                    información proporcionada en la presente solicitud es apropiada, precisa y verídica. El solicitante
-                    acepta que los datos proporcionados sean utilizados para llevar a cabo los Estudios de Interconexión
-                    para garantizar la confiabilidad del Sistema Eléctrico Nacional con la Interconexion de la Central
-                    Eléctrica del solicitante al amparo de la <em>Ley de la Industria Eléctrica y su Reglamento</em>,
-                    en caso de ser requeridos. El solicitante entiende que los datos proporcionados, se añadirán a las
-                    bases de datos del suministrador cuando se firme un contrato de interconexión respectivo.
-                </p>
-                <p>
-                    El solicitante deberá anexa a la presente solicitud, la información técnica requerida en el
-                    documento "Informacion Técnica Requerida para Centrales Eléctricas"
-                </p>
-            </div>
-
-            <!-- FIRMAS -->
-            <div class="sign-grid">
-                <div class="sign-left">
-                    <div class="firma-box">
-                        <div class="firma-title">Firma de Conformidad</div>
-                        <!-- <div class="firma-line"></div> -->
-                        <div class="firma-foot">Solicitante</div>
-                    </div>
-
-                    <div class="sign-line">
-                        <span class="sign-label">Nombre</span>
-                        <input v-model="fields.firma_nombre" class="line-input flex-grow" style="min-width: 150px;" />
-                    </div>
-                    <div class="sign-line">
-                        <span class="sign-label">Cargo</span>
-                        <input v-model="fields.firma_cargo" class="line-input flex-grow" style="min-width: 150px;" />
-                    </div>
-                    <div class="sign-line">
-                        <span class="sign-label">Fecha</span>
-                        <input v-model="fields.firma_fecha" class="line-input flex-grow" style="min-width: 150px;" />
-                    </div>
-                </div>
-
-                <div class="sign-right">
-                    <div class="cfe-box">
-                        <span>sello y firma<br>Centro de Atención</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- LÍNEA DE CIERRE -->
-            <div class="sheet-end-line"></div>
         </div>
 
         <!-- BOTONES FLOTANTES (NO IMPRIMIBLES) -->
@@ -560,499 +525,301 @@ const print = () => window.print();
 </template>
 
 <style>
-.doc-page {
-    background: #f3f4f6;
-    min-height: 100vh;
-    padding: 1rem 0;
+* {
+    box-sizing: border-box;
 }
 
+.doc-page {
+    background: #e5e7eb;
+    min-height: 100vh;
+    padding: 1rem 0;
+    overflow-x: auto;
+}
+
+/* Hoja A4 idéntica al machote (210 × 297 mm) */
 .doc-sheet {
-    width: 216mm;
-    min-height: 279mm;
-    box-sizing: border-box;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    margin: 0 auto;
-    padding: 10mm 10mm;
+    width: 210mm;
+    height: 297mm;
     position: relative;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 0 0 1px #d1d5db, 0 12px 30px rgba(0, 0, 0, 0.12);
     color: #000;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11.5px;
-    line-height: 1.25;
+    font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+    font-size: 6pt;
+    line-height: 1;
+}
+
+.paper {
+    position: absolute;
+    left: 50.4pt;
+    top: 0;
+    width: 487.92pt;
+    height: 720.36pt;
 }
 
 /* Encabezado */
-.head-row {
-    display: flex;
-    justify-content: flex-start;
-    gap: 10%;
-    margin-bottom: 8px;
-    padding: 0 4%;
+.hd-label,
+.hd-line,
+.hd-input {
+    position: absolute;
 }
 
-.head-item {
-    display: flex;
-    align-items: flex-end;
-    gap: 6px;
-}
-
-.head-label {
+.hd-label {
     font-weight: bold;
-    font-size: 12px;
+    line-height: 1;
     white-space: nowrap;
 }
 
-/* Encabezados de sección */
-.section-header {
-    background-color: #d9d9d9;
-    font-weight: bold;
-    font-size: 11px;
-    padding: 2px 8px;
-    margin-top: 8px;
-    margin-bottom: 4px;
+.hd-line {
+    height: 1.08pt;
+    background: #000;
 }
 
-/* Campos: fila con línea inferior corrida y divisiones verticales por campo */
-.row {
-    display: flex;
-    border-bottom: 2.5px solid #000;
-    margin-bottom: 5px;
-}
-
-.row .field {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 20px;
-    padding: 0;
-    min-width: 0;
-}
-
-/* Etiquetas de campo (van arriba, dentro del recuadro) */
-.field-label {
-    font-size: 8.5px;
-    line-height: 1;
-    margin: 0 0 1px;
-    padding: 0 4px;
-}
-
-.field-label.center {
-    text-align: center;
-}
-
-.sub-label {
-    font-size: 10.5px;
-    font-weight: 600;
-    margin: 2px 0 1px;
-}
-
-.bracket-input {
-    border: none;
-    outline: none;
+.hd-input {
+    height: 8.5pt;
+    border: 0;
+    outline: 0;
     background: transparent;
-    font-family: inherit;
-    font-size: inherit;
     color: #000;
-    width: 100%;
-    padding: 0;
-    margin: 0;
+    font-family: inherit;
+    font-size: 6.5pt;
+    padding: 0 1pt;
     text-transform: uppercase;
 }
 
-.bracket-input:hover,
-.bracket-input:focus {
-    background: #fefce8;
+/* Bandas grises de sección */
+.band {
+    position: absolute;
+    left: 0.96pt;
+    width: 486.48pt;
+    height: 9.96pt;
+    background: #d9d9d9;
+    color: #000;
+    font-size: 7.6pt;
+    font-weight: bold;
+    line-height: 9.96pt;
+    white-space: nowrap;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
 }
 
-/* Los correos se muestran tal cual (minúsculas); el resto del documento va en mayúsculas */
-.bracket-input.lowercase-input {
+.band-num,
+.band-title {
+    position: absolute;
+    top: -1.9pt;
+    line-height: 9.96pt;
+    white-space: nowrap;
+}
+
+.band-num {
+    left: 11.04pt;
+}
+
+.band-title {
+    left: 28.5pt;
+}
+
+/* Filas de campos con línea inferior y divisiones verticales */
+.fr {
+    position: absolute;
+    left: 0;
+    width: 487.92pt;
+}
+
+.lbl {
+    position: absolute;
+    top: -0.7pt;
+    font-size: 6pt;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.txt {
+    position: absolute;
+    font-size: 6pt;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+.ln,
+.hln {
+    position: absolute;
+    background: #000;
+}
+
+.tk {
+    position: absolute;
+    width: 1.08pt;
+    background: #000;
+}
+
+.fi {
+    position: absolute;
+    border: 0;
+    outline: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: #000;
+    font-family: inherit;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+}
+
+.fi.lowercase-input {
     text-transform: none;
 }
 
-/* Las líneas verticales separadoras sólo recorren la zona de captura
-   (quedan por debajo de los títulos de cada campo). */
-.row .field .bracket-input {
-    border-right: 2.5px solid #000;
-    padding: 0 4px;
-    height: 12px;
-    font-size: 11px;
+.fi:hover,
+.fi:focus,
+.hd-input:hover,
+.hd-input:focus {
+    background: #fefce8;
+}
+
+/* Casillas */
+.cb {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border: 0.84pt solid #000;
+    color: #000;
+    font-weight: normal;
     line-height: 1;
-}
-
-.row .field:first-child .bracket-input {
-    border-left: 2.5px solid #000;
-}
-
-.w20 { width: 20%; }
-.w25 { width: 25%; }
-.w30 { width: 30%; }
-.w33 { width: 33.33%; }
-.w35 { width: 35%; }
-.w40 { width: 40%; }
-.w50 { width: 50%; }
-.w100 { width: 100%; }
-
-/* Filas de casillas */
-.check-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 4px;
-    margin-bottom: 4px;
-}
-
-.check-row.spread {
-    gap: 8px;
-}
-
-/* Secciones III a VI: un poco más de aire arriba y abajo */
-.section-body {
-    margin-top: 7px;
-    margin-bottom: 7px;
-}
-
-.check-label {
-    font-size: 10.5px;
-}
-
-.check-opts {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-}
-
-.opt {
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10.5px;
     white-space: nowrap;
 }
 
-.check-box {
-    border: 1.5px solid #000;
-    width: 44px;
-    height: 16px;
-    display: inline-flex;
+.stack {
+    position: absolute;
+    background: #fff;
+    border-style: solid;
+    border-color: #000;
+}
+
+.sc {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: bold;
-    font-size: 11px;
-    flex-shrink: 0;
+    cursor: pointer;
 }
 
-.check-box.w40 { width: 40px; }
-.check-box.w60 { width: 60px; }
+.sc.top {
+    top: 0;
+}
+
+.sc.bot {
+    bottom: 0;
+    border-top-style: solid;
+    border-top-color: #000;
+}
 
 /* Manifestación */
-.manifest-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 6px;
+.mtext1,
+.mtext2 {
+    position: absolute;
+    white-space: nowrap;
+    line-height: 1;
 }
 
-.manifest-text {
-    font-size: 10px;
-    text-align: justify;
-    flex-grow: 1;
+.mtext1 {
+    font-size: 5.4pt;
 }
 
-.si-box {
-    border: 1.5px solid #000;
-    padding: 1px 8px;
-    font-size: 10.5px;
-    font-weight: bold;
-    text-align: center;
-    min-width: 32px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-/* Tecnología */
-.tech-label {
-    font-size: 10.5px;
-    margin-bottom: 3px;
-}
-
-.tech-grid {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 6px;
-}
-
-.tech-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.tech-col-wide {
-    flex: 1.4;
-}
-
-.tech-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 10.5px;
-    cursor: pointer;
-    padding-right: 12px;
-}
-
-.tech-item input {
-    cursor: text;
+.mtext2 {
+    font-size: 6pt;
 }
 
 /* Tabla UTM */
-.utm-table {
-    width: 100%;
-    border-collapse: collapse;
-    border: 2.5px solid #000;
-    text-align: center;
-    font-size: 9.5px;
-    margin: 8px 0 6px;
-    table-layout: fixed;
-}
-
-.utm-table td {
-    border: 2.5px solid #000;
-    padding: 1px 3px;
-    height: 9px;
-    line-height: 1;
-}
-
-.utm-title {
-    width: 25%;
-    font-weight: bold;
-    text-align: left;
-    padding-left: 4px !important;
-}
-
-.utm-head {
-    font-weight: bold;
-}
-
 .utm-num {
-    font-weight: bold;
-}
-
-.cell-input {
-    border: none;
-    outline: none;
-    background: transparent;
-    font-family: inherit;
-    font-size: inherit;
-    color: #000;
-    width: 100%;
+    left: 0.9pt;
+    width: 124.8pt;
     text-align: center;
-    padding: 0;
-    height: 9px;
-    line-height: 1;
-    text-transform: uppercase;
-}
-
-.cell-input:hover,
-.cell-input:focus {
-    background: #fefce8;
 }
 
 /* Textos legales */
-.legal {
-    font-size: 8px;
-    text-align: justify;
-    line-height: 1.2;
-    margin-bottom: 8px;
-}
-
-.legal p {
-    margin-bottom: 2px;
-}
-
-.legal-right {
-    display: flex;
-    align-items: flex-end;
-    gap: 4px;
-    margin-bottom: 2px;
-}
-
-.legal-text {
-    flex: 0 1 auto;
-    text-align: right;
-    line-height: 1.15;
-}
-
-/* Nombre del titular del servicio (renglón legal): la línea cubre el espacio libre a su izquierda */
-.legal-name {
-    flex: 1 1 auto;
-    min-width: 180px;
-    font-size: 8px;
-    font-weight: bold;
-}
-
-/* Campos de línea simple */
-.line-input {
-    border: none;
-    border-bottom: 2.5px solid #000;
-    outline: none;
-    background: transparent;
-    font-family: inherit;
-    font-size: inherit;
-    color: #000;
-    padding: 0 3px;
-    margin: 0;
-    text-transform: uppercase;
-}
-
-.line-input:hover,
-.line-input:focus {
-    background: #fefce8;
-}
-
-/* Firmas */
-.sign-grid {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 20px;
-}
-
-.sign-left {
-    width: 58%;
-}
-
-.sign-right {
-    width: 38%;
-    display: flex;
-    justify-content: flex-end;
-}
-
-.firma-box {
-    border: 2.5px solid #000;
-    width: 80%;
-    height: 76px;
-    padding: 3px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-}
-
-.firma-title {
-    font-size: 9px;
-}
-
-.firma-line {
-    width: 78%;
-    border-bottom: 2.5px solid #000;
-}
-
-.firma-foot {
-    font-size: 9px;
-}
-
-.sign-line {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    margin-bottom: 4px;
-    padding-left: 24px;
-}
-
-.sign-label {
-    font-size: 9.5px;
-    width: 45px;
+.legal-top,
+.legal-line {
+    position: absolute;
+    font-size: 6pt;
+    line-height: 1;
     white-space: nowrap;
 }
 
-.sign-line .line-input {
-    font-size: 8px;
+.legal-line i {
+    font-style: italic;
 }
 
-.cfe-box {
-    border: 2.5px solid #000;
-    width: 80%;
-    height: 115px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 8px;
+/* Firmas */
+.sign-box {
+    position: absolute;
+    border: 1.08pt solid #000;
+    background: transparent;
 }
 
-.cfe-box span {
-    font-size: 9px;
+.sign-title,
+.sign-foot,
+.cfe-text {
+    position: absolute;
     text-align: center;
-    line-height: 1.2;
+    font-size: 6pt;
+    line-height: 1;
+    white-space: nowrap;
 }
 
-/* Línea horizontal de cierre, al final de la hoja */
-.sheet-end-line {
-    margin-top: 10px;
-    border-bottom: 2.5px solid #000;
+.cfe-text {
+    line-height: 7.9pt;
 }
 
-/* Impresión: compactar para una sola hoja */
+/* Impresión: una sola hoja A4, sin márgenes adicionales */
 @media print {
     @page {
-        size: letter;
-        margin: 15mm 18mm;
+        size: A4;
+        margin: 0;
     }
 
     html,
-    body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+    body {
+        background: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
 
-    .doc-page { padding: 0; background: #fff; min-height: auto !important; }
+    .doc-page {
+        padding: 0;
+        background: #fff;
+        min-height: auto !important;
+        overflow: visible;
+    }
 
     .doc-sheet {
-        width: auto !important;
-        min-height: auto;
-        border: none;
+        width: 210mm;
+        height: 296.8mm;
         margin: 0;
-        padding: 0;
-        font-size: 10px;
-        line-height: 1.15;
+        border: 0;
+        box-shadow: none;
     }
 
-    .head-row { margin-bottom: 5px; }
-    .section-header { font-size: 9.5px; padding: 1px 5px; margin-top: 5px; margin-bottom: 2px; }
-    .row { margin-bottom: 3px; }
-    .row .field { min-height: 15px; }
-    .field-label { font-size: 7px; margin: 0 0 1px; padding: 0 3px; }
-    .row .field .bracket-input { padding: 0 3px; height: 10px; font-size: 9.5px; }
-    .sub-label { font-size: 9px; margin: 1px 0; }
-    .check-row { margin-bottom: 2px; }
-    .opt { font-size: 9px; gap: 5px; }
-    .check-box { height: 13px; width: 40px; font-size: 9.5px; }
-    .manifest-text { font-size: 8.5px; }
-    .tech-label { font-size: 9px; }
-    .tech-item { font-size: 9px; }
-    .utm-table { margin: 5px 0 3px; font-size: 9px; }
-    .utm-table td { height: 7px; padding: 1px 2px; }
-    .cell-input { height: 7px; }
-    .legal { font-size: 7px; margin-bottom: 5px; }
-    .legal-name { min-width: 150px; font-size: 7px; }
-    .firma-box { height: 56px; }
-    .cfe-box { height: 86px; }
-    .sign-line { margin-bottom: 3px; padding-left: 20px; }
-    .sign-label { font-size: 8.5px; }
-    .sign-line .line-input { font-size: 9px; }
+    .print\:hidden {
+        display: none !important;
+    }
 
-    .bracket-input,
-    .cell-input,
-    .line-input {
+    .fi:hover,
+    .fi:focus,
+    .hd-input:hover,
+    .hd-input:focus {
         background: transparent !important;
-        box-shadow: none !important;
     }
-
-    .opt,
-    .tech-item,
-    .si-box { cursor: default; }
-
-    .print\:hidden { display: none !important; }
 }
 </style>
